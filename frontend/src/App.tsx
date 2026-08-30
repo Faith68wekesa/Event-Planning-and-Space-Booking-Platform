@@ -101,7 +101,7 @@ export const App: React.FC = () => {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Developer Testing Tools */}
-      <div style={{ background: '#0f172a', padding: '8px 24px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+      <div style={{ background: '#065f54', padding: '8px 24px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
         <span style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600 }}>Developer Tools: Simulate User Role</span>
         <div style={{ display: 'flex', gap: '8px' }}>
           {(['CUSTOMER', 'VENDOR', 'ADMIN'] as UserRole[]).map((r) => (
@@ -114,10 +114,10 @@ export const App: React.FC = () => {
                 else setActiveTab('venues');
               }}
               style={{
-                background: activeRole === r ? '#6366f1' : 'rgba(255,255,255,0.05)',
+                background: activeRole === r ? '#0d8a73' : 'rgba(255,255,255,0.05)',
                 color: activeRole === r ? '#fff' : '#94a3b8',
                 border: '1px solid',
-                borderColor: activeRole === r ? '#6366f1' : 'rgba(255,255,255,0.1)',
+                borderColor: activeRole === r ? '#0d8a73' : 'rgba(255,255,255,0.1)',
                 borderRadius: '4px',
                 padding: '4px 12px',
                 fontSize: '0.75rem',
@@ -166,7 +166,7 @@ export const App: React.FC = () => {
 
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                  <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#f8fafc' }}>
+                  <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1e293b' }}>
                     {activeTab === 'venues' ? `Available Event Venues (${venues.length})` : `Verified Planners & Services (${vendors.length})`}
                   </h2>
 

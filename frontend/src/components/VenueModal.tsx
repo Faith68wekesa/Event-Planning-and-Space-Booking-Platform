@@ -53,20 +53,20 @@ export const VenueModal: React.FC<VenueModalProps> = ({ venue, onClose, onBook }
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '16px' }}>
           <div>
-            <span style={{ fontSize: '0.8rem', color: '#818cf8', fontWeight: 800, textTransform: 'uppercase' }}>
+            <span style={{ fontSize: '0.8rem', color: '#0d8a73', fontWeight: 800, textTransform: 'uppercase' }}>
               {venue.category_display || venue.category}
             </span>
             <h2 style={{ fontSize: '1.75rem', fontWeight: 800, color: '#f8fafc', marginTop: '2px' }}>
               {venue.title}
             </h2>
             <p style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)', marginTop: '4px', fontSize: '0.92rem' }}>
-              <MapPin size={16} color="#818cf8" /> {venue.address || venue.location}
+              <MapPin size={16} color="#0d8a73" /> {venue.address || venue.location}
             </p>
           </div>
 
           <div style={{ textAlign: 'right' }}>
             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Rental Rate</span>
-            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#34d399' }}>
+            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#059669' }}>
               KES {venue.price_per_day.toLocaleString()} <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 400 }}>/ day</span>
             </div>
           </div>
@@ -84,7 +84,7 @@ export const VenueModal: React.FC<VenueModalProps> = ({ venue, onClose, onBook }
           <div style={{ flex: 1, minWidth: '130px' }}>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Max Capacity</span>
             <span style={{ fontWeight: 700, fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
-              <Users size={16} color="#34d399" /> {venue.capacity} Guests
+              <Users size={16} color="#059669" /> {venue.capacity} Guests
             </span>
           </div>
 
@@ -122,7 +122,7 @@ export const VenueModal: React.FC<VenueModalProps> = ({ venue, onClose, onBook }
                 gap: '8px',
                 fontSize: '0.9rem'
               }}>
-                <CheckCircle2 size={16} color="#10b981" /> {item}
+                <CheckCircle2 size={16} color="#0d8a73" /> {item}
               </div>
             ))}
           </div>

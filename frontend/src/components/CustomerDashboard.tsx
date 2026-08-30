@@ -36,7 +36,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
       </div>
 
       {bookings.length === 0 ? (
-        <div className="glass-card" style={{ padding: '48px', textAlign: 'center' }}>
+        <div className="card" style={{ padding: '48px', textAlign: 'center' }}>
           <Calendar size={48} color="var(--text-muted)" style={{ marginBottom: '16px' }} />
           <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '8px' }}>No Active Bookings</h3>
           <p style={{ color: 'var(--text-muted)' }}>Explore verified venues or planners to submit your first booking request.</p>
@@ -48,21 +48,21 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
             const targetLoc = b.venue_details?.location || b.vendor_details?.location || 'Kenya';
 
             return (
-              <div key={b.id} className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div key={b.id} className="card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
                       <h3 style={{ fontSize: '1.2rem', fontWeight: 700 }}>{b.event_title}</h3>
                       {getStatusBadge(b.status)}
                     </div>
-                    <p style={{ fontSize: '0.9rem', color: '#818cf8', fontWeight: 600 }}>
+                    <p style={{ fontSize: '0.9rem', color: '#0d8a73', fontWeight: 600 }}>
                       Reserved Target: {targetName} ({targetLoc})
                     </p>
                   </div>
 
                   <div style={{ textAlign: 'right' }}>
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Estimated Cost</span>
-                    <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#34d399' }}>
+                    <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#059669' }}>
                       KES {b.total_price.toLocaleString()}
                     </div>
                   </div>

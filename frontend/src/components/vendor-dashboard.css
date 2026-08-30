@@ -8,7 +8,7 @@
 /* Sidebar Styles */
 .vendor-sidebar {
   width: 260px;
-  background-color: #0f1123; /* Deep indigo */
+  background-color: #042f2a; /* Deep dark teal instead of indigo */
   color: #f8fafc;
   display: flex;
   flex-direction: column;
@@ -53,9 +53,9 @@
 }
 
 .vendor-sidebar-item.active {
-  background-color: rgba(124, 58, 237, 0.15); /* Purple tint */
-  color: #a78bfa; /* Light purple text */
-  border-left: 4px solid #8b5cf6;
+  background-color: rgba(13, 138, 115, 0.15); /* Teal tint */
+  color: #0d8a73; /* Teal text */
+  border-left: 4px solid #0d8a73;
   border-radius: 0 8px 8px 0;
 }
 
@@ -165,7 +165,7 @@
 
 /* Buttons inside the light theme */
 .btn-primary-light {
-  background: #0f1123;
+  background: #042f2a;
   color: #ffffff;
   padding: 8px 16px;
   border-radius: 8px;

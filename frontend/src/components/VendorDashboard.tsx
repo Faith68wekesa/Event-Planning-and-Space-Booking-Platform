@@ -91,7 +91,7 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
           
           <button 
             className="btn-primary" 
-            style={{ width: '100%', marginBottom: '24px', background: '#7c3aed', padding: '12px' }}
+            style={{ width: '100%', marginBottom: '24px', background: '#0d8a73', padding: '12px' }}
             onClick={() => setShowAddModal(true)}
           >
             Create New Listing

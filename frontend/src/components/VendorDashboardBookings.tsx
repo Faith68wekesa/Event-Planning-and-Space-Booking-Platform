@@ -131,12 +131,12 @@ export const VendorDashboardBookings: React.FC<BookingsProps> = ({ bookings, onU
           <p style={{ fontSize: '0.85rem', color: '#94a3b8', marginTop: '16px', textAlign: 'center' }}>You have 2 events this week.</p>
         </div>
 
-        <div className="dashboard-card" style={{ background: 'linear-gradient(135deg, #7c3aed, #6366f1)', color: '#fff', border: 'none' }}>
+        <div className="dashboard-card" style={{ background: 'linear-gradient(135deg, #0d8a73, #065f54)', color: '#fff', border: 'none' }}>
           <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: '0 0 12px 0', color: '#fff' }}>Great Suggestions!</h3>
           <p style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.9)', lineHeight: 1.5, margin: '0 0 16px 0' }}>
             Turn on Auto-Approve for trusted returning clients to increase your booking speed.
           </p>
-          <button style={{ width: '100%', background: '#fff', color: '#7c3aed', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>
+          <button style={{ width: '100%', background: '#fff', color: '#0d8a73', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>
             Enable Auto-Approve
           </button>
         </div>

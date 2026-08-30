@@ -68,7 +68,7 @@ export const VendorDashboardOverview: React.FC<OverviewProps> = ({ bookings }) =
         <div className="dashboard-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, color: '#0f172a' }}>Recent Bookings</h3>
-            <button style={{ background: 'none', border: 'none', color: '#6366f1', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' }}>
+            <button style={{ background: 'none', border: 'none', color: '#0d8a73', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' }}>
               View all bookings
             </button>
           </div>

@@ -75,11 +75,11 @@ export const VendorDashboardReviews: React.FC = () => {
 
               {review.response ? (
                 <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', borderLeft: '4px solid #8b5cf6', marginLeft: '24px' }}>
-                  <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#7c3aed', marginBottom: '4px' }}>Your Response</div>
+                  <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#0d8a73', marginBottom: '4px' }}>Your Response</div>
                   <p style={{ fontSize: '0.9rem', color: '#475569', margin: 0 }}>{review.response}</p>
                 </div>
               ) : (
-                <button style={{ background: 'none', border: 'none', color: '#6366f1', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '24px' }}>
+                <button style={{ background: 'none', border: 'none', color: '#0d8a73', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '24px' }}>
                   <MessageCircle size={14} /> Reply to Review
                 </button>
               )}
@@ -94,7 +94,7 @@ export const VendorDashboardReviews: React.FC = () => {
         <div className="dashboard-card" style={{ background: '#0f1123', color: '#fff', border: 'none', textAlign: 'center' }}>
           <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: '0 0 24px 0', color: '#fff' }}>Sentiment Analysis</h3>
           
-          <div style={{ position: 'relative', width: '120px', height: '120px', margin: '0 auto 24px', borderRadius: '50%', background: 'conic-gradient(#34d399 0% 92%, rgba(255,255,255,0.1) 92% 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ position: 'relative', width: '120px', height: '120px', margin: '0 auto 24px', borderRadius: '50%', background: 'conic-gradient(#059669 0% 92%, rgba(255,255,255,0.1) 92% 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ width: '100px', height: '100px', borderRadius: '50%', background: '#0f1123', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
               <div style={{ fontSize: '1.75rem', fontWeight: 800 }}>92%</div>
             </div>
@@ -102,7 +102,7 @@ export const VendorDashboardReviews: React.FC = () => {
           
           <div style={{ display: 'flex', justifyContent: 'center', gap: '24px', fontSize: '0.85rem', color: '#94a3b8' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#34d399' }}></span> Positive
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#059669' }}></span> Positive
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }}></span> Neutral/Neg
@@ -113,9 +113,9 @@ export const VendorDashboardReviews: React.FC = () => {
         <div className="dashboard-card">
           <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: '0 0 16px 0', color: '#0f172a' }}>Keyword Cloud</h3>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-            <span style={{ background: 'rgba(139, 92, 246, 0.1)', color: '#7c3aed', padding: '6px 12px', borderRadius: '99px', fontSize: '0.9rem', fontWeight: 600 }}>Beautiful (42)</span>
+            <span style={{ background: 'rgba(13, 138, 115, 0.1)', color: '#0d8a73', padding: '6px 12px', borderRadius: '99px', fontSize: '0.9rem', fontWeight: 600 }}>Beautiful (42)</span>
             <span style={{ background: '#f1f5f9', color: '#475569', padding: '4px 10px', borderRadius: '99px', fontSize: '0.85rem' }}>Staff (38)</span>
-            <span style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#059669', padding: '4px 10px', borderRadius: '99px', fontSize: '0.85rem' }}>Professional (25)</span>
+            <span style={{ background: 'rgba(5, 150, 105, 0.1)', color: '#059669', padding: '4px 10px', borderRadius: '99px', fontSize: '0.85rem' }}>Professional (25)</span>
             <span style={{ background: '#f1f5f9', color: '#475569', padding: '4px 10px', borderRadius: '99px', fontSize: '0.8rem' }}>Catering (18)</span>
             <span style={{ background: '#f1f5f9', color: '#475569', padding: '4px 10px', borderRadius: '99px', fontSize: '0.8rem' }}>Views (15)</span>
             <span style={{ background: '#fef3c7', color: '#b45309', padding: '4px 10px', borderRadius: '99px', fontSize: '0.8rem' }}>Wifi (4)</span>
@@ -123,7 +123,7 @@ export const VendorDashboardReviews: React.FC = () => {
         </div>
 
         <div className="dashboard-card" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#e0e7ff', color: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#e0f2fe', color: '#0d8a73', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <ThumbsUp size={24} />
           </div>
           <div>
