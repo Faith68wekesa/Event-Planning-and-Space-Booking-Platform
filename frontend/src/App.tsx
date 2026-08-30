@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { UserRole, Venue, Vendor, Booking, PlatformStats, FilterState, BookingStatus } from './types';
+import type { UserRole, Venue, Vendor, Booking, PlatformStats, FilterState } from './types';
 import { ApiService } from './services/api.ts';
 import { Navbar } from './components/Navbar.tsx';
 import { HeroSearch } from './components/HeroSearch.tsx';
@@ -12,11 +12,14 @@ import { BookingModal } from './components/BookingModal.tsx';
 import { CustomerDashboard } from './components/CustomerDashboard.tsx';
 import { VendorDashboard } from './components/VendorDashboard.tsx';
 import { AdminDashboard } from './components/AdminDashboard.tsx';
+import { VendorRegistration } from './components/VendorRegistration.tsx';
+import { VendorLogin } from './components/VendorLogin.tsx';
+import { LandingPage } from './components/LandingPage.tsx';
 import { MapPin, Briefcase } from 'lucide-react';
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<string>('vendor-dashboard');
-  const [activeRole, setActiveRole] = useState<UserRole>('VENDOR');
+  const [activeTab, setActiveTab] = useState<string>('landing');
+  const [activeRole, setActiveRole] = useState<UserRole>('CUSTOMER');
 
   const [filters, setFilters] = useState<FilterState>({
     search: '',
@@ -44,6 +47,9 @@ export const App: React.FC = () => {
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
   const [bookingTargetVenue, setBookingTargetVenue] = useState<Venue | null>(null);
   const [bookingTargetVendor, setBookingTargetVendor] = useState<Vendor | null>(null);
+  const [showRegistration, setShowRegistration] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [currentVendor, setCurrentVendor] = useState<Vendor | null>(null);
 
   const loadData = async () => {
     const fetchedVenues = await ApiService.getVenues(filters);
@@ -73,13 +79,6 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleUpdateStatus = async (id: number, status: BookingStatus) => {
-    const ok = await ApiService.updateBookingStatus(id, status);
-    if (ok) {
-      setBookings((prev) => prev.map((b) => (b.id === id ? { ...b, status } : b)));
-    }
-  };
-
   const handleToggleVerifyVenue = async (id: number) => {
     const ok = await ApiService.toggleVerifyVenue(id);
     if (ok) {
@@ -94,52 +93,28 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleAddVenue = (newVenue: Venue) => {
-    setVenues((prev) => [newVenue, ...prev]);
-  };
-
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {/* Developer Testing Tools */}
-      <div style={{ background: '#065f54', padding: '8px 24px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-        <span style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600 }}>Developer Tools: Simulate User Role</span>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          {(['CUSTOMER', 'VENDOR', 'ADMIN'] as UserRole[]).map((r) => (
-            <button
-              key={r}
-              onClick={() => {
-                setActiveRole(r);
-                if (r === 'VENDOR') setActiveTab('vendor-dashboard');
-                else if (r === 'ADMIN') setActiveTab('admin-dashboard');
-                else setActiveTab('venues');
-              }}
-              style={{
-                background: activeRole === r ? '#0d8a73' : 'rgba(255,255,255,0.05)',
-                color: activeRole === r ? '#fff' : '#94a3b8',
-                border: '1px solid',
-                borderColor: activeRole === r ? '#0d8a73' : 'rgba(255,255,255,0.1)',
-                borderRadius: '4px',
-                padding: '4px 12px',
-                fontSize: '0.75rem',
-                cursor: 'pointer',
-                fontWeight: 600
-              }}
-            >
-              {r}
-            </button>
-          ))}
-        </div>
-      </div>
+      
+      {activeTab === 'landing' ? (
+        <LandingPage 
+          onSelectCustomer={() => {
+            setActiveRole('CUSTOMER');
+            setActiveTab('venues');
+          }}
+          onSelectVendor={() => setShowLogin(true)}
+        />
+      ) : (
+        <>
+          <Navbar
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            activeRole={activeRole}
+            bookingCount={bookings.length}
+            onRegisterVendor={() => setShowRegistration(true)}
+          />
 
-      <Navbar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        activeRole={activeRole}
-        setActiveRole={setActiveRole}
-        bookingCount={bookings.length}
-      />
-
-      <main style={{ flexGrow: 1 }}>
+          <main style={{ flexGrow: 1 }}>
         {(activeTab === 'venues' || activeTab === 'vendors') && (
           <>
             <HeroSearch
@@ -213,11 +188,9 @@ export const App: React.FC = () => {
           />
         )}
 
-        {activeTab === 'vendor-dashboard' && (
+        {activeTab === 'vendor-dashboard' && currentVendor && (
           <VendorDashboard
-            bookings={bookings}
-            onUpdateStatus={handleUpdateStatus}
-            onAddVenue={handleAddVenue}
+            currentVendor={currentVendor}
           />
         )}
 
@@ -259,27 +232,64 @@ export const App: React.FC = () => {
         />
       )}
 
-      <footer style={{
-        background: 'rgba(15, 23, 42, 0.95)',
-        borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-        padding: '24px',
-        textAlign: 'center',
-        color: 'var(--text-muted)',
-        fontSize: '0.85rem',
-        marginTop: 'auto'
-      }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-          <div>
-            <strong>EventP Kenya Platform</strong> — Centralized Web Platform for Verified Event Venues & Services
+      {activeTab !== 'landing' && (
+        <footer style={{
+          background: 'rgba(15, 23, 42, 0.95)',
+          borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+          padding: '24px',
+          textAlign: 'center',
+          color: 'var(--text-muted)',
+          fontSize: '0.85rem',
+          marginTop: 'auto'
+        }}>
+          <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+            <div>
+              <strong>EventP Kenya Platform</strong> — Centralized Web Platform for Verified Event Venues & Services
+            </div>
+            <div style={{ display: 'flex', gap: '16px', fontSize: '0.8rem' }}>
+              <span>Privacy Policy</span>
+              <span>Terms of Service</span>
+              <span>Vendor Verification Standard</span>
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: '16px', fontSize: '0.8rem' }}>
-            <span>Privacy Policy</span>
-            <span>Terms of Service</span>
-            <span>Vendor Verification Standard</span>
-          </div>
-        </div>
+        </footer>
+      )}
+      </>
+    )}
 
-      </footer>
+      {showRegistration && (
+        <VendorRegistration
+          onClose={() => setShowRegistration(false)}
+          onSuccess={(vendor) => {
+            setShowRegistration(false);
+            setVendors(prev => [vendor, ...prev]);
+            setCurrentVendor(vendor);
+            setActiveRole('VENDOR');
+            setActiveTab('vendor-dashboard');
+          }}
+          onSwitchToLogin={() => {
+            setShowRegistration(false);
+            setShowLogin(true);
+          }}
+        />
+      )}
+
+      {showLogin && (
+        <VendorLogin
+          onClose={() => setShowLogin(false)}
+          onSuccess={(vendor) => {
+            setShowLogin(false);
+            setCurrentVendor(vendor);
+            setActiveRole('VENDOR');
+            setActiveTab('vendor-dashboard');
+          }}
+          onSwitchToRegister={() => {
+            setShowLogin(false);
+            setShowRegistration(true);
+          }}
+        />
+      )}
+
     </div>
   );
 };

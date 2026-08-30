@@ -6,16 +6,16 @@ interface NavbarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   activeRole: UserRole;
-  setActiveRole: (role: UserRole) => void;
   bookingCount: number;
+  onRegisterVendor: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   setActiveTab,
   activeRole,
-  setActiveRole,
   bookingCount,
+  onRegisterVendor,
 }) => {
   return (
     <header style={{ position: 'sticky', top: 0, zIndex: 50 }}>
@@ -115,7 +115,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
         </button>
 
-        {activeRole === 'VENDOR' && (
+        {activeRole === 'VENDOR' ? (
           <button
             className={activeTab === 'vendor-dashboard' ? 'btn-primary' : 'btn-secondary'}
             onClick={() => setActiveTab('vendor-dashboard')}
@@ -123,7 +123,15 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <Briefcase size={16} /> Vendor Portal
           </button>
-        )}
+        ) : activeRole === 'CUSTOMER' ? (
+          <button
+            className="btn-primary"
+            onClick={onRegisterVendor}
+            style={{ padding: '8px 16px', fontSize: '0.88rem', background: '#065f54', color: '#fff', borderColor: '#065f54' }}
+          >
+            <UserCheck size={16} /> Become a Vendor
+          </button>
+        ) : null}
 
         {activeRole === 'ADMIN' && (
           <button

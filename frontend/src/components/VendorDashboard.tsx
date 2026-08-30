@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import type { Booking, Venue, BookingStatus, PlatformStats } from '../types';
+import React, { useState, useEffect, useCallback } from 'react';
+import type { Booking, Venue, BookingStatus, PlatformStats, Vendor } from '../types';
 import { ApiService } from '../services/api';
 import { VendorDashboardOverview } from './VendorDashboardOverview';
 import { VendorDashboardBookings } from './VendorDashboardBookings';
@@ -9,19 +9,11 @@ import './vendor-dashboard.css';
 import { LayoutDashboard, CalendarDays, Briefcase, MessageSquare, Settings, HelpCircle } from 'lucide-react';
 
 interface VendorDashboardProps {
-  bookings: Booking[];
-  venues?: Venue[]; // Now needs venues
-  stats?: PlatformStats; // Now needs stats
-  onUpdateStatus: (id: number, status: BookingStatus) => void;
-  onAddVenue: (newVenue: Venue) => void;
+  currentVendor: Vendor;
 }
 
 export const VendorDashboard: React.FC<VendorDashboardProps> = ({
-  bookings,
-  venues = [], // Fallback empty array if not passed by App.tsx
-  stats = { total_venues: 0, verified_venues: 0, total_vendors: 0, verified_vendors: 0, total_bookings: 0, satisfied_clients: 0 },
-  onUpdateStatus,
-  onAddVenue,
+  currentVendor,
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'portfolio' | 'bookings' | 'reviews'>('overview');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -32,9 +24,43 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
   const [priceDay, setPriceDay] = useState(75000);
   const [desc, setDesc] = useState('');
 
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [venues, setVenues] = useState<Venue[]>([]);
+  const [stats, setStats] = useState<PlatformStats>({ total_venues: 0, verified_venues: 0, total_vendors: 0, verified_vendors: 0, total_bookings: 0, satisfied_clients: 0 });
+
+  const fetchDashboardData = useCallback(async () => {
+    try {
+      const [dashData, bookingsData] = await Promise.all([
+        ApiService.getVendorDashboard(currentVendor.id),
+        ApiService.getVendorBookings(currentVendor.id)
+      ]);
+      setStats({
+        total_venues: dashData.total_venues,
+        verified_venues: dashData.total_venues, // Simplified
+        total_vendors: 0, verified_vendors: 0, satisfied_clients: 0,
+        total_bookings: dashData.pending_bookings + dashData.upcoming_bookings,
+        revenue: dashData.total_revenue // Passing this in extended stats object or modifying PlatformStats
+      } as any);
+      setVenues(dashData.venues);
+      setBookings(bookingsData);
+    } catch (e) {
+      console.error(e);
+    }
+  }, [currentVendor.id]);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
+
+  const handleUpdateStatus = async (id: number, status: BookingStatus) => {
+    await ApiService.updateBookingStatus(id, status);
+    fetchDashboardData();
+  };
+
   const handleAddVenueSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const created = await ApiService.addVenue({
+    await ApiService.addVenue({
+      vendor: currentVendor.id,
       title,
       category,
       location,
@@ -44,8 +70,8 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
       amenities: ['Manicured Grounds', 'Generator Backup', 'Security Guards', 'Ample Parking'],
       image_url: 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=800&q=80',
     });
-    onAddVenue(created);
     setShowAddModal(false);
+    fetchDashboardData();
     alert('New venue submitted! It will appear on the platform for admin verification.');
   };
 
@@ -72,8 +98,8 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
       {/* Sidebar */}
       <aside className="vendor-sidebar">
         <div className="vendor-sidebar-header">
-          EventPro Vendor
-          <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 500, marginTop: '4px' }}>Premium Partner</div>
+          {currentVendor.business_name}
+          <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 500, marginTop: '4px' }}>{currentVendor.vendor_type_display} Partner</div>
         </div>
         
         <nav className="vendor-sidebar-nav">
@@ -121,22 +147,22 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
             </button>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f172a' }}>Alex River</div>
-                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Venue Owner</div>
+                <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f172a' }}>{currentVendor.business_name}</div>
+                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{currentVendor.vendor_type_display}</div>
               </div>
               <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#e2e8f0', overflow: 'hidden' }}>
-                <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&q=80" alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <img src={currentVendor.portfolio_images?.[0] || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&q=80"} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               </div>
             </div>
           </div>
         </div>
 
         {activeTab === 'overview' && (
-          <VendorDashboardOverview bookings={bookings} stats={stats} />
+          <VendorDashboardOverview bookings={bookings} stats={stats} venues={venues} />
         )}
         
         {activeTab === 'bookings' && (
-          <VendorDashboardBookings bookings={bookings} onUpdateStatus={onUpdateStatus} />
+          <VendorDashboardBookings bookings={bookings} onUpdateStatus={handleUpdateStatus} />
         )}
         
         {activeTab === 'portfolio' && (

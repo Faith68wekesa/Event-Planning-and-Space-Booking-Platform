@@ -1,15 +1,19 @@
 import React from 'react';
-import type { Booking, PlatformStats } from '../types';
+import type { Booking, PlatformStats, Venue } from '../types';
 import { ArrowUpRight, TrendingUp, Star, MoreHorizontal, Eye } from 'lucide-react';
 
 interface OverviewProps {
   bookings: Booking[];
   stats: PlatformStats;
+  venues: Venue[];
 }
 
-export const VendorDashboardOverview: React.FC<OverviewProps> = ({ bookings }) => {
+export const VendorDashboardOverview: React.FC<OverviewProps> = ({ bookings, venues }) => {
   // Take top 4 recent bookings
   const recentBookings = bookings.slice(0, 4);
+  
+  // Take top 2 venues for listings
+  const topVenues = venues.slice(0, 2);
   
   // Calculate revenue from approved bookings
   const revenue = bookings
@@ -136,25 +140,21 @@ export const VendorDashboardOverview: React.FC<OverviewProps> = ({ bookings }) =
             <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: '0 0 16px 0', color: '#0f172a' }}>Top Listings</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               
-              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                <div style={{ width: '60px', height: '60px', borderRadius: '8px', background: '#e2e8f0', overflow: 'hidden' }}>
-                  <img src="https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=200&q=80" alt="listing" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              {topVenues.length === 0 && (
+                <div style={{ color: '#64748b', fontSize: '0.9rem' }}>No listings yet.</div>
+              )}
+              
+              {topVenues.map(venue => (
+                <div key={venue.id} style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <div style={{ width: '60px', height: '60px', borderRadius: '8px', background: '#e2e8f0', overflow: 'hidden' }}>
+                    <img src={venue.image_url} alt={venue.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 600, color: '#0f172a', fontSize: '0.9rem' }}>{venue.title}</div>
+                    <div style={{ fontSize: '0.8rem', color: '#64748b' }}>KES {venue.price_per_day.toLocaleString()} / day</div>
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontWeight: 600, color: '#0f172a', fontSize: '0.9rem' }}>Karen Oasis Gardens</div>
-                  <div style={{ fontSize: '0.8rem', color: '#64748b' }}>12 Bookings this month</div>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                <div style={{ width: '60px', height: '60px', borderRadius: '8px', background: '#e2e8f0', overflow: 'hidden' }}>
-                  <img src="https://images.unsplash.com/photo-1517457373958-b7bdd4587205?auto=format&fit=crop&w=200&q=80" alt="listing" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                </div>
-                <div>
-                  <div style={{ fontWeight: 600, color: '#0f172a', fontSize: '0.9rem' }}>Rift Valley Heights</div>
-                  <div style={{ fontSize: '0.8rem', color: '#64748b' }}>8 Bookings this month</div>
-                </div>
-              </div>
+              ))}
 
             </div>
           </div>
