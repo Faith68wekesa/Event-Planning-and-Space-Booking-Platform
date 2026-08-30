@@ -15,8 +15,8 @@ import { AdminDashboard } from './components/AdminDashboard.tsx';
 import { MapPin, Briefcase } from 'lucide-react';
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<string>('venues');
-  const [activeRole, setActiveRole] = useState<UserRole>('CUSTOMER');
+  const [activeTab, setActiveTab] = useState<string>('vendor-dashboard');
+  const [activeRole, setActiveRole] = useState<UserRole>('VENDOR');
 
   const [filters, setFilters] = useState<FilterState>({
     search: '',
@@ -100,6 +100,37 @@ export const App: React.FC = () => {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      {/* Developer Testing Tools */}
+      <div style={{ background: '#0f172a', padding: '8px 24px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+        <span style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600 }}>Developer Tools: Simulate User Role</span>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {(['CUSTOMER', 'VENDOR', 'ADMIN'] as UserRole[]).map((r) => (
+            <button
+              key={r}
+              onClick={() => {
+                setActiveRole(r);
+                if (r === 'VENDOR') setActiveTab('vendor-dashboard');
+                else if (r === 'ADMIN') setActiveTab('admin-dashboard');
+                else setActiveTab('venues');
+              }}
+              style={{
+                background: activeRole === r ? '#6366f1' : 'rgba(255,255,255,0.05)',
+                color: activeRole === r ? '#fff' : '#94a3b8',
+                border: '1px solid',
+                borderColor: activeRole === r ? '#6366f1' : 'rgba(255,255,255,0.1)',
+                borderRadius: '4px',
+                padding: '4px 12px',
+                fontSize: '0.75rem',
+                cursor: 'pointer',
+                fontWeight: 600
+              }}
+            >
+              {r}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -234,11 +265,12 @@ export const App: React.FC = () => {
         padding: '24px',
         textAlign: 'center',
         color: 'var(--text-muted)',
-        fontSize: '0.85rem'
+        fontSize: '0.85rem',
+        marginTop: 'auto'
       }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
           <div>
-            <strong>EventP Kenya Platform</strong> — Centralized Web Platform for Verified Event Venues & Services (Objective 1)
+            <strong>EventP Kenya Platform</strong> — Centralized Web Platform for Verified Event Venues & Services
           </div>
           <div style={{ display: 'flex', gap: '16px', fontSize: '0.8rem' }}>
             <span>Privacy Policy</span>
@@ -246,6 +278,7 @@ export const App: React.FC = () => {
             <span>Vendor Verification Standard</span>
           </div>
         </div>
+
       </footer>
     </div>
   );

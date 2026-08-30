@@ -117,42 +117,6 @@ export const Navbar: React.FC<NavbarProps> = ({
         )}
       </div>
 
-      {/* Role Switcher Pills */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        background: 'rgba(15, 23, 42, 0.9)',
-        border: '1px solid rgba(255, 255, 255, 0.12)',
-        borderRadius: '12px',
-        padding: '4px'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '0 8px', color: 'var(--text-muted)', fontSize: '0.78rem', fontWeight: 600 }}>
-          <UserCheck size={14} /> Role:
-        </div>
-        {(['CUSTOMER', 'VENDOR', 'ADMIN'] as UserRole[]).map((r) => (
-          <button
-            key={r}
-            onClick={() => {
-              setActiveRole(r);
-              if (r === 'VENDOR') setActiveTab('vendor-dashboard');
-              if (r === 'ADMIN') setActiveTab('admin-dashboard');
-            }}
-            style={{
-              background: activeRole === r ? 'var(--primary)' : 'transparent',
-              color: activeRole === r ? '#ffffff' : 'var(--text-muted)',
-              border: 'none',
-              borderRadius: '8px',
-              padding: '5px 10px',
-              fontSize: '0.78rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            {r === 'CUSTOMER' ? 'Customer' : r === 'VENDOR' ? 'Vendor' : 'Admin'}
-          </button>
-        ))}
-      </div>
     </nav>
   );
 };
