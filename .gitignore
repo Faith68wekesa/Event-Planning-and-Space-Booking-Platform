@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.pytype/
+
+# Django
+*.log
+*.pot
+*.pyc
+db.sqlite3
+media/
+staticfiles/
+
+# VS Code / editor
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Node / frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+.npm/
+.pnpm-store/
+
+# Environment files
+.env
+.env.*
+
+# Build artifacts
+coverage/
+*.egg-info/
+
+# Temporary files
+*.tmp
+*.temp
