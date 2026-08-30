@@ -1,0 +1,270 @@
+Dedan Kimathi University of Technology
+School of Computer Science and Information Technology.
+Information Technology Department
+Project title: Event planning and space booking platform
+Registration number: C027-01-0796/2023
+Name: Faith Wanjiru Wekesa
+Course: BSc in Business Information Technology (BBIT)
+The final project proposal submitted in partial requirement for the degree in Bachelor of Science in Business Information Technology
+July 2026
+Abstract
+The event management industry continues to grow as individuals, businesses, and organizations increasingly organize weddings, corporate events, conferences, birthdays, and outdoor activities. However, the process of finding and booking event venues, event planners, and service providers remains fragmented across multiple unverified platforms, leading to fraud, poor communication, inefficient booking processes, and financial losses. This proposal presents the design and development, a web-based Event Planning and Space Booking Platform that will provide a centralized solution for discovering and booking verified event venues, event planners, and event service providers.
+The primary objective of the project will be to develop a secure, intelligent, and user-friendly platform that simplifies event planning while improving transparency, trust, and booking efficiency. The system will incorporate machine learning techniques to generate personalized recommendations based on user preferences and detect suspicious booking activities to minimize fraud.
+The project will adopt the Agile software development methodology to support iterative development, continuous testing, and regular stakeholder feedback throughout the implementation process. The frontend will be developed using React with TypeScript, while the backend will be implemented using Django REST Framework and Python. PostgreSQL will be used as the database management system, and Scikit-learn will be used to develop the machine learning models.
+The expected outcome will be a reliable and scalable web application that streamlines the event booking process, improves communication between customers and vendors, enhances security through vendor verification and fraud detection, and contributes to the digital transformation of event management services in Kenya.
+Keywords: Event Planning, Event Booking System, React, TypeScript, Django REST Framework, PostgreSQL, Machine Learning, Fraud Detection, Recommendation System.
+Table of contents
+Abstract2
+Chapter 1: Introduction4
+1.1 Background information4
+1.2: Problem statement4
+1.3: Objectives of the project4
+1.3.1 General objectives4
+1.3.2 Specific objectives5
+1.4 Scope5
+1.5 Justification5
+1.6 Summary Chapter5
+Chapter 2: Literature review6
+2.1 Introduction6
+2.2 Case Studies6
+2.2.1 Case Study 1: Eventbrite6
+2.2.2 Case Study 2: Cvent6
+2.2.3 Case Study 3: WeddingWire7
+2.2.4 Case Study 4: AllEvents.in7
+2.3 The Gap8
+2.4 Chapter Summary8
+Chapter 3: Methodology9
+3.1 Chapter Introduction9
+3.2 Project methodology9
+3.3 Requirement analysis10
+3.4 System Architecture Diagram11
+3.5 User Interface Design not yet developed12
+3.6 Database Design12
+3.7 Project Management Tools12
+3.7.1 Project Schedule13
+3.7.2 Expected Budget13
+3.8 Chapter Summary14
+References14
+LIST OF FIGURES
+Figure no.                 Title                            
+Figure 3.1               System architecture diagram
+Figure 3.2               Entity-relationship diagram
+LIST OF TABLES
+Table no.                  Title
+Table 3.1                 Functional Requirements Specification
+Table 3.2                   Non-Functional Requirements Specification
+Table 3.3                 Project Schedule
+Table 3.4                   Expected Budget
+Chapter 1: Introduction
+1.1 Background information
+The event management industry continues to grow as individuals, businesses, and organizations increasingly organize weddings, corporate events, conferences, birthdays, and outdoor activities. In 2026, digital platforms play an important role in helping users discover services, compare options, and make bookings online. However, many event-related services remain fragmented across different websites and social media platforms, making it difficult for customers to find reliable venues, event planners, and service providers efficiently.
+One of the major challenges faced by customers is the lack of a centralized and trustworthy platform where they can access verified event spaces and vendors. Many users rely on informal channels that may contain outdated information, unverified providers, or fraudulent listings. This often results in time-consuming searches, poor communication, and increased risks during the event planning process.
+To address this gap, this project proposes the development of Event Planning and Space Booking Platform, a web-based platform that connects customers with verified event venues, event planners, and event service providers. The system will simplify the booking process, improve trust through vendor verification, and use machine-learning techniques to provide personalized recommendations and detect suspicious booking activities. By integrating these services into a single platform, Event Planning and Space Booking Platform aims to improve the efficiency, reliability, and overall experience of event planning.
+1.2: Problem statement
+Planning events such as weddings, corporate functions, birthdays, and outdoor activities often requires customers to search for venues, event planners, and service providers through multiple unverified channels, including social media platforms and personal referrals. This affects customers, venue owners, event planners, and service providers by increasing the risk of fraud, poor communication, double bookings, financial losses, and inefficient booking processes, which can negatively affect the success of events. According to Business Research Insights (2024), the continued growth of the global event management industry has increased the demand for secure and efficient digital booking solutions, highlighting the need for a centralized platform that connects users with verified vendors and event spaces while improving trust, communication, and booking efficiency.
+1.3: Objectives of the project
+1.3.1 General objectives
+To develop a secure, intelligent, and user-friendly web-based platform that connects customers with verified event venues, event planners, and event service providers, thereby improving the efficiency, reliability, and transparency of the event booking process.
+1.3.2 Specific objectives
+To develop a centralized web-based platform that enables users to search, view, and book verified event venues, planners, and service providers by November 2026. 
+To implement a vendor and venue verification system that verifies all registered vendors and venues before they are listed on the platform by November 2026. 
+To collect, store, and analyze user, vendor, venue, and booking data to generate useful insights and support personalized recommendations by November 2026. 
+iv. To integrate machine learning models for personalized venue and vendor recommendations and dynamic pricing based on user preferences, historical booking data, and venue characteristics by November 2026.
+To reduce fraudulent booking activities by implementing machine learning-based fraud detection and administrator monitoring features by November 2026.
+1.4 Scope 
+The   Event Planning and Space Booking Platform will focus on developing a web-based system that enables users to search, compare, and book verified event venues, planners, and service providers. The system will collect and analyze relevant booking and user-interaction data to generate insights, provide personalized recommendations, support fraud detection and data-driven dynamic pricing of event venues. It will also provide user authentication, venue and vendor verification, booking management, and an administrative dashboard for managing platform activities. The project will primarily target users in Kenya and will exclude online payment processing and a native mobile application during the initial implementation.
+1.5 Justification
+The problem is important to solve because the current process of finding and booking event venues, planners, and service providers is often fragmented, time-consuming, and prone to fraud. Customers may experience financial losses, poor service delivery, and communication challenges when dealing with unverified vendors. By providing a centralized platform with verified listings, secure booking processes, and intelligent recommendations, Event Planning and Space Booking Platform improve trust, efficiency, and convenience for customers, venue owners, event planners, and service providers.
+1.6 Summary Chapter
+This chapter introduced the proposed Event planning and space booking platform by providing an overview of the event management industry and the increasing need for digital solutions to simplify the process of discovering and booking event venues, event planners, and event service providers. It discussed the background of the study and highlighted the challenges associated with fragmented booking platforms, unverified vendors, fraud, poor communication, and inefficient booking processes that affect customers, venue owners, event planners, and service providers. The chapter also presented the problem statement, the general and specific objectives, the scope of the project, and the justification for undertaking the study, demonstrating the need for a secure, centralized, and intelligent event booking platform. Overall, the chapter established the foundation for the proposed system by outlining how it will enhance trust, improve booking efficiency, support informed decision-making through machine learning, and provide a reliable solution to the challenges faced in event planning and management.
+Chapter 2: Literature review
+2.1 Introduction
+This chapter reviews existing event booking and event management systems that are related to the proposed Event planning and space booking platform. The reviewed systems provide a basis for comparison by highlighting their strengths, limitations, and technologies used in managing event venues, planners, and service providers. The review also identifies gaps in current solutions and demonstrates how the proposed Event planning and space booking platform system addresses these limitations through a centralized, secure, and intelligent web-based platform.
+2.2 Case Studies
+2.2.1 Case Study 1: Eventbrite
+Eventbrite is one of the world's leading online event management and ticketing platforms, allowing organizers to create, promote, and manage events while enabling users to register and purchase tickets online. The platform has simplified event organization by providing digital event listings and online registration.
+Despite its effectiveness in ticketing and event promotion, Eventbrite primarily focuses on event registration and ticket sales rather than providing comprehensive event planning services. It does not offer integrated booking of event venues, event planners, photographers, caterers, decorators, or other event service providers through a single platform.
+The proposed Event Planning and Space Booking Platform system extends beyond Eventbrite by providing a centralized platform where users can search for verified event venues, book event planners and service providers, receive personalized recommendations, and track booking requests while reducing the risks associated with fraudulent vendors.
+2.2.2 Case Study 2: Cvent
+Cvent is a cloud-based event management platform widely used for conferences, corporate meetings, and business events. The system provides venue sourcing, event registration, attendee management, and reporting tools that assist organizations in managing large-scale events efficiently.
+Although Cvent offers powerful event management features, it is primarily designed for enterprise users and corporate organizations, making it less suitable for individuals and small businesses planning personal events such as weddings, birthdays, and outdoor celebrations. Additionally, many of its advanced features require paid subscriptions, limiting accessibility for many users.
+Event Planning and Space Booking Platform aims to provide an affordable and user-friendly alternative by supporting both individuals and organizations while integrating verified vendors, booking management, and machine learning-powered recommendations into a single web-based platform.
+2.2.3 Case Study 3: WeddingWire
+Wedding Wire is an online marketplace that connects couples with wedding venues and wedding service providers, including photographers, caterers, decorators, and wedding planners. The platform allows users to browse vendor profiles, read reviews, and request quotations.
+However, Wedding Wire mainly focuses on wedding-related services and does not fully support other types of events such as corporate functions, conferences, picnics, camping activities, birthday parties, and community events. Furthermore, it offers limited intelligent recommendation capabilities and does not incorporate machine-learning techniques for personalized recommendations or fraud detection.
+The proposed Event Planning and Space Booking Platform addresses these limitations by supporting multiple event categories through a centralized booking system while integrating machine learning for personalized venue and vendor recommendations, fraud detection, and improved decision-making during the event planning process.
+2.2.4 Case Study 4: AllEvents.in
+AllEvents.in is an online event discovery platform that enables users to search for upcoming events, purchase tickets, and discover activities based on their location and interests. The platform supports event organizers by providing tools to publish and promote events to a wider audience.
+Although AllEvents.in is effective for event discovery and promotion, it primarily focuses on listing events rather than providing a complete event planning solution. It does not offer integrated booking of verified event venues, event planners, photographers, caterers, decorators, or other event service providers. Additionally, the platform provides limited personalized recommendations and does not incorporate machine learning techniques for fraud detection or vendor verification.
+The proposed Event Planning and Space Booking Platform will provide a centralized solution that enables users to search and book verified event venues, event planners, and service providers within a single platform. It will further integrate machine learning to generate personalized recommendations, detect fraudulent booking activities, and enhance the overall security, reliability, and efficiency of the event planning process.
+2.3 The Gap
+The reviewed systems demonstrate significant progress in digital event management but still present several limitations. Eventbrite mainly focuses on event registration and ticketing, Cvent primarily targets corporate events and enterprise users, WeddingWire is limited to wedding-related services, and AllEvents.in mainly supports event discovery rather than complete event planning. None of these systems provides a centralized platform that integrates verified event venues, event planners, and event service providers while incorporating machine learning for personalized recommendations and fraud detection.
+The proposed Event Planning and Space Booking Platform seeks to address these gaps by providing a secure, intelligent, and centralized web-based solution. The system will enable users to discover and book verified venues and service providers, receive personalized recommendations based on their preferences, detect suspicious booking activities using machine learning, and improve communication between customers, vendors, and administrators, resulting in a more efficient and trustworthy event planning experience.
+2.4 Chapter Summary
+This chapter reviewed existing event booking and event management systems related to the proposed Event Planning and Space Booking Platform. It examined four case studies—Eventbrite, Cvent, Wedding Wire, and AllEvents.in—highlighting their features, strengths, and limitations. The chapter also identified the gaps in existing solutions, including the lack of a centralized platform, limited support for multiple event types, insufficient vendor verification, and the absence of machine learning-based recommendations and fraud detection. These findings provide the foundation for the proposed system, which aims to address these limitations through a secure, intelligent, and user-friendly web-based platform.
+Chapter 3: Methodology
+3.1 Chapter Introduction
+This chapter describes the design and development approach for the proposed Event planning and space booking platform. It presents the system methodology, functional and non-functional requirements, system components, system architecture, database design, user interface design, development environment, and implementation process. The chapter also explains the technologies and tools that will be used, including React with TypeScript, Django REST Framework, PostgreSQL, and machine learning techniques, to develop a secure, intelligent, and user-friendly web-based event booking platform.
+3.2 Project methodology
+The development of the Event Planning and Space Booking Platform will adopt the Agile software development methodology. Agile is suitable for this project because it supports iterative development, continuous testing, and regular feedback throughout the software development life cycle. The project will be divided into small development cycles, where each sprint will focus on implementing and testing specific system features before progressing to the next phase.
+The project will begin with requirements gathering and analysis, where functional and non-functional requirements will be identified through literature review, analysis of existing event booking systems, and stakeholder needs. This will be followed by the system design phase, which will include designing the system architecture, database structure, user interfaces, APIs, and machine learning components.
+During the development phase, the frontend will be implemented using React with TypeScript, while the backend will be developed using Django REST Framework and Python. PostgreSQL will be used as the database management system, and Scikit-learn will be used to implement machine learning models for personalized recommendations, fraud detection, and dynamic pricing. The collected user, venue, vendor, booking, and feedback data will be cleaned, analyzed, and prepared for training and testing the machine learning models. The analyzed data will support personalized recommendations, fraud detection, and dynamic pricing. Historical booking and venue data will be used to train the Random Forest Regressor for estimating appropriate venue prices based on factors such as booking lead time, seasonality, venue utilization, and competitor pricing.
+The system will undergo unit testing using Jest for the React frontend and PyTest for the Django backend. Integration testing will be conducted to verify communication between the frontend, backend, database, and machine learning module, while User Acceptance Testing (UAT) will be carried out to ensure that the system meets user requirements. After successful testing, the system will be deployed and continuously monitored for maintenance and future improvements
+3.3 Requirement analysis
+Requirement analysis was conducted to identify the functional and non-functional requirements of the proposed Event planning and space booking platform. The requirements were gathered through a review of related literature, existing event management systems, and user needs analysis. The functional requirements include user registration, vendor verification, booking management, machine learning-based recommendations, fraud detection, and an administrative dashboard, while the non-functional requirements include security, performance, usability, scalability, reliability, and compatibility. These requirements provide the foundation for designing and developing a secure, efficient, and user-friendly web-based event booking platform. Data Collection and Analysis Module: the system will collect data from user interactions, searches, bookings, ratings, vendor profiles, and venue listings. The data will be stored in PostgreSQL and analyzed to identify user preferences, booking patterns, and suspicious activities.
+Number
+Functional requirement
+Description
+1
+User registration and login 
+The system shall allow customers, vendors, and administrators to register, log in, and manage their accounts securely.
+2
+Venue Management
+The system shall allow venue owners to add, update, and manage event venue information, including location, pricing, capacity, and availability.
+3
+Vendor Management
+The system shall allow event planners and service providers to create, update, and manage their profiles, services, and portfolios.
+4
+Vendor Verification
+The system shall enable administrators to verify event venues and vendors before they are published on the platform.
+5
+Booking Management
+The system shall allow users to submit, track, modify, and cancel booking requests
+6
+Machine Learning Recommendations
+The system shall provide personalized recommendations for venues and service providers based on user preferences and previous booking history.
+7
+Fraud Detection
+The system shall detect suspicious booking activities using machine learning and notify administrators for further review.
+8
+Notification Management
+The system shall send booking confirmations, approval notifications, rejection notices, and booking updates to users and vendors.
+9
+Data collection and analysis
+The system shall collect, analyze user, vendor, venue, booking and feedback data to generate insights and support personalized recommendations.
+10
+Dynamic pricing
+The system shall analyze booking history, event dates, venue utilization, and comparable venue prices to generate data-driven venue price recommendations
+11
+Administrative Dashboard
+The system shall provide administrators with tools to manage users, bookings, venues, vendors, verification requests, reports, and overall system activities.
+Table 3.1 Functional Requirements Specification
+Number
+Non-functional requirement
+Description
+1
+Performance
+The system shall process booking requests and display results within 3 seconds under normal operating conditions.
+2
+Security
+The system shall protect user data through secure authentication, authorization, password encryption, and HTTPS communication.
+3
+Reliability
+The system shall maintain consistent operation with minimal downtime and ensure accurate processing of bookings and user information.
+4
+Usability
+The system shall provide a responsive, intuitive, and user-friendly interface that is easy to navigate for all users.
+5
+Scalability
+The system shall support an increasing number of users, vendors, venues, and bookings without significant performance degradation.
+6
+Compatibility
+The system shall function correctly on modern web browsers, including Google Chrome, Microsoft Edge, Mozilla Firefox, and Safari.
+Table 3.2 Non-Functional Requirements Specification
+3.4 System Architecture Diagram
+Figure 3.1: System architecture diagram
+3.4.1User Interface Designnot yet developed
+3.4.2Database Design
+Figure 3.2 Database Design
+3.4.3 Entity-Relationship Diagram
+Figure 3.2 Entity-Relationship Diagram
+3.4.4 Use case diagram
+Figure 3.3 Use case diagram
+3.4.5 UML_diagram
+Figure 3.4UML_diagram
+3.4.6Data flow diagram
+3.7 Project Management Tools
+The development of the Event Planning and Space Booking Platform will be managed using a combination of project management and collaboration tools. Git and GitHub will be used for version control to manage source code, track changes, and support collaboration throughout the development process. GitHub Projects will be used as a Kanban board to organize tasks, monitor progress, and manage project milestones.
+Project documentation and reports will be prepared using Microsoft Word, while Draw.io will be used to create system architecture diagrams, UML diagrams, and the Entity Relationship Diagram (ERD). Postman will be used to test RESTful APIs during development, and GitHub Actions will automate testing and deployment through a Continuous Integration and Continuous Deployment (CI/CD) pipeline.
+3.7.1 Project Schedule
+Week
+Activity
+Milestone
+1-2
+Proposal writing and approval
+Proposal Submission
+3-4
+Literature review and requirements gathering
+Requirements Documentation
+5-6
+System analysis and architecture design
+System Design Completion
+7-8
+Database design and API planning
+Database & API Design
+9-11
+Frontend development using React and Typescript
+Frontend MVP
+12-14
+Backend development using Django REST Framework
+Backend MVP
+15-16
+Database integration with PostgreSQL
+System Integration
+17-18
+Machine learning model development and integration
+ML Integration
+19-20
+Authentication, verification, and booking features
+Core Features Complete
+21-22
+System testing and debugging
+Testing Phase Complete
+23
+Deployment and CI/CD setup
+Deployment Complete
+24
+User Acceptance Testing and final improvements
+Final System Ready
+25
+Final report writing and submission
+Final Submission
+Table 3.3 Project Schedule
+3.7.2 Expected Budget
+Item
+Description
+Estimated Cost (KES)
+Domain Name (Optional)
+Custom project domain
+1,500
+Internet/Data Costs
+Research, development, and testing
+4,000
+Cloud Hosting
+Render and PostgreSQL cloud services
+0 (Free Tier)
+Frontend Hosting
+Vercel deployment
+0 (Free Tier)
+Version Control
+GitHub
+0 (Free Tier)
+Machine Learning Libraries
+Scikit-Learn,
+0 (Open Source)
+Development Tools
+VS Code, Postman
+0 (Free)
+Testing and Miscellaneous
+Debugging and deployment expenses
+2,000
+Table 3.4 Expected Budget
+3.8 Chapter Summary
+This chapter presented the methodology and design approach for the proposed Event planning and space booking platform. It described the Agile software development methodology that will guide the development process, as well as the requirement analysis, functional and non-functional requirements that define the system's expected functionality and performance. The chapter also presented the proposed system architecture, user interface design, database design, project management tools, project schedule, and estimated budget. Together, these components provide a clear roadmap for the successful design, development, testing, and deployment of a secure, intelligent, and user-friendly web-based event booking platform.
+References
+Bramhe, M. V., Waghmare, A., Awate, B., Rao, K., Kadu, A., & Dangre, T. (2025). Online event management system: A critical review of research findings and methodologies. 
+Business Research Insights. (2024). Event management industry report. Retrieved June 18, 2026, from https://www.businessresearchinsights.com/
+Django Software Foundation. (2026). Django documentation. Retrieved June 18, 2026, from https://docs.djangoproject.com/
+Feulner, S., Sedlmeir, J., Schlatt, V., & Urbach, N. (2022). Exploring the use of self-sovereign identity for event ticketing systems. Electronic Markets, 32(4), 1759–1777.
+Kumar, D., & Ratten, V. (2025). Artificial intelligence in event management: A systematic literature review. 
+Portugal, I., Alencar, P., & Cowan, D. (2018). The use of machine learning algorithms in recommender systems: A systematic review. Expert Systems with Applications, 97, 205–227.
