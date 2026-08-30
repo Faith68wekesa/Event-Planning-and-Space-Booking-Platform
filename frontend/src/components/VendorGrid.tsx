@@ -12,7 +12,7 @@ interface VendorGridProps {
 export const VendorGrid: React.FC<VendorGridProps> = ({ vendors, onSelectVendor, onBookVendor }) => {
   if (vendors.length === 0) {
     return (
-      <div className="glass-card" style={{ padding: '48px', textAlign: 'center', margin: '20px 0' }}>
+      <div className="card" style={{ padding: '48px', textAlign: 'center', margin: '20px 0' }}>
         <UserX size={48} color="var(--text-muted)" style={{ marginBottom: '16px' }} />
         <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '8px' }}>No Service Providers Found</h3>
         <p style={{ color: 'var(--text-muted)' }}>Try adjusting your search filters or selecting a different service category.</p>

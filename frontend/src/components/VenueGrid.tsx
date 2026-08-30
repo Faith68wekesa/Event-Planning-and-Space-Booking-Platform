@@ -12,7 +12,7 @@ interface VenueGridProps {
 export const VenueGrid: React.FC<VenueGridProps> = ({ venues, onSelectVenue, onBookVenue }) => {
   if (venues.length === 0) {
     return (
-      <div className="glass-card" style={{ padding: '48px', textAlign: 'center', margin: '20px 0' }}>
+      <div className="card" style={{ padding: '48px', textAlign: 'center', margin: '20px 0' }}>
         <MapPin size={48} color="var(--text-muted)" style={{ marginBottom: '16px', display: 'inline-block' }} />
         <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '8px' }}>No Venues Found</h3>
         <p style={{ color: 'var(--text-muted)' }}>Try adjusting your search filters or selecting a different location.</p>

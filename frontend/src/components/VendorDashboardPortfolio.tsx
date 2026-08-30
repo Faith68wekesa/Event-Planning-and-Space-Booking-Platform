@@ -15,13 +15,13 @@ export const VendorDashboardPortfolio: React.FC<PortfolioProps> = ({ venues, onA
           <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: '0 0 8px 0' }}>Portfolio & Listings</h2>
           <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>Manage your venues, edit details, and view performance.</p>
         </div>
-        <button className="btn-primary-light" onClick={onAddClick} style={{ background: '#7c3aed' }}>
+        <button className="btn-primary-light" onClick={onAddClick} style={{ background: '#0d8a73' }}>
           <Plus size={18} /> Add New Venue
         </button>
       </div>
 
       <div style={{ display: 'flex', gap: '24px', borderBottom: '1px solid #e2e8f0', marginBottom: '24px' }}>
-        <button style={{ padding: '12px 0', border: 'none', background: 'none', color: '#7c3aed', fontWeight: 700, borderBottom: '2px solid #7c3aed', cursor: 'pointer' }}>
+        <button style={{ padding: '12px 0', border: 'none', background: 'none', color: '#0d8a73', fontWeight: 700, borderBottom: '2px solid #0d8a73', cursor: 'pointer' }}>
           All Listings (5)
         </button>
         <button style={{ padding: '12px 0', border: 'none', background: 'none', color: '#64748b', fontWeight: 600, cursor: 'pointer' }}>
@@ -41,7 +41,7 @@ export const VendorDashboardPortfolio: React.FC<PortfolioProps> = ({ venues, onA
             <div style={{ position: 'relative', height: '160px', borderRadius: '8px', overflow: 'hidden', marginBottom: '16px' }}>
               <img src={venue.image_url} alt={venue.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               {venue.is_verified && (
-                <div style={{ position: 'absolute', top: '8px', left: '8px', background: 'rgba(16, 185, 129, 0.9)', color: '#fff', padding: '2px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <div style={{ position: 'absolute', top: '8px', left: '8px', background: 'rgba(5, 150, 105, 0.9)', color: '#fff', padding: '2px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <CheckCircle2 size={12} /> Verified
                 </div>
               )}
@@ -65,7 +65,7 @@ export const VendorDashboardPortfolio: React.FC<PortfolioProps> = ({ venues, onA
         ))}
 
         <div className="dashboard-card" onClick={onAddClick} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '2px dashed #cbd5e1', cursor: 'pointer', minHeight: '260px', background: '#f8fafc' }}>
-          <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#e0e7ff', color: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+          <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#e0f2fe', color: '#0d8a73', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
             <Plus size={24} />
           </div>
           <div style={{ fontWeight: 600, color: '#334155' }}>Add New Listing</div>

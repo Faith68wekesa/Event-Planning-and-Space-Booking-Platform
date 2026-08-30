@@ -10,11 +10,15 @@ interface VenueCardProps {
 
 export const VenueCard: React.FC<VenueCardProps> = ({ venue, onSelect, onBook }) => {
   return (
-    <div className="glass-card" style={{
+    <div style={{
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',
-      height: '100%'
+      height: '100%',
+      background: '#ffffff',
+      borderRadius: '16px',
+      border: '1px solid #e2e8f0',
+      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)'
     }}>
       <div style={{ position: 'relative', height: '220px', overflow: 'hidden' }}>
         <img
@@ -44,8 +48,8 @@ export const VenueCard: React.FC<VenueCardProps> = ({ venue, onSelect, onBook })
           position: 'absolute',
           bottom: '12px',
           right: '12px',
-          background: 'rgba(15, 23, 42, 0.85)',
-          backdropFilter: 'blur(8px)',
+          background: '#ffffff',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
           padding: '4px 10px',
           borderRadius: '8px',
           display: 'flex',
@@ -61,18 +65,18 @@ export const VenueCard: React.FC<VenueCardProps> = ({ venue, onSelect, onBook })
 
       <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '8px' }}>
-          <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#f8fafc', lineHeight: 1.3 }}>
+          <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#1e293b', lineHeight: 1.3 }}>
             {venue.title}
           </h3>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '14px' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <MapPin size={14} color="#818cf8" /> {venue.location}
+            <MapPin size={14} color="#0d8a73" /> {venue.location}
           </span>
           <span>•</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <Users size={14} color="#34d399" /> Up to {venue.capacity} guests
+            <Users size={14} color="#059669" /> Up to {venue.capacity} guests
           </span>
         </div>
 
@@ -92,9 +96,9 @@ export const VenueCard: React.FC<VenueCardProps> = ({ venue, onSelect, onBook })
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '20px' }}>
           {venue.amenities.slice(0, 3).map((amt, idx) => (
             <span key={idx} style={{
-              background: 'rgba(255, 255, 255, 0.06)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-              color: '#cbd5e1',
+              background: '#f1f5f9',
+              border: '1px solid #e2e8f0',
+              color: '#475569',
               fontSize: '0.75rem',
               padding: '3px 8px',
               borderRadius: '6px',
@@ -102,7 +106,7 @@ export const VenueCard: React.FC<VenueCardProps> = ({ venue, onSelect, onBook })
               alignItems: 'center',
               gap: '4px'
             }}>
-              <CheckCircle2 size={12} color="#10b981" /> {amt}
+              <CheckCircle2 size={12} color="#0d8a73" /> {amt}
             </span>
           ))}
           {venue.amenities.length > 3 && (
@@ -112,10 +116,10 @@ export const VenueCard: React.FC<VenueCardProps> = ({ venue, onSelect, onBook })
           )}
         </div>
 
-        <div style={{ marginTop: 'auto', paddingTop: '12px', borderTop: '1px solid rgba(255, 255, 255, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ marginTop: 'auto', paddingTop: '12px', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Rate / Day</span>
-            <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#34d399' }}>
+            <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#059669' }}>
               KES {venue.price_per_day.toLocaleString()}
             </span>
           </div>

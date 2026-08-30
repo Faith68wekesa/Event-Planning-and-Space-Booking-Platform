@@ -18,7 +18,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   return (
     <div style={{ maxWidth: '1100px', margin: '32px auto', padding: '0 20px' }}>
       <div style={{ marginBottom: '24px' }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(99, 102, 241, 0.15)', color: '#818cf8', padding: '4px 12px', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 700, marginBottom: '8px' }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(13, 138, 115, 0.15)', color: '#0d8a73', padding: '4px 12px', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 700, marginBottom: '8px' }}>
           <ShieldCheck size={14} /> Platform Administrator Control Panel
         </div>
         <h2 style={{ fontSize: '1.75rem', fontWeight: 800 }}>Vendor & Venue Verification Management</h2>
@@ -27,9 +27,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </p>
       </div>
 
-      <div className="glass-card" style={{ padding: '24px', marginBottom: '32px' }}>
+      <div className="card" style={{ padding: '24px', marginBottom: '32px' }}>
         <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Building size={20} color="#818cf8" /> Registered Event Venues ({venues.length})
+          <Building size={20} color="#0d8a73" /> Registered Event Venues ({venues.length})
         </h3>
 
         <div style={{ display: 'grid', gap: '12px' }}>
@@ -71,9 +71,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       </div>
 
-      <div className="glass-card" style={{ padding: '24px' }}>
+      <div className="card" style={{ padding: '24px' }}>
         <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <UserCheck size={20} color="#34d399" /> Registered Planners & Service Providers ({vendors.length})
+          <UserCheck size={20} color="#059669" /> Registered Planners & Service Providers ({vendors.length})
         </h3>
 
         <div style={{ display: 'grid', gap: '12px' }}>

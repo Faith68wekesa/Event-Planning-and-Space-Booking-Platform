@@ -51,20 +51,20 @@ export const VendorModal: React.FC<VendorModalProps> = ({ vendor, onClose, onBoo
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '16px' }}>
           <div>
-            <span style={{ fontSize: '0.8rem', color: '#818cf8', fontWeight: 800, textTransform: 'uppercase' }}>
+            <span style={{ fontSize: '0.8rem', color: '#0d8a73', fontWeight: 800, textTransform: 'uppercase' }}>
               {vendor.vendor_type_display || vendor.vendor_type}
             </span>
             <h2 style={{ fontSize: '1.7rem', fontWeight: 800, color: '#f8fafc', marginTop: '2px' }}>
               {vendor.business_name}
             </h2>
             <p style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)', marginTop: '4px', fontSize: '0.9rem' }}>
-              <MapPin size={16} color="#818cf8" /> Based in {vendor.location}, Kenya
+              <MapPin size={16} color="#0d8a73" /> Based in {vendor.location}, Kenya
             </p>
           </div>
 
           <div style={{ textAlign: 'right' }}>
             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Starting Package</span>
-            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#34d399' }}>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#059669' }}>
               KES {vendor.starting_price.toLocaleString()}
             </div>
           </div>
@@ -89,14 +89,14 @@ export const VendorModal: React.FC<VendorModalProps> = ({ vendor, onClose, onBoo
           <div style={{ flex: 1, minWidth: '130px' }}>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Contact Phone</span>
             <span style={{ fontWeight: 700, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-              <Phone size={14} color="#34d399" /> {vendor.contact_phone || '+254700112233'}
+              <Phone size={14} color="#059669" /> {vendor.contact_phone || '+254700112233'}
             </span>
           </div>
 
           <div style={{ flex: 1, minWidth: '130px' }}>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Email Address</span>
             <span style={{ fontWeight: 700, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-              <Mail size={14} color="#818cf8" /> {vendor.contact_email || 'info@vendor.co.ke'}
+              <Mail size={14} color="#0d8a73" /> {vendor.contact_email || 'info@vendor.co.ke'}
             </span>
           </div>
         </div>

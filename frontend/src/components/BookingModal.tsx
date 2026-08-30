@@ -58,7 +58,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', paddingBottom: '16px' }}>
           <div>
-            <span style={{ fontSize: '0.78rem', color: '#818cf8', fontWeight: 700, textTransform: 'uppercase' }}>
+            <span style={{ fontSize: '0.78rem', color: '#0d8a73', fontWeight: 700, textTransform: 'uppercase' }}>
               Booking Request Form
             </span>
             <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#f8fafc', marginTop: '2px' }}>
@@ -75,8 +75,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         </div>
 
         <div style={{
-          background: 'rgba(99, 102, 241, 0.12)',
-          border: '1px solid rgba(99, 102, 241, 0.25)',
+          background: 'rgba(13, 138, 115, 0.12)',
+          border: '1px solid rgba(13, 138, 115, 0.25)',
           borderRadius: '12px',
           padding: '14px',
           display: 'flex',
@@ -86,7 +86,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700 }}>
-              <ShieldCheck size={16} color="#34d399" /> Verified Provider Guarantee
+              <ShieldCheck size={16} color="#059669" /> Verified Provider Guarantee
             </div>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
               No immediate charges. Venue/Vendor will review your date and confirm request.
@@ -94,7 +94,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           </div>
           <div style={{ textAlign: 'right' }}>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Base Price</span>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#34d399' }}>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#059669' }}>
               KES {defaultPrice.toLocaleString()}
             </div>
           </div>

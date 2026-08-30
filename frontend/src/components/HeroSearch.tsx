@@ -17,8 +17,8 @@ export const HeroSearch: React.FC<HeroSearchProps> = ({
 }) => {
   return (
     <div style={{
-      background: 'linear-gradient(180deg, rgba(30, 27, 75, 0.6) 0%, rgba(15, 23, 42, 0.4) 100%)',
-      borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+      background: 'linear-gradient(180deg, #f0fdfa 0%, #ffffff 100%)',
+      borderBottom: '1px solid #e2e8f0',
       padding: '48px 24px',
       textAlign: 'center',
       position: 'relative',
@@ -29,9 +29,9 @@ export const HeroSearch: React.FC<HeroSearchProps> = ({
           display: 'inline-flex',
           alignItems: 'center',
           gap: '6px',
-          background: 'rgba(16, 185, 129, 0.15)',
-          color: '#34d399',
-          border: '1px solid rgba(16, 185, 129, 0.3)',
+          background: 'rgba(5, 150, 105, 0.1)',
+          color: '#059669',
+          border: '1px solid rgba(5, 150, 105, 0.2)',
           padding: '6px 16px',
           borderRadius: '999px',
           fontSize: '0.85rem',
@@ -44,12 +44,13 @@ export const HeroSearch: React.FC<HeroSearchProps> = ({
         <h2 style={{
           fontSize: '2.75rem',
           fontWeight: 800,
+          color: '#1e293b',
           lineHeight: 1.2,
           marginBottom: '16px',
           letterSpacing: '-0.5px'
         }}>
           Discover & Book <span style={{
-            background: 'linear-gradient(135deg, #6366f1 0%, #34d399 100%)',
+            background: 'linear-gradient(135deg, #0d8a73 0%, #065f54 100%)',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent'
           }}>Verified Event Venues</span> & Experts
@@ -57,7 +58,7 @@ export const HeroSearch: React.FC<HeroSearchProps> = ({
 
         <p style={{
           fontSize: '1.1rem',
-          color: 'var(--text-muted)',
+          color: '#64748b',
           maxWidth: '680px',
           margin: '0 auto 36px auto'
         }}>
@@ -65,7 +66,11 @@ export const HeroSearch: React.FC<HeroSearchProps> = ({
         </p>
 
         {/* Central Search Bar Box */}
-        <div className="glass-card" style={{
+        <div style={{
+          background: '#ffffff',
+          borderRadius: '16px',
+          boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+          border: '1px solid #e2e8f0',
           padding: '16px',
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
@@ -135,32 +140,32 @@ export const HeroSearch: React.FC<HeroSearchProps> = ({
           marginTop: '36px'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ background: 'rgba(99, 102, 241, 0.2)', padding: '10px', borderRadius: '12px', color: '#818cf8' }}>
+            <div style={{ background: 'rgba(13, 138, 115, 0.1)', padding: '10px', borderRadius: '12px', color: '#0d8a73' }}>
               <ShieldCheck size={20} />
             </div>
             <div style={{ textAlign: 'left' }}>
-              <h4 style={{ fontSize: '1.1rem', fontWeight: 800 }}>{stats.verified_venues} / {stats.total_venues}</h4>
-              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Verified Venues</p>
+              <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>{stats.verified_venues} / {stats.total_venues}</h4>
+              <p style={{ fontSize: '0.78rem', color: '#64748b', margin: 0 }}>Verified Venues</p>
             </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ background: 'rgba(16, 185, 129, 0.2)', padding: '10px', borderRadius: '12px', color: '#34d399' }}>
+            <div style={{ background: 'rgba(5, 150, 105, 0.1)', padding: '10px', borderRadius: '12px', color: '#059669' }}>
               <Users size={20} />
             </div>
             <div style={{ textAlign: 'left' }}>
-              <h4 style={{ fontSize: '1.1rem', fontWeight: 800 }}>{stats.verified_vendors}</h4>
-              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Verified Providers</p>
+              <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>{stats.verified_vendors}</h4>
+              <p style={{ fontSize: '0.78rem', color: '#64748b', margin: 0 }}>Verified Providers</p>
             </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ background: 'rgba(245, 158, 11, 0.2)', padding: '10px', borderRadius: '12px', color: '#fbbf24' }}>
+            <div style={{ background: 'rgba(251, 191, 36, 0.1)', padding: '10px', borderRadius: '12px', color: '#d97706' }}>
               <Award size={20} />
             </div>
             <div style={{ textAlign: 'left' }}>
-              <h4 style={{ fontSize: '1.1rem', fontWeight: 800 }}>{stats.satisfied_clients}+</h4>
-              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Satisfied Clients</p>
+              <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>{stats.satisfied_clients}+</h4>
+              <p style={{ fontSize: '0.78rem', color: '#64748b', margin: 0 }}>Satisfied Clients</p>
             </div>
           </div>
         </div>
