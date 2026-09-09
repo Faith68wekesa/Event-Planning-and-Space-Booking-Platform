@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { UserRole, Venue, Vendor, Booking, PlatformStats, FilterState } from './types';
+import type { UserRole, Venue, Vendor, VenueOwner, Booking, PlatformStats, FilterState } from './types';
 import { ApiService } from './services/api.ts';
 import { Navbar } from './components/Navbar.tsx';
 import { HeroSearch } from './components/HeroSearch.tsx';
@@ -11,12 +11,14 @@ import { VendorModal } from './components/VendorModal.tsx';
 import { BookingModal } from './components/BookingModal.tsx';
 import { CustomerDashboard } from './components/CustomerDashboard.tsx';
 import { VendorDashboard } from './components/VendorDashboard.tsx';
+import { VenueOwnerDashboard } from './components/VenueOwnerDashboard.tsx';
 import { AdminDashboard } from './components/AdminDashboard.tsx';
 import { VendorRegistration } from './components/VendorRegistration.tsx';
 import { VendorLogin } from './components/VendorLogin.tsx';
+import { VenueOwnerLogin } from './components/VenueOwnerLogin.tsx';
+import { VenueOwnerRegistration } from './components/VenueOwnerRegistration.tsx';
 import { LandingPage } from './components/LandingPage.tsx';
 import { MapPin, Briefcase } from 'lucide-react';
-
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('landing');
   const [activeRole, setActiveRole] = useState<UserRole>('CUSTOMER');
@@ -50,6 +52,9 @@ export const App: React.FC = () => {
   const [showRegistration, setShowRegistration] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [currentVendor, setCurrentVendor] = useState<Vendor | null>(null);
+  const [showVenueOwnerRegistration, setShowVenueOwnerRegistration] = useState(false);
+  const [showVenueOwnerLogin, setShowVenueOwnerLogin] = useState(false);
+  const [currentVenueOwner, setCurrentVenueOwner] = useState<VenueOwner | null>(null);
 
   const loadData = async () => {
     const fetchedVenues = await ApiService.getVenues(filters);
@@ -103,6 +108,7 @@ export const App: React.FC = () => {
             setActiveTab('venues');
           }}
           onSelectVendor={() => setShowLogin(true)}
+          onSelectVenueOwner={() => setShowVenueOwnerLogin(true)}
         />
       ) : (
         <>
@@ -112,6 +118,7 @@ export const App: React.FC = () => {
             activeRole={activeRole}
             bookingCount={bookings.length}
             onRegisterVendor={() => setShowRegistration(true)}
+            onRegisterVenueOwner={() => setShowVenueOwnerRegistration(true)}
           />
 
           <main style={{ flexGrow: 1 }}>
@@ -194,6 +201,17 @@ export const App: React.FC = () => {
           />
         )}
 
+        {activeTab === 'venue-owner-dashboard' && currentVenueOwner && (
+          <VenueOwnerDashboard
+            currentOwner={currentVenueOwner}
+            onLogout={() => {
+              setCurrentVenueOwner(null);
+              setActiveRole('CUSTOMER');
+              setActiveTab('venues');
+            }}
+          />
+        )}
+
         {activeTab === 'admin-dashboard' && (
           <AdminDashboard
             venues={venues}
@@ -234,22 +252,22 @@ export const App: React.FC = () => {
 
       {activeTab !== 'landing' && (
         <footer style={{
-          background: 'rgba(15, 23, 42, 0.95)',
-          borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+          background: '#0d8a73',
+          borderTop: '1px solid rgba(255, 255, 255, 0.15)',
           padding: '24px',
           textAlign: 'center',
-          color: 'var(--text-muted)',
+          color: '#ffffff',
           fontSize: '0.85rem',
           marginTop: 'auto'
         }}>
           <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
             <div>
-              <strong>EventP Kenya Platform</strong> — Centralized Web Platform for Verified Event Venues & Services
+              <strong style={{ color: '#ffffff' }}>EventP Kenya Platform</strong> — Centralized Web Platform for Verified Event Venues & Services
             </div>
-            <div style={{ display: 'flex', gap: '16px', fontSize: '0.8rem' }}>
-              <span>Privacy Policy</span>
-              <span>Terms of Service</span>
-              <span>Vendor Verification Standard</span>
+            <div style={{ display: 'flex', gap: '16px', fontSize: '0.8rem', color: '#e6f7f3' }}>
+              <span style={{ cursor: 'pointer' }}>Privacy Policy</span>
+              <span style={{ cursor: 'pointer' }}>Terms of Service</span>
+              <span style={{ cursor: 'pointer' }}>Vendor Verification Standard</span>
             </div>
           </div>
         </footer>
@@ -286,6 +304,38 @@ export const App: React.FC = () => {
           onSwitchToRegister={() => {
             setShowLogin(false);
             setShowRegistration(true);
+          }}
+        />
+      )}
+
+      {showVenueOwnerLogin && (
+        <VenueOwnerLogin
+          onClose={() => setShowVenueOwnerLogin(false)}
+          onSuccess={(owner) => {
+            setShowVenueOwnerLogin(false);
+            setCurrentVenueOwner(owner);
+            setActiveRole('VENUE_OWNER');
+            setActiveTab('venue-owner-dashboard');
+          }}
+          onSwitchToRegister={() => {
+            setShowVenueOwnerLogin(false);
+            setShowVenueOwnerRegistration(true);
+          }}
+        />
+      )}
+
+      {showVenueOwnerRegistration && (
+        <VenueOwnerRegistration
+          onClose={() => setShowVenueOwnerRegistration(false)}
+          onSuccess={(owner) => {
+            setShowVenueOwnerRegistration(false);
+            setCurrentVenueOwner(owner);
+            setActiveRole('VENUE_OWNER');
+            setActiveTab('venue-owner-dashboard');
+          }}
+          onSwitchToLogin={() => {
+            setShowVenueOwnerRegistration(false);
+            setShowVenueOwnerLogin(true);
           }}
         />
       )}

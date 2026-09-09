@@ -3,7 +3,9 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     UserViewSet, VendorProfileViewSet, VenueViewSet, 
     BookingViewSet, ReviewViewSet, platform_stats, register_vendor, login_vendor,
-    VendorDashboardView, VendorBookingsView
+    VendorDashboardView, VendorBookingsView,
+    register_venue_owner, login_venue_owner,
+    VenueOwnerDashboardView, VenueOwnerBookingsView
 )
 
 router = DefaultRouter()
@@ -18,6 +20,11 @@ urlpatterns = [
     path('vendors/login/', login_vendor, name='login-vendor'),
     path('vendors/<int:vendor_id>/dashboard/', VendorDashboardView.as_view(), name='vendor-dashboard'),
     path('vendors/<int:vendor_id>/bookings/', VendorBookingsView.as_view(), name='vendor-bookings'),
+    path('venue-owners/register/', register_venue_owner, name='register-venue-owner'),
+    path('venue-owners/login/', login_venue_owner, name='login-venue-owner'),
+    path('venue-owners/<int:owner_id>/dashboard/', VenueOwnerDashboardView.as_view(), name='venue-owner-dashboard'),
+    path('venue-owners/<int:owner_id>/bookings/', VenueOwnerBookingsView.as_view(), name='venue-owner-bookings'),
     path('', include(router.urls)),
     path('stats/', platform_stats, name='platform-stats'),
 ]
+

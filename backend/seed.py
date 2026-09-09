@@ -6,16 +6,36 @@ from datetime import datetime, timedelta
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
 django.setup()
 
-from core.models import User, VendorProfile, Venue, Booking
+from core.models import User, VendorProfile, VenueOwnerProfile, Venue, Booking
 
 def seed():
     # Clear existing data
     Booking.objects.all().delete()
     Venue.objects.all().delete()
     VendorProfile.objects.all().delete()
+    VenueOwnerProfile.objects.all().delete()
     User.objects.all().delete()
 
     print("Cleared existing data.")
+
+    # Create mock venue owner
+    vo_user = User.objects.create_user(
+        username='oasis_owner',
+        email='owner@karenoasis.co.ke',
+        password='password123',
+        role='VENUE_OWNER',
+        first_name='Karen',
+        last_name='Oasis'
+    )
+    vo1 = VenueOwnerProfile.objects.create(
+        user=vo_user,
+        business_name='Karen Oasis Spaces Ltd',
+        contact_email='bookings@karenoasis.co.ke',
+        contact_phone='+254 712 345 678',
+        location='Karen, Nairobi',
+        is_verified=True
+    )
+    print("Created venue owner.")
 
     # Create mock vendors (Users + VendorProfiles)
     u1 = User.objects.create_user(username='alex_river', email='alex@example.com', password='password123', role='VENDOR', first_name='Alex', last_name='River')
@@ -64,6 +84,7 @@ def seed():
 
     # Create mock venues
     venue1 = Venue.objects.create(
+        owner=vo1,
         vendor=v1,
         title='Karen Oasis Gardens',
         description='Beautiful outdoor gardens for weddings and events.',
@@ -81,6 +102,7 @@ def seed():
     )
 
     venue2 = Venue.objects.create(
+        owner=vo1,
         vendor=v1,
         title='Rift Valley Heights',
         description='Luxurious conference center with a view.',

@@ -91,11 +91,11 @@ export const VendorDashboardReviews: React.FC = () => {
       {/* Analytics Widgets */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
         
-        <div className="dashboard-card" style={{ background: '#0f1123', color: '#fff', border: 'none', textAlign: 'center' }}>
+        <div className="dashboard-card" style={{ background: 'linear-gradient(135deg, #0d8a73, #065f54)', color: '#fff', border: 'none', textAlign: 'center' }}>
           <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: '0 0 24px 0', color: '#fff' }}>Sentiment Analysis</h3>
           
-          <div style={{ position: 'relative', width: '120px', height: '120px', margin: '0 auto 24px', borderRadius: '50%', background: 'conic-gradient(#059669 0% 92%, rgba(255,255,255,0.1) 92% 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ width: '100px', height: '100px', borderRadius: '50%', background: '#0f1123', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
+          <div style={{ position: 'relative', width: '120px', height: '120px', margin: '0 auto 24px', borderRadius: '50%', background: 'conic-gradient(#34d399 0% 92%, rgba(255,255,255,0.15) 92% 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ width: '100px', height: '100px', borderRadius: '50%', background: '#064e3b', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
               <div style={{ fontSize: '1.75rem', fontWeight: 800 }}>92%</div>
             </div>
           </div>

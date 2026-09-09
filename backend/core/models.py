@@ -5,6 +5,7 @@ class User(AbstractUser):
     ROLE_CHOICES = [
         ('CUSTOMER', 'Customer'),
         ('VENDOR', 'Vendor / Service Provider'),
+        ('VENUE_OWNER', 'Venue Owner'),
         ('ADMIN', 'Administrator'),
     ]
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='CUSTOMER')
@@ -14,6 +15,19 @@ class User(AbstractUser):
 
     def __str__(self):
         return f"{self.username} ({self.get_role_display()})"
+
+
+class VenueOwnerProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='venue_owner_profile')
+    business_name = models.CharField(max_length=150)
+    contact_email = models.EmailField(blank=True, null=True)
+    contact_phone = models.CharField(max_length=20, blank=True, null=True)
+    location = models.CharField(max_length=100, blank=True, null=True)
+    is_verified = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.business_name} ({self.user.username})"
 
 
 class VendorProfile(models.Model):
@@ -53,6 +67,7 @@ class Venue(models.Model):
         ('EXHIBITION', 'Exhibition & Trade Halls'),
     ]
     vendor = models.ForeignKey(VendorProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='venues')
+    owner = models.ForeignKey(VenueOwnerProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='venues')
     title = models.CharField(max_length=200)
     description = models.TextField()
     category = models.CharField(max_length=30, choices=CATEGORY_CHOICES)

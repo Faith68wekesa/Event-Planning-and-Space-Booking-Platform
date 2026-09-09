@@ -112,7 +112,7 @@ export const VendorDashboardBookings: React.FC<BookingsProps> = ({ bookings, onU
       <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
         
         {/* Simple Calendar Widget */}
-        <div className="dashboard-card" style={{ background: '#0f1123', color: '#fff', border: 'none' }}>
+        <div className="dashboard-card" style={{ background: 'linear-gradient(135deg, #0d8a73, #065f54)', color: '#fff', border: 'none' }}>
           <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: '0 0 16px 0', color: '#fff' }}>Upcoming Dates</h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', textAlign: 'center' }}>
             <div style={{ background: 'rgba(255,255,255,0.1)', padding: '12px 0', borderRadius: '8px' }}>

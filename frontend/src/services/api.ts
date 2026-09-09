@@ -1,4 +1,4 @@
-import type { Venue, Vendor, Booking, PlatformStats, FilterState, BookingStatus } from '../types';
+import type { Venue, Vendor, VenueOwner, Booking, PlatformStats, FilterState, BookingStatus } from '../types';
 
 const API_BASE = 'http://localhost:8000/api';
 
@@ -178,6 +178,88 @@ export const ApiService = {
     const res = await fetch(`${API_BASE}/vendors/${vendorId}/bookings/`);
     if (!res.ok) throw new Error("Failed to fetch vendor bookings");
     return await res.json();
+  },
+
+  async registerVenueOwner(data: any): Promise<VenueOwner | null> {
+    try {
+      const res = await fetch(`${API_BASE}/venue-owners/register/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      const errorData = await res.json();
+      console.error('Venue owner registration failed:', errorData);
+    } catch (e) {
+      console.error('Failed to register venue owner:', e);
+    }
+    return null;
+  },
+
+  async loginVenueOwner(credentials: any): Promise<VenueOwner | null> {
+    try {
+      const res = await fetch(`${API_BASE}/venue-owners/login/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(credentials),
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      const errorData = await res.json();
+      console.error('Venue owner login failed:', errorData);
+    } catch (e) {
+      console.error('Failed to login venue owner:', e);
+    }
+    return null;
+  },
+
+  async getVenueOwnerDashboard(ownerId: number): Promise<{
+    total_revenue: number;
+    pending_bookings: number;
+    upcoming_bookings: number;
+    total_venues: number;
+    verified_venues: number;
+    venues: Venue[];
+  }> {
+    const res = await fetch(`${API_BASE}/venue-owners/${ownerId}/dashboard/`);
+    if (!res.ok) throw new Error("Failed to fetch venue owner dashboard");
+    return await res.json();
+  },
+
+  async getVenueOwnerBookings(ownerId: number): Promise<Booking[]> {
+    const res = await fetch(`${API_BASE}/venue-owners/${ownerId}/bookings/`);
+    if (!res.ok) throw new Error("Failed to fetch venue owner bookings");
+    return await res.json();
+  },
+
+  async updateVenue(id: number, venueData: Partial<Venue>): Promise<Venue> {
+    try {
+      const res = await fetch(`${API_BASE}/venues/${id}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(venueData),
+      });
+      if (res.ok) return await res.json();
+      throw new Error(await res.text());
+    } catch (e) {
+      console.error("Failed to update venue", e);
+      throw e;
+    }
+  },
+
+  async deleteVenue(id: number): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/venues/${id}/`, {
+        method: 'DELETE',
+      });
+      return res.ok;
+    } catch (e) {
+      console.error("Failed to delete venue", e);
+      return false;
+    }
   },
 
   async getStats(): Promise<PlatformStats> {

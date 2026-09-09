@@ -118,7 +118,7 @@ export const VendorDashboardOverview: React.FC<OverviewProps> = ({ bookings, ven
         {/* Quick Actions & Top Listings */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           
-          <div className="dashboard-card" style={{ background: '#0f1123', color: '#fff', border: 'none' }}>
+          <div className="dashboard-card" style={{ background: 'linear-gradient(135deg, #0d8a73, #065f54)', color: '#fff', border: 'none' }}>
             <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: '0 0 16px 0', color: '#fff' }}>Quick Actions</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <button style={{ background: 'rgba(255, 255, 255, 0.1)', color: '#fff', border: 'none', padding: '12px 16px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', textAlign: 'left', fontWeight: 500 }}>

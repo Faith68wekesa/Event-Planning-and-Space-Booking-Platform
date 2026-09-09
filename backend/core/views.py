@@ -5,9 +5,9 @@ from rest_framework.decorators import api_view, action
 from django.contrib.auth import authenticate
 from django.db import transaction
 from django.db.models import Q, Sum
-from .models import User, VendorProfile, Venue, Booking, Review
+from .models import User, VendorProfile, VenueOwnerProfile, Venue, Booking, Review
 from .serializers import (
-    UserSerializer, VendorProfileSerializer, VenueSerializer, 
+    UserSerializer, VendorProfileSerializer, VenueOwnerProfileSerializer, VenueSerializer, 
     BookingSerializer, ReviewSerializer
 )
 
@@ -62,6 +62,7 @@ class VenueViewSet(viewsets.ModelViewSet):
         max_price = self.request.query_params.get('max_price')
         min_capacity = self.request.query_params.get('min_capacity')
         verified = self.request.query_params.get('verified')
+        owner_id = self.request.query_params.get('owner')
 
         if search:
             queryset = queryset.filter(
@@ -73,6 +74,8 @@ class VenueViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(category=category)
         if location and location != 'ALL':
             queryset = queryset.filter(location__icontains=location)
+        if owner_id:
+            queryset = queryset.filter(owner_id=owner_id)
         if max_price:
             try:
                 queryset = queryset.filter(price_per_day__lte=float(max_price))
@@ -104,12 +107,15 @@ class BookingViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         customer_id = self.request.query_params.get('customer')
         vendor_id = self.request.query_params.get('vendor')
+        owner_id = self.request.query_params.get('owner')
         status_param = self.request.query_params.get('status')
 
         if customer_id:
             queryset = queryset.filter(customer_id=customer_id)
         if vendor_id:
             queryset = queryset.filter(Q(vendor_id=vendor_id) | Q(venue__vendor_id=vendor_id))
+        if owner_id:
+            queryset = queryset.filter(venue__owner_id=owner_id)
         if status_param:
             queryset = queryset.filter(status=status_param)
 
@@ -244,3 +250,98 @@ class VendorBookingsView(APIView):
         vendor_venues = Venue.objects.filter(vendor=vendor)
         bookings = Booking.objects.filter(Q(venue__in=vendor_venues) | Q(vendor=vendor)).order_by('-created_at')
         return Response(BookingSerializer(bookings, many=True).data)
+
+
+@api_view(['POST'])
+@transaction.atomic
+def register_venue_owner(request):
+    data = request.data
+    
+    if User.objects.filter(username=data.get('username')).exists():
+        return Response({'error': 'Username already exists'}, status=status.HTTP_400_BAD_REQUEST)
+    if User.objects.filter(email=data.get('email')).exists():
+        return Response({'error': 'Email already exists'}, status=status.HTTP_400_BAD_REQUEST)
+        
+    try:
+        user = User.objects.create_user(
+            username=data.get('username'),
+            email=data.get('email'),
+            password=data.get('password'),
+            first_name=data.get('first_name', ''),
+            last_name=data.get('last_name', ''),
+            role='VENUE_OWNER'
+        )
+        
+        venue_owner = VenueOwnerProfile.objects.create(
+            user=user,
+            business_name=data.get('business_name'),
+            contact_email=data.get('email'),
+            contact_phone=data.get('phone_number', ''),
+            location=data.get('location', ''),
+            is_verified=False
+        )
+        
+        serializer = VenueOwnerProfileSerializer(venue_owner)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+def login_venue_owner(request):
+    username = request.data.get('username')
+    password = request.data.get('password')
+    
+    user = authenticate(username=username, password=password)
+    
+    if user is not None:
+        if user.role != 'VENUE_OWNER':
+            return Response({'error': 'Account is not registered as a venue owner'}, status=status.HTTP_403_FORBIDDEN)
+            
+        try:
+            venue_owner = VenueOwnerProfile.objects.get(user=user)
+            serializer = VenueOwnerProfileSerializer(venue_owner)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except VenueOwnerProfile.DoesNotExist:
+            return Response({'error': 'Venue owner profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    else:
+        return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+class VenueOwnerDashboardView(APIView):
+    def get(self, request, owner_id):
+        try:
+            venue_owner = VenueOwnerProfile.objects.get(id=owner_id)
+        except VenueOwnerProfile.DoesNotExist:
+            return Response({'error': 'Venue owner not found'}, status=status.HTTP_404_NOT_FOUND)
+            
+        owner_venues = Venue.objects.filter(owner=venue_owner)
+        bookings = Booking.objects.filter(venue__in=owner_venues)
+        
+        total_revenue = bookings.filter(status='COMPLETED').aggregate(total=Sum('total_price'))['total'] or 0
+        pending_bookings = bookings.filter(status='PENDING').count()
+        upcoming_bookings = bookings.filter(status='APPROVED').count()
+        verified_venues = owner_venues.filter(is_verified=True).count()
+        
+        return Response({
+            'total_revenue': total_revenue,
+            'pending_bookings': pending_bookings,
+            'upcoming_bookings': upcoming_bookings,
+            'total_venues': owner_venues.count(),
+            'verified_venues': verified_venues,
+            'venues': VenueSerializer(owner_venues, many=True).data
+        })
+
+
+class VenueOwnerBookingsView(APIView):
+    def get(self, request, owner_id):
+        try:
+            venue_owner = VenueOwnerProfile.objects.get(id=owner_id)
+        except VenueOwnerProfile.DoesNotExist:
+            return Response({'error': 'Venue owner not found'}, status=status.HTTP_404_NOT_FOUND)
+            
+        owner_venues = Venue.objects.filter(owner=venue_owner)
+        bookings = Booking.objects.filter(venue__in=owner_venues).order_by('-created_at')
+        return Response(BookingSerializer(bookings, many=True).data)
+

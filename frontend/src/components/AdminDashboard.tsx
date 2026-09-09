@@ -35,8 +35,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div style={{ display: 'grid', gap: '12px' }}>
           {venues.map((v) => (
             <div key={v.id} style={{
-              background: 'rgba(15, 23, 42, 0.6)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
               borderRadius: '12px',
               padding: '16px',
               display: 'flex',
@@ -47,7 +47,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <h4 style={{ fontWeight: 700, fontSize: '1.05rem' }}>{v.title}</h4>
+                  <h4 style={{ fontWeight: 700, fontSize: '1.05rem', margin: 0, color: '#0f172a' }}>{v.title}</h4>
                   {v.is_verified ? (
                     <span className="badge-verified"><ShieldCheck size={12} /> Verified</span>
                   ) : (
@@ -79,8 +79,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div style={{ display: 'grid', gap: '12px' }}>
           {vendors.map((vd) => (
             <div key={vd.id} style={{
-              background: 'rgba(15, 23, 42, 0.6)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
               borderRadius: '12px',
               padding: '16px',
               display: 'flex',
@@ -91,7 +91,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <h4 style={{ fontWeight: 700, fontSize: '1.05rem' }}>{vd.business_name}</h4>
+                  <h4 style={{ fontWeight: 700, fontSize: '1.05rem', margin: 0, color: '#0f172a' }}>{vd.business_name}</h4>
                   {vd.is_verified ? (
                     <span className="badge-verified"><ShieldCheck size={12} /> Verified Provider</span>
                   ) : (

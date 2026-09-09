@@ -1,6 +1,6 @@
 import React from 'react';
 import type { UserRole } from '../types';
-import { Calendar, ShieldCheck, MapPin, Sparkles, UserCheck, Briefcase } from 'lucide-react';
+import { Calendar, ShieldCheck, MapPin, Sparkles, UserCheck, Briefcase, Building2 } from 'lucide-react';
 
 interface NavbarProps {
   activeTab: string;
@@ -8,6 +8,7 @@ interface NavbarProps {
   activeRole: UserRole;
   bookingCount: number;
   onRegisterVendor: () => void;
+  onRegisterVenueOwner?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -16,6 +17,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   activeRole,
   bookingCount,
   onRegisterVendor,
+  onRegisterVenueOwner,
 }) => {
   return (
     <header style={{ position: 'sticky', top: 0, zIndex: 50 }}>
@@ -115,7 +117,15 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
         </button>
 
-        {activeRole === 'VENDOR' ? (
+        {activeRole === 'VENUE_OWNER' ? (
+          <button
+            className={activeTab === 'venue-owner-dashboard' ? 'btn-primary' : 'btn-secondary'}
+            onClick={() => setActiveTab('venue-owner-dashboard')}
+            style={{ padding: '8px 16px', fontSize: '0.88rem' }}
+          >
+            <Building2 size={16} /> Venue Owner Portal
+          </button>
+        ) : activeRole === 'VENDOR' ? (
           <button
             className={activeTab === 'vendor-dashboard' ? 'btn-primary' : 'btn-secondary'}
             onClick={() => setActiveTab('vendor-dashboard')}
@@ -124,13 +134,24 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Briefcase size={16} /> Vendor Portal
           </button>
         ) : activeRole === 'CUSTOMER' ? (
-          <button
-            className="btn-primary"
-            onClick={onRegisterVendor}
-            style={{ padding: '8px 16px', fontSize: '0.88rem', background: '#065f54', color: '#fff', borderColor: '#065f54' }}
-          >
-            <UserCheck size={16} /> Become a Vendor
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              className="btn-primary"
+              onClick={onRegisterVendor}
+              style={{ padding: '8px 14px', fontSize: '0.85rem', background: '#065f54', color: '#fff', borderColor: '#065f54' }}
+            >
+              <UserCheck size={16} /> Become a Vendor
+            </button>
+            {onRegisterVenueOwner && (
+              <button
+                className="btn-secondary"
+                onClick={onRegisterVenueOwner}
+                style={{ padding: '8px 14px', fontSize: '0.85rem' }}
+              >
+                <Building2 size={16} /> List Venue
+              </button>
+            )}
+          </div>
         ) : null}
 
         {activeRole === 'ADMIN' && (

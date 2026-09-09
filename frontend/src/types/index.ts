@@ -1,4 +1,4 @@
-export type UserRole = 'CUSTOMER' | 'VENDOR' | 'ADMIN';
+export type UserRole = 'CUSTOMER' | 'VENDOR' | 'VENUE_OWNER' | 'ADMIN';
 
 export interface User {
   id: number;
@@ -36,6 +36,18 @@ export interface Vendor {
   created_at?: string;
 }
 
+export interface VenueOwner {
+  id: number;
+  user: number;
+  user_details?: User;
+  business_name: string;
+  contact_email?: string;
+  contact_phone?: string;
+  location?: string;
+  is_verified: boolean;
+  created_at?: string;
+}
+
 export type VenueCategory = 
   | 'WEDDING' 
   | 'CONFERENCE' 
@@ -48,6 +60,8 @@ export interface Venue {
   id: number;
   vendor?: number;
   vendor_name?: string;
+  owner?: number;
+  owner_name?: string;
   title: string;
   description: string;
   category: VenueCategory;
