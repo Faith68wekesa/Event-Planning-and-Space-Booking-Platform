@@ -171,6 +171,7 @@ export const VenueOwnerLogin: React.FC<VenueOwnerLoginProps> = ({
                 onChange={handleChange}
                 style={{
                   width: '100%',
+                  boxSizing: 'border-box',
                   padding: '10px 10px 10px 36px',
                   borderRadius: '8px',
                   border: '1px solid #cbd5e1',
@@ -213,6 +214,7 @@ export const VenueOwnerLogin: React.FC<VenueOwnerLoginProps> = ({
                 onChange={handleChange}
                 style={{
                   width: '100%',
+                  boxSizing: 'border-box',
                   padding: '10px 10px 10px 36px',
                   borderRadius: '8px',
                   border: '1px solid #cbd5e1',

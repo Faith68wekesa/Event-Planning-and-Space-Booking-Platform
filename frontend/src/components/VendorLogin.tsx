@@ -84,7 +84,7 @@ export const VendorLogin: React.FC<VendorLoginProps> = ({ onClose, onSuccess, on
             <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Username</label>
             <div style={{ position: 'relative' }}>
               <User size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-              <input required name="username" value={formData.username} onChange={handleChange} style={{ width: '100%', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} placeholder="Your unique username" />
+              <input required name="username" value={formData.username} onChange={handleChange} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} placeholder="Your unique username" />
             </div>
           </div>
 
@@ -92,7 +92,7 @@ export const VendorLogin: React.FC<VendorLoginProps> = ({ onClose, onSuccess, on
             <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Password</label>
             <div style={{ position: 'relative' }}>
               <Lock size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-              <input required type="password" name="password" value={formData.password} onChange={handleChange} style={{ width: '100%', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} placeholder="••••••••" />
+              <input required type="password" name="password" value={formData.password} onChange={handleChange} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} placeholder="••••••••" />
             </div>
           </div>
 
