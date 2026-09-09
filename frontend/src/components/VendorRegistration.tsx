@@ -100,11 +100,11 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({ onClose,
               <div style={{ display: 'flex', gap: '12px' }}>
                 <div style={{ flex: 1 }}>
                   <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>First Name</label>
-                  <input required name="first_name" value={formData.first_name} onChange={handleChange} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
+                  <input required name="first_name" value={formData.first_name} onChange={handleChange} style={{ width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
                 </div>
                 <div style={{ flex: 1 }}>
                   <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Last Name</label>
-                  <input required name="last_name" value={formData.last_name} onChange={handleChange} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
+                  <input required name="last_name" value={formData.last_name} onChange={handleChange} style={{ width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
                 </div>
               </div>
 
@@ -112,7 +112,7 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({ onClose,
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Username</label>
                 <div style={{ position: 'relative' }}>
                   <User size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-                  <input required name="username" value={formData.username} onChange={handleChange} style={{ width: '100%', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
+                  <input required name="username" value={formData.username} onChange={handleChange} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
                 </div>
               </div>
 
@@ -120,7 +120,7 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({ onClose,
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Email Address</label>
                 <div style={{ position: 'relative' }}>
                   <Mail size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-                  <input required type="email" name="email" value={formData.email} onChange={handleChange} style={{ width: '100%', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
+                  <input required type="email" name="email" value={formData.email} onChange={handleChange} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
                 </div>
               </div>
 
@@ -128,7 +128,7 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({ onClose,
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Password</label>
                 <div style={{ position: 'relative' }}>
                   <Lock size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-                  <input required type="password" name="password" value={formData.password} onChange={handleChange} style={{ width: '100%', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} minLength={6} />
+                  <input required type="password" name="password" value={formData.password} onChange={handleChange} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} minLength={6} />
                 </div>
               </div>
 
@@ -151,14 +151,14 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({ onClose,
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Business Name</label>
                 <div style={{ position: 'relative' }}>
                   <Store size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-                  <input required name="business_name" value={formData.business_name} onChange={handleChange} style={{ width: '100%', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
+                  <input required name="business_name" value={formData.business_name} onChange={handleChange} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
                 </div>
               </div>
 
               <div style={{ display: 'flex', gap: '12px' }}>
                 <div style={{ flex: 1 }}>
                   <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Vendor Type</label>
-                  <select name="vendor_type" value={formData.vendor_type} onChange={handleChange} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: '#fff' }}>
+                  <select name="vendor_type" value={formData.vendor_type} onChange={handleChange} style={{ width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: '#fff' }}>
                     <option value="PLANNER">Event Planner</option>
                     <option value="CATERER">Catering</option>
                     <option value="PHOTOGRAPHER">Photography</option>
@@ -170,7 +170,7 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({ onClose,
                   <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Location / City</label>
                   <div style={{ position: 'relative' }}>
                     <MapPin size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-                    <input required name="location" value={formData.location} onChange={handleChange} style={{ width: '100%', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
+                    <input required name="location" value={formData.location} onChange={handleChange} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
                   </div>
                 </div>
               </div>
@@ -180,21 +180,21 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({ onClose,
                   <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Contact Phone</label>
                   <div style={{ position: 'relative' }}>
                     <Phone size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-                    <input required name="phone_number" value={formData.phone_number} onChange={handleChange} style={{ width: '100%', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} placeholder="+254..." />
+                    <input required name="phone_number" value={formData.phone_number} onChange={handleChange} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} placeholder="+254..." />
                   </div>
                 </div>
                 <div style={{ flex: 1 }}>
                   <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Starting Price (KES)</label>
                   <div style={{ position: 'relative' }}>
                     <Tag size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-                    <input required type="number" min="0" name="starting_price" value={formData.starting_price} onChange={handleChange} style={{ width: '100%', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
+                    <input required type="number" min="0" name="starting_price" value={formData.starting_price} onChange={handleChange} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
                   </div>
                 </div>
               </div>
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Description</label>
-                <textarea required name="description" value={formData.description} onChange={handleChange} rows={3} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', resize: 'vertical' }} placeholder="Tell customers about your services..."></textarea>
+                <textarea required name="description" value={formData.description} onChange={handleChange} rows={3} style={{ width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', resize: 'vertical' }} placeholder="Tell customers about your services..."></textarea>
               </div>
 
               <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>

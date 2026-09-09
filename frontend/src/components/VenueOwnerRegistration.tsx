@@ -153,7 +153,7 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
                     name="first_name"
                     value={formData.first_name}
                     onChange={handleChange}
-                    style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}
                     placeholder="e.g. Karen"
                   />
                 </div>
@@ -166,7 +166,7 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
                     name="last_name"
                     value={formData.last_name}
                     onChange={handleChange}
-                    style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}
                     placeholder="e.g. Wanjiku"
                   />
                 </div>
@@ -183,7 +183,7 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
                     name="username"
                     value={formData.username}
                     onChange={handleChange}
-                    style={{ width: '100%', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}
                     placeholder="Unique username"
                   />
                 </div>
@@ -201,7 +201,7 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
                     name="email"
                     value={formData.email}
                     onChange={handleChange}
-                    style={{ width: '100%', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}
                     placeholder="you@example.com"
                   />
                 </div>
@@ -219,7 +219,7 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
                     name="password"
                     value={formData.password}
                     onChange={handleChange}
-                    style={{ width: '100%', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}
                     placeholder="••••••••"
                   />
                 </div>
@@ -246,7 +246,7 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
                     name="business_name"
                     value={formData.business_name}
                     onChange={handleChange}
-                    style={{ width: '100%', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}
                     placeholder="e.g. Karen Oasis Spaces Ltd"
                   />
                 </div>
@@ -263,7 +263,7 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
                     name="phone_number"
                     value={formData.phone_number}
                     onChange={handleChange}
-                    style={{ width: '100%', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}
                     placeholder="+254 712 345 678"
                   />
                 </div>
@@ -280,7 +280,7 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
                     name="location"
                     value={formData.location}
                     onChange={handleChange}
-                    style={{ width: '100%', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}
                     placeholder="e.g. Karen, Nairobi"
                   />
                 </div>
