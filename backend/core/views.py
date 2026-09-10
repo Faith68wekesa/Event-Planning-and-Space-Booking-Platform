@@ -46,8 +46,63 @@ class VendorProfileViewSet(viewsets.ModelViewSet):
     def toggle_verify(self, request, pk=None):
         vendor = self.get_object()
         vendor.is_verified = not vendor.is_verified
+        vendor.verification_status = 'APPROVED' if vendor.is_verified else 'PENDING'
         vendor.save()
-        return Response({'status': 'updated', 'is_verified': vendor.is_verified})
+        return Response(VendorProfileSerializer(vendor).data)
+
+    @action(detail=True, methods=['post', 'patch'])
+    def set_verification(self, request, pk=None):
+        vendor = self.get_object()
+        new_status = request.data.get('verification_status')
+        if new_status in ['APPROVED', 'REJECTED', 'PENDING']:
+            vendor.verification_status = new_status
+            vendor.is_verified = (new_status == 'APPROVED')
+            vendor.save()
+            return Response(VendorProfileSerializer(vendor).data)
+        return Response({'error': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class VenueOwnerProfileViewSet(viewsets.ModelViewSet):
+    queryset = VenueOwnerProfile.objects.all().order_by('-created_at')
+    serializer_class = VenueOwnerProfileSerializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        search = self.request.query_params.get('search')
+        location = self.request.query_params.get('location')
+        verified = self.request.query_params.get('verified')
+
+        if search:
+            queryset = queryset.filter(
+                Q(business_name__icontains=search) | 
+                Q(location__icontains=search) |
+                Q(business_type__icontains=search)
+            )
+        if location and location != 'ALL':
+            queryset = queryset.filter(location__icontains=location)
+        if verified == 'true':
+            queryset = queryset.filter(is_verified=True)
+
+        return queryset
+
+    @action(detail=True, methods=['post'])
+    def toggle_verify(self, request, pk=None):
+        owner = self.get_object()
+        owner.is_verified = not owner.is_verified
+        owner.verification_status = 'APPROVED' if owner.is_verified else 'PENDING'
+        owner.save()
+        return Response(VenueOwnerProfileSerializer(owner).data)
+
+    @action(detail=True, methods=['post', 'patch'])
+    def set_verification(self, request, pk=None):
+        owner = self.get_object()
+        new_status = request.data.get('verification_status')
+        if new_status in ['APPROVED', 'REJECTED', 'PENDING']:
+            owner.verification_status = new_status
+            owner.is_verified = (new_status == 'APPROVED')
+            owner.save()
+            return Response(VenueOwnerProfileSerializer(owner).data)
+        return Response({'error': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class VenueViewSet(viewsets.ModelViewSet):
@@ -160,34 +215,51 @@ def platform_stats(request):
 @transaction.atomic
 def register_vendor(request):
     data = request.data
-    
-    # Check if username or email exists
-    if User.objects.filter(username=data.get('username')).exists():
-        return Response({'error': 'Username already exists'}, status=status.HTTP_400_BAD_REQUEST)
-    if User.objects.filter(email=data.get('email')).exists():
-        return Response({'error': 'Email already exists'}, status=status.HTTP_400_BAD_REQUEST)
+    email = data.get('email', '').strip().lower()
+    username = data.get('username', '').strip() or email
+
+    if not email:
+        return Response({'error': 'Email address is required'}, status=status.HTTP_400_BAD_REQUEST)
+    if User.objects.filter(email__iexact=email).exists():
+        return Response({'error': 'An account with this email address already exists'}, status=status.HTTP_400_BAD_REQUEST)
+    if User.objects.filter(username__iexact=username).exists():
+        return Response({'error': 'This username is already taken'}, status=status.HTTP_400_BAD_REQUEST)
         
     try:
+        full_name = data.get('full_name', '').strip()
+        first_name = data.get('first_name', '').strip()
+        last_name = data.get('last_name', '').strip()
+        if full_name and not (first_name or last_name):
+            parts = full_name.split(' ', 1)
+            first_name = parts[0]
+            last_name = parts[1] if len(parts) > 1 else ''
+
         # Create User
         user = User.objects.create_user(
-            username=data.get('username'),
-            email=data.get('email'),
+            username=username,
+            email=email,
             password=data.get('password'),
-            first_name=data.get('first_name', ''),
-            last_name=data.get('last_name', ''),
-            role='VENDOR'
+            first_name=first_name,
+            last_name=last_name,
+            role='VENDOR',
+            phone_number=data.get('phone_number', '')
         )
         
         # Create VendorProfile
         vendor = VendorProfile.objects.create(
             user=user,
             business_name=data.get('business_name'),
-            vendor_type=data.get('vendor_type'),
-            description=data.get('description'),
-            location=data.get('location'),
-            starting_price=data.get('starting_price', 0),
-            contact_email=data.get('email'),
+            vendor_type=data.get('vendor_type', 'Other'),
+            description=data.get('description', ''),
+            location=data.get('location', ''),
+            address=data.get('address', ''),
+            starting_price=data.get('starting_price', 0) or 0,
+            contact_email=email,
             contact_phone=data.get('phone_number', ''),
+            years_in_business=data.get('years_in_business') if data.get('years_in_business') else None,
+            website_url=data.get('website_url', '') or data.get('portfolio_url', ''),
+            logo_url=data.get('logo_url', ''),
+            verification_status='PENDING',
             is_verified=False
         )
         
@@ -199,14 +271,19 @@ def register_vendor(request):
 
 @api_view(['POST'])
 def login_vendor(request):
-    username = request.data.get('username')
+    login_identifier = (request.data.get('username') or request.data.get('email') or '').strip()
     password = request.data.get('password')
     
-    user = authenticate(username=username, password=password)
+    # Try finding user by username or email
+    user_obj = User.objects.filter(Q(username__iexact=login_identifier) | Q(email__iexact=login_identifier)).first()
+    if not user_obj:
+        return Response({'error': 'No account found with this email or username'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    user = authenticate(username=user_obj.username, password=password)
     
     if user is not None:
         if user.role != 'VENDOR':
-            return Response({'error': 'Account is not a vendor'}, status=status.HTTP_403_FORBIDDEN)
+            return Response({'error': 'Account is not registered as a vendor'}, status=status.HTTP_403_FORBIDDEN)
             
         try:
             vendor = VendorProfile.objects.get(user=user)
@@ -215,7 +292,7 @@ def login_vendor(request):
         except VendorProfile.DoesNotExist:
             return Response({'error': 'Vendor profile not found'}, status=status.HTTP_404_NOT_FOUND)
     else:
-        return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response({'error': 'Invalid credentials. Please verify your password.'}, status=status.HTTP_401_UNAUTHORIZED)
 
 
 class VendorDashboardView(APIView):
@@ -256,28 +333,48 @@ class VendorBookingsView(APIView):
 @transaction.atomic
 def register_venue_owner(request):
     data = request.data
-    
-    if User.objects.filter(username=data.get('username')).exists():
-        return Response({'error': 'Username already exists'}, status=status.HTTP_400_BAD_REQUEST)
-    if User.objects.filter(email=data.get('email')).exists():
-        return Response({'error': 'Email already exists'}, status=status.HTTP_400_BAD_REQUEST)
+    email = data.get('email', '').strip().lower()
+    username = data.get('username', '').strip() or email
+
+    if not email:
+        return Response({'error': 'Email address is required'}, status=status.HTTP_400_BAD_REQUEST)
+    if User.objects.filter(email__iexact=email).exists():
+        return Response({'error': 'An account with this email address already exists'}, status=status.HTTP_400_BAD_REQUEST)
+    if User.objects.filter(username__iexact=username).exists():
+        return Response({'error': 'This username is already taken'}, status=status.HTTP_400_BAD_REQUEST)
         
     try:
+        full_name = data.get('full_name', '').strip()
+        first_name = data.get('first_name', '').strip()
+        last_name = data.get('last_name', '').strip()
+        if full_name and not (first_name or last_name):
+            parts = full_name.split(' ', 1)
+            first_name = parts[0]
+            last_name = parts[1] if len(parts) > 1 else ''
+
         user = User.objects.create_user(
-            username=data.get('username'),
-            email=data.get('email'),
+            username=username,
+            email=email,
             password=data.get('password'),
-            first_name=data.get('first_name', ''),
-            last_name=data.get('last_name', ''),
-            role='VENUE_OWNER'
+            first_name=first_name,
+            last_name=last_name,
+            role='VENUE_OWNER',
+            phone_number=data.get('phone_number', '')
         )
         
         venue_owner = VenueOwnerProfile.objects.create(
             user=user,
             business_name=data.get('business_name'),
-            contact_email=data.get('email'),
+            business_type=data.get('business_type', 'Event Venue'),
+            contact_email=email,
             contact_phone=data.get('phone_number', ''),
             location=data.get('location', ''),
+            address=data.get('address', ''),
+            description=data.get('description', ''),
+            years_in_business=data.get('years_in_business') if data.get('years_in_business') else None,
+            website_url=data.get('website_url', ''),
+            logo_url=data.get('logo_url', ''),
+            verification_status='PENDING',
             is_verified=False
         )
         
@@ -290,10 +387,14 @@ def register_venue_owner(request):
 
 @api_view(['POST'])
 def login_venue_owner(request):
-    username = request.data.get('username')
+    login_identifier = (request.data.get('username') or request.data.get('email') or '').strip()
     password = request.data.get('password')
     
-    user = authenticate(username=username, password=password)
+    user_obj = User.objects.filter(Q(username__iexact=login_identifier) | Q(email__iexact=login_identifier)).first()
+    if not user_obj:
+        return Response({'error': 'No account found with this email or username'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    user = authenticate(username=user_obj.username, password=password)
     
     if user is not None:
         if user.role != 'VENUE_OWNER':
@@ -306,7 +407,7 @@ def login_venue_owner(request):
         except VenueOwnerProfile.DoesNotExist:
             return Response({'error': 'Venue owner profile not found'}, status=status.HTTP_404_NOT_FOUND)
     else:
-        return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response({'error': 'Invalid credentials. Please verify your password.'}, status=status.HTTP_401_UNAUTHORIZED)
 
 
 class VenueOwnerDashboardView(APIView):

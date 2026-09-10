@@ -13,21 +13,25 @@ class VenueOwnerProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = VenueOwnerProfile
         fields = [
-            'id', 'user', 'user_details', 'business_name', 'contact_email',
-            'contact_phone', 'location', 'is_verified', 'created_at'
+            'id', 'user', 'user_details', 'business_name', 'business_type',
+            'contact_email', 'contact_phone', 'location', 'address',
+            'description', 'years_in_business', 'website_url', 'logo_url',
+            'verification_status', 'is_verified', 'created_at'
         ]
 
 
 class VendorProfileSerializer(serializers.ModelSerializer):
     user_details = UserSerializer(source='user', read_only=True)
-    vendor_type_display = serializers.CharField(source='get_vendor_type_display', read_only=True)
+    vendor_type_display = serializers.CharField(source='vendor_type', read_only=True)
 
     class Meta:
         model = VendorProfile
         fields = [
             'id', 'user', 'user_details', 'business_name', 'vendor_type', 
-            'vendor_type_display', 'description', 'location', 'starting_price', 
-            'contact_email', 'contact_phone', 'is_verified', 'portfolio_images', 
+            'vendor_type_display', 'description', 'location', 'address',
+            'starting_price', 'contact_email', 'contact_phone',
+            'years_in_business', 'website_url', 'logo_url',
+            'verification_status', 'is_verified', 'portfolio_images', 
             'rating', 'review_count', 'created_at'
         ]
 

@@ -94,17 +94,17 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
 
   return (
     <div className="vendor-dashboard-layout">
-      
+
       {/* Sidebar */}
       <aside className="vendor-sidebar">
         <div className="vendor-sidebar-header">
           {currentVendor.business_name}
           <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 500, marginTop: '4px' }}>{currentVendor.vendor_type_display} Partner</div>
         </div>
-        
+
         <nav className="vendor-sidebar-nav">
           {menuItems.map(item => (
-            <button 
+            <button
               key={item.id}
               className={`vendor-sidebar-item ${activeTab === item.id ? 'active' : ''}`}
               onClick={() => setActiveTab(item.id as any)}
@@ -112,17 +112,17 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
               <item.icon size={18} /> {item.label}
             </button>
           ))}
-          
+
           <div style={{ flexGrow: 1 }} />
-          
-          <button 
-            className="btn-primary" 
+
+          <button
+            className="btn-primary"
             style={{ width: '100%', marginBottom: '24px', background: '#0d8a73', padding: '12px' }}
             onClick={() => setShowAddModal(true)}
           >
             Create New Listing
           </button>
-          
+
           <button className="vendor-sidebar-item">
             <Settings size={18} /> Settings
           </button>
@@ -134,13 +134,13 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
 
       {/* Main Content Area */}
       <main className="vendor-main-content">
-        
+
         <div className="vendor-topbar">
           <div>
             <h1>{getPageTitle()}</h1>
             <p style={{ color: '#64748b', fontSize: '0.9rem', margin: '4px 0 0 0' }}>Manage your account, bookings, and listings.</p>
           </div>
-          
+
           <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
             <button style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '50%', width: '40px', height: '40px', cursor: 'pointer' }}>
               🔔
@@ -160,15 +160,15 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
         {activeTab === 'overview' && (
           <VendorDashboardOverview bookings={bookings} stats={stats} venues={venues} />
         )}
-        
+
         {activeTab === 'bookings' && (
           <VendorDashboardBookings bookings={bookings} onUpdateStatus={handleUpdateStatus} />
         )}
-        
+
         {activeTab === 'portfolio' && (
           <VendorDashboardPortfolio venues={venues} onAddClick={() => setShowAddModal(true)} />
         )}
-        
+
         {activeTab === 'reviews' && (
           <VendorDashboardReviews />
         )}

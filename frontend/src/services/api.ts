@@ -147,6 +147,59 @@ export const ApiService = {
     return false;
   },
 
+  async setVendorVerificationStatus(id: number, status: 'APPROVED' | 'REJECTED' | 'PENDING'): Promise<Vendor | null> {
+    try {
+      const res = await fetch(`${API_BASE}/vendors/${id}/set_verification/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ verification_status: status }),
+      });
+      if (res.ok) return await res.json();
+    } catch (e) {
+      console.error("Failed to set vendor verification status", e);
+    }
+    return null;
+  },
+
+  async getVenueOwners(): Promise<VenueOwner[]> {
+    try {
+      const res = await fetch(`${API_BASE}/venue-owners/`);
+      if (res.ok) {
+        const data = await res.json();
+        return Array.isArray(data) ? data : data.results || [];
+      }
+    } catch (e) {
+      console.error("Failed to fetch venue owners", e);
+    }
+    return [];
+  },
+
+  async toggleVerifyVenueOwner(id: number): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/venue-owners/${id}/toggle_verify/`, {
+        method: 'POST',
+      });
+      if (res.ok) return true;
+    } catch (e) {
+      console.error("Failed to toggle verify venue owner", e);
+    }
+    return false;
+  },
+
+  async setVenueOwnerVerificationStatus(id: number, status: 'APPROVED' | 'REJECTED' | 'PENDING'): Promise<VenueOwner | null> {
+    try {
+      const res = await fetch(`${API_BASE}/venue-owners/${id}/set_verification/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ verification_status: status }),
+      });
+      if (res.ok) return await res.json();
+    } catch (e) {
+      console.error("Failed to set venue owner verification status", e);
+    }
+    return null;
+  },
+
   async addVenue(venueData: Partial<Venue>): Promise<Venue> {
     try {
       const res = await fetch(`${API_BASE}/venues/`, {

@@ -18,11 +18,23 @@ class User(AbstractUser):
 
 
 class VenueOwnerProfile(models.Model):
+    VERIFICATION_STATUS_CHOICES = [
+        ('PENDING', 'Pending Verification'),
+        ('APPROVED', 'Approved'),
+        ('REJECTED', 'Rejected'),
+    ]
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='venue_owner_profile')
     business_name = models.CharField(max_length=150)
+    business_type = models.CharField(max_length=100, default='Event Venue', blank=True)
     contact_email = models.EmailField(blank=True, null=True)
     contact_phone = models.CharField(max_length=20, blank=True, null=True)
     location = models.CharField(max_length=100, blank=True, null=True)
+    address = models.CharField(max_length=255, blank=True, null=True)
+    description = models.TextField(blank=True, null=True)
+    years_in_business = models.IntegerField(null=True, blank=True)
+    website_url = models.URLField(max_length=500, blank=True, null=True)
+    logo_url = models.URLField(max_length=500, blank=True, null=True)
+    verification_status = models.CharField(max_length=20, choices=VERIFICATION_STATUS_CHOICES, default='PENDING')
     is_verified = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -31,22 +43,24 @@ class VenueOwnerProfile(models.Model):
 
 
 class VendorProfile(models.Model):
-    VENDOR_TYPE_CHOICES = [
-        ('PLANNER', 'Event Planner'),
-        ('CATERER', 'Catering Service'),
-        ('PHOTOGRAPHER', 'Photography & Video'),
-        ('DECORATOR', 'Decoration & Styling'),
-        ('SOUND_LIGHTING', 'Sound & Stage Lighting'),
-        ('ENTERTAINMENT', 'DJ & Entertainment'),
+    VERIFICATION_STATUS_CHOICES = [
+        ('PENDING', 'Pending Verification'),
+        ('APPROVED', 'Approved'),
+        ('REJECTED', 'Rejected'),
     ]
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='vendor_profile')
     business_name = models.CharField(max_length=150)
-    vendor_type = models.CharField(max_length=30, choices=VENDOR_TYPE_CHOICES)
+    vendor_type = models.CharField(max_length=100)
     description = models.TextField()
     location = models.CharField(max_length=100)
-    starting_price = models.DecimalField(max_digits=10, decimal_places=2, default=10000.00)
+    address = models.CharField(max_length=255, blank=True, null=True)
+    starting_price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     contact_email = models.EmailField(blank=True, null=True)
     contact_phone = models.CharField(max_length=20, blank=True, null=True)
+    years_in_business = models.IntegerField(null=True, blank=True)
+    website_url = models.URLField(max_length=500, blank=True, null=True)
+    logo_url = models.URLField(max_length=500, blank=True, null=True)
+    verification_status = models.CharField(max_length=20, choices=VERIFICATION_STATUS_CHOICES, default='PENDING')
     is_verified = models.BooleanField(default=False)
     portfolio_images = models.JSONField(default=list, blank=True)
     rating = models.FloatField(default=4.8)
@@ -54,7 +68,7 @@ class VendorProfile(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.business_name} - {self.get_vendor_type_display()}"
+        return f"{self.business_name} - {self.vendor_type}"
 
 
 class Venue(models.Model):

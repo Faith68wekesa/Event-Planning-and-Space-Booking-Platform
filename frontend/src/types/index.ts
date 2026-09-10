@@ -10,25 +10,42 @@ export interface User {
   bio?: string;
 }
 
+export type VerificationStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
 export type VendorType = 
-  | 'PLANNER' 
-  | 'CATERER' 
-  | 'PHOTOGRAPHER' 
-  | 'DECORATOR' 
-  | 'SOUND_LIGHTING' 
-  | 'ENTERTAINMENT';
+  | 'Catering'
+  | 'Photography'
+  | 'Videography'
+  | 'Event Decoration'
+  | 'Entertainment'
+  | 'DJ Services'
+  | 'MC Services'
+  | 'Event Planning'
+  | 'Transport'
+  | 'Florist'
+  | 'Makeup & Beauty'
+  | 'Security'
+  | 'Equipment Rental'
+  | 'Other'
+  | string;
 
 export interface Vendor {
   id: number;
   user: number;
+  user_details?: User;
   business_name: string;
   vendor_type: VendorType;
   vendor_type_display: string;
   description: string;
   location: string;
+  address?: string;
   starting_price: number;
   contact_email?: string;
   contact_phone?: string;
+  years_in_business?: number;
+  website_url?: string;
+  logo_url?: string;
+  verification_status?: VerificationStatus;
   is_verified: boolean;
   portfolio_images: string[];
   rating: number;
@@ -36,14 +53,36 @@ export interface Vendor {
   created_at?: string;
 }
 
+export type VenueOwnerBusinessType =
+  | 'Hotel'
+  | 'Conference Centre'
+  | 'Event Hall'
+  | 'Wedding Venue'
+  | 'Garden'
+  | 'Restaurant'
+  | 'Outdoor Space'
+  | 'Community Centre'
+  | 'Beach Venue'
+  | 'Resort'
+  | 'Private Estate'
+  | 'Other'
+  | string;
+
 export interface VenueOwner {
   id: number;
   user: number;
   user_details?: User;
   business_name: string;
+  business_type?: VenueOwnerBusinessType;
   contact_email?: string;
   contact_phone?: string;
   location?: string;
+  address?: string;
+  description?: string;
+  years_in_business?: number;
+  website_url?: string;
+  logo_url?: string;
+  verification_status?: VerificationStatus;
   is_verified: boolean;
   created_at?: string;
 }

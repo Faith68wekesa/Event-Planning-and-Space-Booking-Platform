@@ -100,9 +100,9 @@ export const App: React.FC = () => {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      
+
       {activeTab === 'landing' ? (
-        <LandingPage 
+        <LandingPage
           onSelectCustomer={() => {
             setActiveRole('CUSTOMER');
             setActiveTab('venues');
@@ -122,168 +122,164 @@ export const App: React.FC = () => {
           />
 
           <main style={{ flexGrow: 1 }}>
-        {(activeTab === 'venues' || activeTab === 'vendors') && (
-          <>
-            <HeroSearch
-              filters={filters}
-              setFilters={setFilters}
-              stats={stats}
-              onSearch={loadData}
-            />
+            {(activeTab === 'venues' || activeTab === 'vendors') && (
+              <>
+                <HeroSearch
+                  filters={filters}
+                  setFilters={setFilters}
+                  stats={stats}
+                  onSearch={loadData}
+                />
 
-            <div style={{
-              maxWidth: '1280px',
-              margin: '0 auto',
-              padding: '32px 24px',
-              display: 'grid',
-              gridTemplateColumns: '260px 1fr',
-              gap: '28px',
-              alignItems: 'start'
-            }}>
-              <FilterSidebar
-                filters={filters}
-                setFilters={setFilters}
-                activeTab={activeTab as 'venues' | 'vendors'}
-              />
+                <div style={{
+                  maxWidth: '1280px',
+                  margin: '0 auto',
+                  padding: '32px 24px',
+                  display: 'grid',
+                  gridTemplateColumns: '260px 1fr',
+                  gap: '28px',
+                  alignItems: 'start'
+                }}>
+                  <FilterSidebar
+                    filters={filters}
+                    setFilters={setFilters}
+                    activeTab={activeTab as 'venues' | 'vendors'}
+                  />
 
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                  <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1e293b' }}>
-                    {activeTab === 'venues' ? `Available Event Venues (${venues.length})` : `Verified Planners & Services (${vendors.length})`}
-                  </h2>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                      <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1e293b' }}>
+                        {activeTab === 'venues' ? `Available Event Venues (${venues.length})` : `Verified Planners & Services (${vendors.length})`}
+                      </h2>
 
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      className={activeTab === 'venues' ? 'btn-primary' : 'btn-secondary'}
-                      onClick={() => setActiveTab('venues')}
-                      style={{ padding: '6px 14px', fontSize: '0.82rem' }}
-                    >
-                      <MapPin size={14} /> Venues
-                    </button>
-                    <button
-                      className={activeTab === 'vendors' ? 'btn-primary' : 'btn-secondary'}
-                      onClick={() => setActiveTab('vendors')}
-                      style={{ padding: '6px 14px', fontSize: '0.82rem' }}
-                    >
-                      <Briefcase size={14} /> Planners & Services
-                    </button>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          className={activeTab === 'venues' ? 'btn-primary' : 'btn-secondary'}
+                          onClick={() => setActiveTab('venues')}
+                          style={{ padding: '6px 14px', fontSize: '0.82rem' }}
+                        >
+                          <MapPin size={14} /> Venues
+                        </button>
+                        <button
+                          className={activeTab === 'vendors' ? 'btn-primary' : 'btn-secondary'}
+                          onClick={() => setActiveTab('vendors')}
+                          style={{ padding: '6px 14px', fontSize: '0.82rem' }}
+                        >
+                          <Briefcase size={14} /> Planners & Services
+                        </button>
+                      </div>
+                    </div>
+
+                    {activeTab === 'venues' ? (
+                      <VenueGrid
+                        venues={venues}
+                        onSelectVenue={(venue) => setSelectedVenue(venue)}
+                        onBookVenue={(venue) => setBookingTargetVenue(venue)}
+                      />
+                    ) : (
+                      <VendorGrid
+                        vendors={vendors}
+                        onSelectVendor={(vendor) => setSelectedVendor(vendor)}
+                        onBookVendor={(vendor) => setBookingTargetVendor(vendor)}
+                      />
+                    )}
                   </div>
                 </div>
+              </>
+            )}
 
-                {activeTab === 'venues' ? (
-                  <VenueGrid
-                    venues={venues}
-                    onSelectVenue={(venue) => setSelectedVenue(venue)}
-                    onBookVenue={(venue) => setBookingTargetVenue(venue)}
-                  />
-                ) : (
-                  <VendorGrid
-                    vendors={vendors}
-                    onSelectVendor={(vendor) => setSelectedVendor(vendor)}
-                    onBookVendor={(vendor) => setBookingTargetVendor(vendor)}
-                  />
-                )}
+            {activeTab === 'my-bookings' && (
+              <CustomerDashboard
+                bookings={bookings}
+                onCancelBooking={handleCancelBooking}
+              />
+            )}
+
+            {activeTab === 'vendor-dashboard' && currentVendor && (
+              <VendorDashboard
+                currentVendor={currentVendor}
+              />
+            )}
+
+            {activeTab === 'venue-owner-dashboard' && currentVenueOwner && (
+              <VenueOwnerDashboard
+                currentOwner={currentVenueOwner}
+                onLogout={() => {
+                  setCurrentVenueOwner(null);
+                  setActiveRole('CUSTOMER');
+                  setActiveTab('venues');
+                }}
+              />
+            )}
+
+            {activeTab === 'admin-dashboard' && (
+              <AdminDashboard
+                venues={venues}
+                vendors={vendors}
+                onToggleVerifyVenue={handleToggleVerifyVenue}
+                onToggleVerifyVendor={handleToggleVerifyVendor}
+              />
+            )}
+          </main>
+
+          {selectedVenue && (
+            <VenueModal
+              venue={selectedVenue}
+              onClose={() => setSelectedVenue(null)}
+              onBook={(v) => setBookingTargetVenue(v)}
+            />
+          )}
+
+          {selectedVendor && (
+            <VendorModal
+              vendor={selectedVendor}
+              onClose={() => setSelectedVendor(null)}
+              onBook={(v) => setBookingTargetVendor(v)}
+            />
+          )}
+
+          {(bookingTargetVenue || bookingTargetVendor) && (
+            <BookingModal
+              venue={bookingTargetVenue}
+              vendor={bookingTargetVendor}
+              onClose={() => {
+                setBookingTargetVenue(null);
+                setBookingTargetVendor(null);
+              }}
+              onSuccess={handleBookSuccess}
+            />
+          )}
+
+          {activeTab !== 'landing' && (
+            <footer style={{
+              background: '#0d8a73',
+              borderTop: '1px solid rgba(255, 255, 255, 0.15)',
+              padding: '24px',
+              textAlign: 'center',
+              color: '#ffffff',
+              fontSize: '0.85rem',
+              marginTop: 'auto'
+            }}>
+              <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <strong style={{ color: '#ffffff' }}>EventP Kenya Platform</strong> — Centralized Web Platform for Verified Event Venues & Services
+                </div>
+                <div style={{ display: 'flex', gap: '16px', fontSize: '0.8rem', color: '#e6f7f3' }}>
+                  <span style={{ cursor: 'pointer' }}>Privacy Policy</span>
+                  <span style={{ cursor: 'pointer' }}>Terms of Service</span>
+                  <span style={{ cursor: 'pointer' }}>Vendor Verification Standard</span>
+                </div>
               </div>
-            </div>
-          </>
-        )}
-
-        {activeTab === 'my-bookings' && (
-          <CustomerDashboard
-            bookings={bookings}
-            onCancelBooking={handleCancelBooking}
-          />
-        )}
-
-        {activeTab === 'vendor-dashboard' && currentVendor && (
-          <VendorDashboard
-            currentVendor={currentVendor}
-          />
-        )}
-
-        {activeTab === 'venue-owner-dashboard' && currentVenueOwner && (
-          <VenueOwnerDashboard
-            currentOwner={currentVenueOwner}
-            onLogout={() => {
-              setCurrentVenueOwner(null);
-              setActiveRole('CUSTOMER');
-              setActiveTab('venues');
-            }}
-          />
-        )}
-
-        {activeTab === 'admin-dashboard' && (
-          <AdminDashboard
-            venues={venues}
-            vendors={vendors}
-            onToggleVerifyVenue={handleToggleVerifyVenue}
-            onToggleVerifyVendor={handleToggleVerifyVendor}
-          />
-        )}
-      </main>
-
-      {selectedVenue && (
-        <VenueModal
-          venue={selectedVenue}
-          onClose={() => setSelectedVenue(null)}
-          onBook={(v) => setBookingTargetVenue(v)}
-        />
+            </footer>
+          )}
+        </>
       )}
-
-      {selectedVendor && (
-        <VendorModal
-          vendor={selectedVendor}
-          onClose={() => setSelectedVendor(null)}
-          onBook={(v) => setBookingTargetVendor(v)}
-        />
-      )}
-
-      {(bookingTargetVenue || bookingTargetVendor) && (
-        <BookingModal
-          venue={bookingTargetVenue}
-          vendor={bookingTargetVendor}
-          onClose={() => {
-            setBookingTargetVenue(null);
-            setBookingTargetVendor(null);
-          }}
-          onSuccess={handleBookSuccess}
-        />
-      )}
-
-      {activeTab !== 'landing' && (
-        <footer style={{
-          background: '#0d8a73',
-          borderTop: '1px solid rgba(255, 255, 255, 0.15)',
-          padding: '24px',
-          textAlign: 'center',
-          color: '#ffffff',
-          fontSize: '0.85rem',
-          marginTop: 'auto'
-        }}>
-          <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-            <div>
-              <strong style={{ color: '#ffffff' }}>EventP Kenya Platform</strong> — Centralized Web Platform for Verified Event Venues & Services
-            </div>
-            <div style={{ display: 'flex', gap: '16px', fontSize: '0.8rem', color: '#e6f7f3' }}>
-              <span style={{ cursor: 'pointer' }}>Privacy Policy</span>
-              <span style={{ cursor: 'pointer' }}>Terms of Service</span>
-              <span style={{ cursor: 'pointer' }}>Vendor Verification Standard</span>
-            </div>
-          </div>
-        </footer>
-      )}
-      </>
-    )}
 
       {showRegistration && (
         <VendorRegistration
           onClose={() => setShowRegistration(false)}
           onSuccess={(vendor) => {
-            setShowRegistration(false);
             setVendors(prev => [vendor, ...prev]);
-            setCurrentVendor(vendor);
-            setActiveRole('VENDOR');
-            setActiveTab('vendor-dashboard');
           }}
           onSwitchToLogin={() => {
             setShowRegistration(false);
@@ -327,11 +323,8 @@ export const App: React.FC = () => {
       {showVenueOwnerRegistration && (
         <VenueOwnerRegistration
           onClose={() => setShowVenueOwnerRegistration(false)}
-          onSuccess={(owner) => {
-            setShowVenueOwnerRegistration(false);
-            setCurrentVenueOwner(owner);
-            setActiveRole('VENUE_OWNER');
-            setActiveTab('venue-owner-dashboard');
+          onSuccess={(_owner) => {
+            // Keep registration modal open with pending verification screen
           }}
           onSwitchToLogin={() => {
             setShowVenueOwnerRegistration(false);
@@ -345,3 +338,4 @@ export const App: React.FC = () => {
 };
 
 export default App;
+

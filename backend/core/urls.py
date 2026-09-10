@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    UserViewSet, VendorProfileViewSet, VenueViewSet, 
+    UserViewSet, VendorProfileViewSet, VenueOwnerProfileViewSet, VenueViewSet, 
     BookingViewSet, ReviewViewSet, platform_stats, register_vendor, login_vendor,
     VendorDashboardView, VendorBookingsView,
     register_venue_owner, login_venue_owner,
@@ -11,6 +11,7 @@ from .views import (
 router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='user')
 router.register(r'vendors', VendorProfileViewSet, basename='vendor')
+router.register(r'venue-owners', VenueOwnerProfileViewSet, basename='venue-owner')
 router.register(r'venues', VenueViewSet, basename='venue')
 router.register(r'bookings', BookingViewSet, basename='booking')
 router.register(r'reviews', ReviewViewSet, basename='review')
