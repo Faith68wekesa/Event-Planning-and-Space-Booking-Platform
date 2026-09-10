@@ -48,3 +48,8 @@ coverage/
 # Temporary files
 *.tmp
 *.temp
+# Project documents
+implementation_plan.md
+extracted_proposal.txt
+proposal.docx
+proposal doc.docx
