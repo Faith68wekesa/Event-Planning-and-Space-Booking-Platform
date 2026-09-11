@@ -321,6 +321,8 @@ export const App: React.FC = () => {
               </div>
             </div>
           </footer>
+        </>
+      )}
 
           {showRegistration && (
             <VendorRegistration
@@ -379,8 +381,6 @@ export const App: React.FC = () => {
               }}
             />
           )}
-        </>
-      )}
     </div>
   );
 };

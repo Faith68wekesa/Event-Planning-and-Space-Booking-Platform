@@ -172,7 +172,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               {onRegisterVenueOwner && (
                 <button
                   onClick={onRegisterVenueOwner}
-                  style={{ padding: '8px 14px', fontSize: '0.85rem', background: 'transparent', color: '#0F8F7A', border: '1px solid #0F8F7A', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 600 }}
+                  style={{ padding: '8px 14px', fontSize: '0.85rem', background: '#096b5a', color: '#fff', border: '1px solid #096b5a', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 600 }}
                 >
                   <Building2 size={16} /> List Venue
                 </button>
