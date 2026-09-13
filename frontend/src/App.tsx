@@ -117,8 +117,6 @@ export const App: React.FC = () => {
             setActiveTab={setActiveTab}
             activeRole={activeRole}
             bookingCount={bookings.length}
-            onRegisterVendor={() => setShowRegistration(true)}
-            onRegisterVenueOwner={() => setShowVenueOwnerRegistration(true)}
           />
 
           <main style={{ flexGrow: 1 }}>
@@ -129,6 +127,10 @@ export const App: React.FC = () => {
                   setActiveTab('venues');
                 }}
                 filters={filters}
+                onExploreVenues={() => setActiveTab('venues')}
+                onExploreVendors={() => setActiveTab('vendors')}
+                onBecomeVendor={() => setShowRegistration(true)}
+                onListVenue={() => setShowVenueOwnerRegistration(true)}
               />
             ) : (
               <>
@@ -324,63 +326,63 @@ export const App: React.FC = () => {
         </>
       )}
 
-          {showRegistration && (
-            <VendorRegistration
-              onClose={() => setShowRegistration(false)}
-              onSuccess={(vendor) => {
-                setVendors((prev) => [vendor, ...prev]);
-              }}
-              onSwitchToLogin={() => {
-                setShowRegistration(false);
-                setShowLogin(true);
-              }}
-            />
-          )}
+      {showRegistration && (
+        <VendorRegistration
+          onClose={() => setShowRegistration(false)}
+          onSuccess={(vendor) => {
+            setVendors((prev) => [vendor, ...prev]);
+          }}
+          onSwitchToLogin={() => {
+            setShowRegistration(false);
+            setShowLogin(true);
+          }}
+        />
+      )}
 
-          {showLogin && (
-            <VendorLogin
-              onClose={() => setShowLogin(false)}
-              onSuccess={(vendor) => {
-                setShowLogin(false);
-                setCurrentVendor(vendor);
-                setActiveRole('VENDOR');
-                setActiveTab('vendor-dashboard');
-              }}
-              onSwitchToRegister={() => {
-                setShowLogin(false);
-                setShowRegistration(true);
-              }}
-            />
-          )}
+      {showLogin && (
+        <VendorLogin
+          onClose={() => setShowLogin(false)}
+          onSuccess={(vendor) => {
+            setShowLogin(false);
+            setCurrentVendor(vendor);
+            setActiveRole('VENDOR');
+            setActiveTab('vendor-dashboard');
+          }}
+          onSwitchToRegister={() => {
+            setShowLogin(false);
+            setShowRegistration(true);
+          }}
+        />
+      )}
 
-          {showVenueOwnerLogin && (
-            <VenueOwnerLogin
-              onClose={() => setShowVenueOwnerLogin(false)}
-              onSuccess={(owner) => {
-                setShowVenueOwnerLogin(false);
-                setCurrentVenueOwner(owner);
-                setActiveRole('VENUE_OWNER');
-                setActiveTab('venue-owner-dashboard');
-              }}
-              onSwitchToRegister={() => {
-                setShowVenueOwnerLogin(false);
-                setShowVenueOwnerRegistration(true);
-              }}
-            />
-          )}
+      {showVenueOwnerLogin && (
+        <VenueOwnerLogin
+          onClose={() => setShowVenueOwnerLogin(false)}
+          onSuccess={(owner) => {
+            setShowVenueOwnerLogin(false);
+            setCurrentVenueOwner(owner);
+            setActiveRole('VENUE_OWNER');
+            setActiveTab('venue-owner-dashboard');
+          }}
+          onSwitchToRegister={() => {
+            setShowVenueOwnerLogin(false);
+            setShowVenueOwnerRegistration(true);
+          }}
+        />
+      )}
 
-          {showVenueOwnerRegistration && (
-            <VenueOwnerRegistration
-              onClose={() => setShowVenueOwnerRegistration(false)}
-              onSuccess={(_owner) => {
-                // Keep registration modal open with pending verification screen
-              }}
-              onSwitchToLogin={() => {
-                setShowVenueOwnerRegistration(false);
-                setShowVenueOwnerLogin(true);
-              }}
-            />
-          )}
+      {showVenueOwnerRegistration && (
+        <VenueOwnerRegistration
+          onClose={() => setShowVenueOwnerRegistration(false)}
+          onSuccess={(_owner) => {
+            // Keep registration modal open with pending verification screen
+          }}
+          onSwitchToLogin={() => {
+            setShowVenueOwnerRegistration(false);
+            setShowVenueOwnerLogin(true);
+          }}
+        />
+      )}
     </div>
   );
 };
