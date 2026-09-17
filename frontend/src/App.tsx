@@ -19,6 +19,9 @@ import { VenueOwnerLogin } from './components/VenueOwnerLogin.tsx';
 import { VenueOwnerRegistration } from './components/VenueOwnerRegistration.tsx';
 import { LandingPage } from './components/LandingPage.tsx';
 import { SplashPage } from './components/SplashPage.tsx';
+import { CustomerLogin } from './components/CustomerLogin.tsx';
+import { CustomerRegistration } from './components/CustomerRegistration.tsx';
+import type { User as UserType } from './types';
 import { MapPin, Briefcase } from 'lucide-react';
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('splash');
@@ -56,6 +59,27 @@ export const App: React.FC = () => {
   const [showVenueOwnerRegistration, setShowVenueOwnerRegistration] = useState(false);
   const [showVenueOwnerLogin, setShowVenueOwnerLogin] = useState(false);
   const [currentVenueOwner, setCurrentVenueOwner] = useState<VenueOwner | null>(null);
+
+  const [showCustomerLogin, setShowCustomerLogin] = useState(false);
+  const [showCustomerRegistration, setShowCustomerRegistration] = useState(false);
+  const [currentCustomer, setCurrentCustomer] = useState<UserType | null>(null);
+
+  const handleInterceptBook = (target: any, type: 'venue' | 'vendor') => {
+    if (type === 'venue') setBookingTargetVenue(target);
+    else setBookingTargetVendor(target);
+
+    if (!currentCustomer) {
+      setShowCustomerLogin(true);
+    }
+  };
+
+  const handleCustomerLoginSuccess = (user: UserType) => {
+    setShowCustomerLogin(false);
+    setShowCustomerRegistration(false);
+    setCurrentCustomer(user);
+    setActiveRole('CUSTOMER');
+    // If bookingTarget exists, the BookingModal will now open
+  };
 
   const loadData = async () => {
     const fetchedVenues = await ApiService.getVenues(filters);
@@ -165,36 +189,19 @@ export const App: React.FC = () => {
                           <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1e293b' }}>
                             {activeTab === 'venues' ? `Available Event Venues (${venues.length})` : `Verified Planners & Services (${vendors.length})`}
                           </h2>
-
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <button
-                              className={activeTab === 'venues' ? 'btn-primary' : 'btn-secondary'}
-                              onClick={() => setActiveTab('venues')}
-                              style={{ padding: '6px 14px', fontSize: '0.82rem' }}
-                            >
-                              <MapPin size={14} /> Venues
-                            </button>
-                            <button
-                              className={activeTab === 'vendors' ? 'btn-primary' : 'btn-secondary'}
-                              onClick={() => setActiveTab('vendors')}
-                              style={{ padding: '6px 14px', fontSize: '0.82rem' }}
-                            >
-                              <Briefcase size={14} /> Planners & Services
-                            </button>
-                          </div>
                         </div>
 
                         {activeTab === 'venues' ? (
                           <VenueGrid
                             venues={venues}
                             onSelectVenue={(venue) => setSelectedVenue(venue)}
-                            onBookVenue={(venue) => setBookingTargetVenue(venue)}
+                            onBookVenue={(venue) => handleInterceptBook(venue, 'venue')}
                           />
                         ) : (
                           <VendorGrid
                             vendors={vendors}
                             onSelectVendor={(vendor) => setSelectedVendor(vendor)}
-                            onBookVendor={(vendor) => setBookingTargetVendor(vendor)}
+                            onBookVendor={(vendor) => handleInterceptBook(vendor, 'vendor')}
                           />
                         )}
                       </div>
@@ -248,11 +255,11 @@ export const App: React.FC = () => {
             <VendorModal
               vendor={selectedVendor}
               onClose={() => setSelectedVendor(null)}
-              onBook={(v) => setBookingTargetVendor(v)}
+              onBook={(v) => handleInterceptBook(v, 'vendor')}
             />
           )}
 
-          {(bookingTargetVenue || bookingTargetVendor) && (
+          {currentCustomer && (bookingTargetVenue || bookingTargetVendor) && (
             <BookingModal
               venue={bookingTargetVenue}
               vendor={bookingTargetVendor}
@@ -380,6 +387,36 @@ export const App: React.FC = () => {
           onSwitchToLogin={() => {
             setShowVenueOwnerRegistration(false);
             setShowVenueOwnerLogin(true);
+          }}
+        />
+      )}
+
+      {showCustomerLogin && (
+        <CustomerLogin
+          onClose={() => {
+            setShowCustomerLogin(false);
+            setBookingTargetVenue(null);
+            setBookingTargetVendor(null);
+          }}
+          onSuccess={handleCustomerLoginSuccess}
+          onSwitchToRegister={() => {
+            setShowCustomerLogin(false);
+            setShowCustomerRegistration(true);
+          }}
+        />
+      )}
+
+      {showCustomerRegistration && (
+        <CustomerRegistration
+          onClose={() => {
+            setShowCustomerRegistration(false);
+            setBookingTargetVenue(null);
+            setBookingTargetVendor(null);
+          }}
+          onSuccess={handleCustomerLoginSuccess}
+          onSwitchToLogin={() => {
+            setShowCustomerRegistration(false);
+            setShowCustomerLogin(true);
           }}
         />
       )}

@@ -13,7 +13,8 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
   setFilters,
   activeTab,
 }) => {
-  const resetFilters = () => {
+  const resetFilters = (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
     setFilters({
       search: '',
       category: 'ALL',
@@ -40,6 +41,7 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
         </h3>
 
         <button
+          type="button"
           onClick={resetFilters}
           style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}
         >

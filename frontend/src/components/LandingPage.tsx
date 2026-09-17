@@ -90,7 +90,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
           <div style={{ flex: '1 1 400px', display: 'flex', justifyContent: 'center' }}>
             <img
-              src="https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&w=800&q=80"
+              src="https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=800&q=80"
               alt="Event Celebration"
               style={{ width: '100%', maxWidth: '500px', borderRadius: '24px', boxShadow: '0 24px 48px rgba(15, 143, 122, 0.15)' }}
             />

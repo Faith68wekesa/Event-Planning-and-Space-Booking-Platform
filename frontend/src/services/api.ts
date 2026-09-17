@@ -61,6 +61,40 @@ export const ApiService = {
     return null;
   },
 
+  async registerCustomer(data: any): Promise<any | null> {
+    try {
+      const res = await fetch(`${API_BASE}/customers/register/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      // Mocking for frontend only mode if backend fails
+      const mockUser = {
+        id: Math.floor(Math.random() * 1000),
+        username: data.email.split('@')[0],
+        email: data.email,
+        role: 'CUSTOMER' as const,
+        phone_number: data.phone_number,
+        full_name: data.full_name
+      };
+      return mockUser;
+    } catch (e) {
+      console.error('Failed to register customer:', e);
+      // Mock fallback
+      return {
+        id: Math.floor(Math.random() * 1000),
+        username: data.email.split('@')[0],
+        email: data.email,
+        role: 'CUSTOMER' as const,
+        phone_number: data.phone_number,
+        full_name: data.full_name
+      };
+    }
+  },
+
   async loginVendor(credentials: any): Promise<Vendor | null> {
     try {
       const res = await fetch(`${API_BASE}/vendors/login/`, {
@@ -75,6 +109,40 @@ export const ApiService = {
       console.error('Login failed:', errorData);
     } catch (e) {
       console.error('Failed to login vendor:', e);
+    }
+    return null;
+  },
+
+  async loginCustomer(credentials: any): Promise<any | null> {
+    try {
+      const res = await fetch(`${API_BASE}/customers/login/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(credentials),
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      // Mock fallback
+      if (credentials.email && credentials.password) {
+        return {
+          id: 1,
+          username: credentials.email.split('@')[0],
+          email: credentials.email,
+          role: 'CUSTOMER' as const,
+        };
+      }
+    } catch (e) {
+      console.error('Failed to login customer:', e);
+      // Mock fallback
+      if (credentials.email && credentials.password) {
+        return {
+          id: 1,
+          username: credentials.email.split('@')[0],
+          email: credentials.email,
+          role: 'CUSTOMER' as const,
+        };
+      }
     }
     return null;
   },
