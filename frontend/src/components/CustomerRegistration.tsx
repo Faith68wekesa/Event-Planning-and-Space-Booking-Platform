@@ -4,22 +4,21 @@ import {
   ArrowRight, Sparkles
 } from 'lucide-react';
 import { ApiService } from '../services/api.ts';
-import type { User as UserType } from '../types';
 
 interface CustomerRegistrationProps {
   onClose: () => void;
-  onSuccess?: (user: UserType) => void;
   onSwitchToLogin?: () => void;
 }
 
 export const CustomerRegistration: React.FC<CustomerRegistrationProps> = ({
   onClose,
-  onSuccess,
   onSwitchToLogin,
 }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [otpStep, setOtpStep] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
 
   const [formData, setFormData] = useState({
     full_name: '',
@@ -57,15 +56,42 @@ export const CustomerRegistration: React.FC<CustomerRegistrationProps> = ({
     setLoading(true);
 
     try {
-      const user = await ApiService.registerCustomer(formData);
-      if (user) {
-        setIsSuccess(true);
-        onSuccess?.(user);
+      const sent = await ApiService.sendOTP(formData.email);
+      if (sent) {
+        setOtpStep(true);
       } else {
-        setError('Registration failed. This email may already be registered.');
+        setError('Failed to send verification code. Please try again.');
       }
     } catch (err) {
       setError('An unexpected network error occurred. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (otpCode.length !== 6) {
+      setError('Please enter the 6-digit code.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const verified = await ApiService.verifyOTP(formData.email, otpCode);
+      if (verified) {
+        const user = await ApiService.registerCustomer(formData);
+        if (user) {
+          setIsSuccess(true);
+          // Removed onSuccess?.(user) to prevent auto-login
+        } else {
+          setError('Registration failed. This email may already be registered.');
+        }
+      } else {
+        setError('Invalid or expired verification code.');
+      }
+    } catch (err) {
+      setError('An unexpected error occurred.');
     } finally {
       setLoading(false);
     }
@@ -176,6 +202,44 @@ export const CustomerRegistration: React.FC<CustomerRegistrationProps> = ({
                 Go to Login <ArrowRight size={18} />
               </button>
             </div>
+          </div>
+        ) : otpStep ? (
+          <div style={{ padding: '32px 28px' }}>
+            {error && (
+              <div style={{ background: '#fef2f2', color: '#dc2626', padding: '12px', borderRadius: '8px', fontSize: '0.875rem', marginBottom: '16px' }}>
+                ⚠️ {error}
+              </div>
+            )}
+            <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+              <div style={{ display: 'inline-flex', padding: '16px', background: '#f8fafc', borderRadius: '50%', marginBottom: '16px' }}>
+                <Mail size={32} color="#0d8a73" />
+              </div>
+              <h3 style={{ margin: '0 0 8px 0', fontSize: '1.25rem', color: '#0f172a' }}>Verify Your Email</h3>
+              <p style={{ margin: 0, color: '#475569', fontSize: '0.9rem' }}>
+                We've sent a 6-digit verification code to <strong>{formData.email}</strong>. Please enter it below.
+              </p>
+            </div>
+            <form onSubmit={handleOtpSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <input
+                  required
+                  type="text"
+                  maxLength={6}
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder="000000"
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '14px', borderRadius: '8px', border: '2px solid #cbd5e1', outline: 'none', fontSize: '1.5rem', textAlign: 'center', letterSpacing: '0.5em', fontWeight: 700, color: '#1e293b' }}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="btn-primary"
+                style={{ width: '100%', padding: '14px', borderRadius: '8px', fontSize: '1rem', fontWeight: 700, marginTop: '8px', cursor: 'pointer', opacity: loading ? 0.7 : 1 }}
+              >
+                {loading ? 'Verifying...' : 'Verify & Register'}
+              </button>
+            </form>
           </div>
         ) : (
           <div style={{ padding: '24px 28px' }}>

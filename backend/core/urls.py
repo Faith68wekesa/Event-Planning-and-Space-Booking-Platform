@@ -5,7 +5,9 @@ from .views import (
     BookingViewSet, ReviewViewSet, platform_stats, register_vendor, login_vendor,
     VendorDashboardView, VendorBookingsView,
     register_venue_owner, login_venue_owner,
-    VenueOwnerDashboardView, VenueOwnerBookingsView
+    VenueOwnerDashboardView, VenueOwnerBookingsView,
+    register_customer, login_customer,
+    send_otp, verify_otp
 )
 
 router = DefaultRouter()
@@ -17,6 +19,8 @@ router.register(r'bookings', BookingViewSet, basename='booking')
 router.register(r'reviews', ReviewViewSet, basename='review')
 
 urlpatterns = [
+    path('customers/register/', register_customer, name='register-customer'),
+    path('customers/login/', login_customer, name='login-customer'),
     path('vendors/register/', register_vendor, name='register-vendor'),
     path('vendors/login/', login_vendor, name='login-vendor'),
     path('vendors/<int:vendor_id>/dashboard/', VendorDashboardView.as_view(), name='vendor-dashboard'),
@@ -27,5 +31,7 @@ urlpatterns = [
     path('venue-owners/<int:owner_id>/bookings/', VenueOwnerBookingsView.as_view(), name='venue-owner-bookings'),
     path('', include(router.urls)),
     path('stats/', platform_stats, name='platform-stats'),
+    path('otp/send/', send_otp, name='send-otp'),
+    path('otp/verify/', verify_otp, name='verify-otp'),
 ]
 

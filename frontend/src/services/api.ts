@@ -71,28 +71,12 @@ export const ApiService = {
       if (res.ok) {
         return await res.json();
       }
-      // Mocking for frontend only mode if backend fails
-      const mockUser = {
-        id: Math.floor(Math.random() * 1000),
-        username: data.email.split('@')[0],
-        email: data.email,
-        role: 'CUSTOMER' as const,
-        phone_number: data.phone_number,
-        full_name: data.full_name
-      };
-      return mockUser;
+      const errorData = await res.json();
+      console.error('Registration failed:', errorData);
     } catch (e) {
       console.error('Failed to register customer:', e);
-      // Mock fallback
-      return {
-        id: Math.floor(Math.random() * 1000),
-        username: data.email.split('@')[0],
-        email: data.email,
-        role: 'CUSTOMER' as const,
-        phone_number: data.phone_number,
-        full_name: data.full_name
-      };
     }
+    return null;
   },
 
   async loginVendor(credentials: any): Promise<Vendor | null> {
@@ -123,33 +107,46 @@ export const ApiService = {
       if (res.ok) {
         return await res.json();
       }
-      // Mock fallback
-      if (credentials.email && credentials.password) {
-        return {
-          id: 1,
-          username: credentials.email.split('@')[0],
-          email: credentials.email,
-          role: 'CUSTOMER' as const,
-        };
-      }
+      const errorData = await res.json();
+      console.error('Login failed:', errorData);
     } catch (e) {
       console.error('Failed to login customer:', e);
-      // Mock fallback
-      if (credentials.email && credentials.password) {
-        return {
-          id: 1,
-          username: credentials.email.split('@')[0],
-          email: credentials.email,
-          role: 'CUSTOMER' as const,
-        };
-      }
     }
     return null;
   },
 
-  async getBookings(): Promise<Booking[]> {
+  async sendOTP(email: string): Promise<boolean> {
     try {
-      const res = await fetch(`${API_BASE}/bookings/`);
+      const res = await fetch(`${API_BASE}/otp/send/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      return res.ok;
+    } catch (e) {
+      console.error('Failed to send OTP:', e);
+      return false;
+    }
+  },
+
+  async verifyOTP(email: string, otp: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/otp/verify/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, otp }),
+      });
+      return res.ok;
+    } catch (e) {
+      console.error('Failed to verify OTP:', e);
+      return false;
+    }
+  },
+
+  async getBookings(customerId?: number): Promise<Booking[]> {
+    try {
+      const url = customerId ? `${API_BASE}/bookings/?customer=${customerId}` : `${API_BASE}/bookings/`;
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         return Array.isArray(data) ? data : data.results || [];

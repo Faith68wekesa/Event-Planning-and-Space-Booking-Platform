@@ -139,3 +139,12 @@ class Review(models.Model):
 
     def __str__(self):
         return f"Review ({self.rating}/5) by {self.user.username}"
+
+
+class EmailOTP(models.Model):
+    email = models.EmailField(unique=True)
+    otp_code = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.email} - {self.otp_code}"

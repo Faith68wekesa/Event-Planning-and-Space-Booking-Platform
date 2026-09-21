@@ -82,36 +82,38 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Primary Navigation Tabs */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
 
-          <button
-            onClick={() => setActiveTab('my-bookings')}
-            style={{
-              padding: '8px 16px',
-              fontSize: '0.88rem',
-              position: 'relative',
-              background: activeTab === 'my-bookings' ? '#0F8F7A' : 'transparent',
-              color: activeTab === 'my-bookings' ? '#ffffff' : '#0F8F7A',
-              border: '1px solid #0F8F7A',
-              borderRadius: '8px',
-              fontWeight: 600,
-              display: 'flex', alignItems: 'center', gap: '6px',
-              cursor: 'pointer', transition: 'all 0.2s'
-            }}
-          >
-            <User size={16} /> My Account
-            {bookingCount > 0 && (
-              <span style={{
-                background: '#ffb800',
-                color: '#0f172a',
-                fontSize: '0.7rem',
-                fontWeight: 800,
-                borderRadius: '999px',
-                padding: '2px 6px',
-                marginLeft: '4px'
-              }}>
-                {bookingCount}
-              </span>
-            )}
-          </button>
+          {activeRole === 'CUSTOMER' && (
+            <button
+              onClick={() => setActiveTab('my-bookings')}
+              style={{
+                padding: '8px 16px',
+                fontSize: '0.88rem',
+                position: 'relative',
+                background: activeTab === 'my-bookings' ? '#0F8F7A' : 'transparent',
+                color: activeTab === 'my-bookings' ? '#ffffff' : '#0F8F7A',
+                border: '1px solid #0F8F7A',
+                borderRadius: '8px',
+                fontWeight: 600,
+                display: 'flex', alignItems: 'center', gap: '6px',
+                cursor: 'pointer', transition: 'all 0.2s'
+              }}
+            >
+              <User size={16} /> My Account
+              {bookingCount > 0 && (
+                <span style={{
+                  background: '#ffb800',
+                  color: '#0f172a',
+                  fontSize: '0.7rem',
+                  fontWeight: 800,
+                  borderRadius: '999px',
+                  padding: '2px 6px',
+                  marginLeft: '4px'
+                }}>
+                  {bookingCount}
+                </span>
+              )}
+            </button>
+          )}
 
           {activeRole === 'VENUE_OWNER' ? (
             <button

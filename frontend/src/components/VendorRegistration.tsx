@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
-import { 
-  X, Mail, Phone, Lock, MapPin, User, Globe, 
+import {
+  X, Mail, Phone, Lock, MapPin, User, Globe,
   Clock, ArrowRight, ArrowLeft, Upload, Sparkles, Building
 } from 'lucide-react';
 import { ApiService } from '../services/api';
-import type { Vendor } from '../types';
 
 interface VendorRegistrationProps {
   onClose: () => void;
-  onSuccess?: (vendor: Vendor) => void;
   onSwitchToLogin?: () => void;
 }
 
@@ -31,13 +29,13 @@ const VENDOR_BUSINESS_TYPES = [
 
 export const VendorRegistration: React.FC<VendorRegistrationProps> = ({
   onClose,
-  onSuccess,
   onSwitchToLogin,
 }) => {
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
 
   // Form state
   const [formData, setFormData] = useState({
@@ -149,34 +147,63 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({
 
     setLoading(true);
 
-    const finalBusinessType =
-      formData.business_type === 'Other'
-        ? formData.other_business_type.trim()
-        : formData.business_type;
+    try {
+      const sent = await ApiService.sendOTP(formData.email.trim().toLowerCase());
+      if (sent) {
+        setStep(3); // Go to OTP step
+      } else {
+        setError('Failed to send verification code. Please check your email and try again.');
+      }
+    } catch (err) {
+      setError('An unexpected network error occurred.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const payload = {
-      full_name: formData.full_name.trim(),
-      email: formData.email.trim().toLowerCase(),
-      phone_number: formData.phone_number.trim(),
-      password: formData.password,
-      business_name: formData.business_name.trim(),
-      vendor_type: finalBusinessType,
-      location: formData.location.trim(),
-      address: formData.address.trim(),
-      description: formData.description.trim(),
-      years_in_business: formData.years_in_business ? parseInt(formData.years_in_business) : undefined,
-      website_url: formData.website_url.trim() || undefined,
-      portfolio_url: formData.website_url.trim() || undefined,
-      logo_url: formData.logo_url || undefined,
-    };
+  const handleOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (otpCode.length !== 6) {
+      setError('Please enter a valid 6-digit code.');
+      return;
+    }
+
+    setLoading(true);
 
     try {
+      const verified = await ApiService.verifyOTP(formData.email.trim().toLowerCase(), otpCode);
+      if (!verified) {
+        setError('Invalid or expired verification code.');
+        setLoading(false);
+        return;
+      }
+
+      const finalBusinessType =
+        formData.business_type === 'Other'
+          ? formData.other_business_type.trim()
+          : formData.business_type;
+
+      const payload = {
+        full_name: formData.full_name.trim(),
+        email: formData.email.trim().toLowerCase(),
+        phone_number: formData.phone_number.trim(),
+        password: formData.password,
+        business_name: formData.business_name.trim(),
+        vendor_type: finalBusinessType,
+        location: formData.location.trim(),
+        address: formData.address.trim(),
+        description: formData.description.trim(),
+        years_in_business: formData.years_in_business ? parseInt(formData.years_in_business) : undefined,
+        website_url: formData.website_url.trim() || undefined,
+        portfolio_url: formData.website_url.trim() || undefined,
+        logo_url: formData.logo_url || undefined,
+      };
+
       const vendor = await ApiService.registerVendor(payload);
       if (vendor) {
-        if (onSuccess) {
-          onSuccess(vendor);
-        }
         setIsSuccess(true);
+        // Do not call onSuccess(vendor) here to avoid auto-login
       } else {
         setError('Registration failed. This email or username may already be registered.');
       }
@@ -281,6 +308,15 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({
                   height: '4px',
                   borderRadius: '2px',
                   background: step >= 2 ? '#ffffff' : 'rgba(255, 255, 255, 0.3)',
+                  transition: 'background 0.3s',
+                }}
+              />
+              <div
+                style={{
+                  flex: 1,
+                  height: '4px',
+                  borderRadius: '2px',
+                  background: step >= 3 ? '#ffffff' : 'rgba(255, 255, 255, 0.3)',
                   transition: 'background 0.3s',
                 }}
               />
@@ -575,7 +611,7 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({
                   </div>
                 )}
               </form>
-            ) : (
+            ) : step === 2 ? (
               /* Section B — Business Information */
               <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
@@ -849,7 +885,52 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({
                   </div>
                 )}
               </form>
-            )}
+            ) : step === 3 ? (
+              /* Section C — OTP Verification */
+              <div style={{ padding: '8px 0' }}>
+                <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+                  <div style={{ display: 'inline-flex', padding: '16px', background: '#f8fafc', borderRadius: '50%', marginBottom: '16px' }}>
+                    <Mail size={32} color="#0d8a73" />
+                  </div>
+                  <h3 style={{ margin: '0 0 8px 0', fontSize: '1.25rem', color: '#0f172a' }}>Verify Your Email</h3>
+                  <p style={{ margin: 0, color: '#475569', fontSize: '0.9rem' }}>
+                    We've sent a 6-digit verification code to <strong>{formData.email}</strong>. Please enter it below.
+                  </p>
+                </div>
+                <form onSubmit={handleOtpSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div>
+                    <input
+                      required
+                      type="text"
+                      maxLength={6}
+                      value={otpCode}
+                      onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                      placeholder="000000"
+                      style={{ width: '100%', boxSizing: 'border-box', padding: '14px', borderRadius: '8px', border: '2px solid #cbd5e1', outline: 'none', fontSize: '1.5rem', textAlign: 'center', letterSpacing: '0.5em', fontWeight: 700, color: '#1e293b' }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', gap: '12px', marginTop: '10px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setStep(2)}
+                      style={{
+                        flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
+                      }}
+                    >
+                      <ArrowLeft size={16} /> Back
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="btn-primary"
+                      style={{ flex: 2, padding: '12px', borderRadius: '8px', fontSize: '1rem', fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}
+                    >
+                      {loading ? 'Verifying...' : 'Verify & Complete'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            ) : null}
           </div>
         )}
       </div>

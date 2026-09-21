@@ -7,6 +7,7 @@ import { VendorDashboardPortfolio } from './VendorDashboardPortfolio';
 import { VendorDashboardReviews } from './VendorDashboardReviews';
 import './vendor-dashboard.css';
 import { LayoutDashboard, CalendarDays, Briefcase, MessageSquare, Settings, HelpCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 interface VendorDashboardProps {
   currentVendor: Vendor;
@@ -72,7 +73,7 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
     });
     setShowAddModal(false);
     fetchDashboardData();
-    alert('New venue submitted! It will appear on the platform for admin verification.');
+    toast.success('New venue submitted! It will appear on the platform for admin verification.');
   };
 
   const menuItems = [
@@ -170,7 +171,7 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
         )}
 
         {activeTab === 'reviews' && (
-          <VendorDashboardReviews />
+          <VendorDashboardReviews reviews={[]} />
         )}
 
       </main>

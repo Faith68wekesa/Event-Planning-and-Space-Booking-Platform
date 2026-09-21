@@ -13,6 +13,7 @@ import {
   Trash2,
   ShieldCheck
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 interface VenueOwnerDashboardProps {
   currentOwner: VenueOwner;
@@ -131,9 +132,9 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
         image_url: 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=800&q=80',
       });
       fetchDashboardData();
-      alert('Venue listed successfully! It has been submitted for platform verification.');
+      toast.success('Venue listed successfully! It has been submitted for platform verification.');
     } catch (err) {
-      alert('Failed to add venue. Please try again.');
+      toast.error('Failed to add venue. Please try again.');
     } finally {
       setSubmittingVenue(false);
     }

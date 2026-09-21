@@ -1,34 +1,12 @@
 import React from 'react';
 import { Star, MessageCircle, ThumbsUp } from 'lucide-react';
+import type { Review } from '../types';
 
-export const VendorDashboardReviews: React.FC = () => {
-  // Mock data for reviews since it's not currently in the backend
-  const reviews = [
-    {
-      id: 1,
-      author: 'Alexandria Kariuki',
-      date: 'Oct 12, 2026',
-      rating: 5,
-      content: 'We had an amazing time at Karen Oasis Gardens. The staff went above and beyond to make our wedding day truly special. The lush greenery and well-kept lawns provided the perfect backdrop for our photos. Highly recommended for anyone looking for a serene outdoor venue.',
-      response: 'Thank you Alexandria! We are so glad we could be part of your special day.'
-    },
-    {
-      id: 2,
-      author: 'Marcus Otieno',
-      date: 'Sep 28, 2026',
-      rating: 5,
-      content: 'Excellent facilities for our corporate retreat. The catering was on point, and the AV equipment worked flawlessly. Only minor issue was the WiFi being a bit slow in the breakout rooms, but overall a fantastic experience.',
-      response: null
-    },
-    {
-      id: 3,
-      author: 'Sarah Wanjiru',
-      date: 'Sep 15, 2026',
-      rating: 4,
-      content: 'Everything was beautiful. The views of the lake at sunset are just breathtaking. The staff was attentive and helpful. I would definitely book this venue again for future events.',
-      response: null
-    }
-  ];
+interface VendorDashboardReviewsProps {
+  reviews: Review[];
+}
+
+export const VendorDashboardReviews: React.FC<VendorDashboardReviewsProps> = ({ reviews }) => {
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '24px' }}>
@@ -50,41 +28,40 @@ export const VendorDashboardReviews: React.FC = () => {
 
         {/* Reviews */}
         <div>
-          {reviews.map((review, idx) => (
-            <div key={review.id} style={{ padding: '24px', borderBottom: idx !== reviews.length - 1 ? '1px solid #e2e8f0' : 'none' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
-                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                  <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, color: '#475569' }}>
-                    {review.author.charAt(0)}
+          {reviews.length === 0 ? (
+            <div style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>
+              No reviews yet.
+            </div>
+          ) : (
+            reviews.map((review, idx) => (
+              <div key={review.id} style={{ padding: '24px', borderBottom: idx !== reviews.length - 1 ? '1px solid #e2e8f0' : 'none' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, color: '#475569' }}>
+                      {review.user_name.charAt(0)}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 600, color: '#0f172a' }}>{review.user_name}</div>
+                      <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{new Date(review.created_at).toLocaleDateString()}</div>
+                    </div>
                   </div>
-                  <div>
-                    <div style={{ fontWeight: 600, color: '#0f172a' }}>{review.author}</div>
-                    <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{review.date}</div>
+                  <div style={{ display: 'flex', gap: '2px', color: '#fbbf24' }}>
+                    {[...Array(5)].map((_, i) => (
+                      <Star key={i} size={16} fill={i < review.rating ? '#fbbf24' : 'transparent'} stroke={i < review.rating ? '#fbbf24' : '#cbd5e1'} />
+                    ))}
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: '2px', color: '#fbbf24' }}>
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} size={16} fill={i < review.rating ? '#fbbf24' : 'transparent'} stroke={i < review.rating ? '#fbbf24' : '#cbd5e1'} />
-                  ))}
-                </div>
-              </div>
-              
-              <p style={{ color: '#334155', fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '16px' }}>
-                "{review.content}"
-              </p>
+                
+                <p style={{ color: '#334155', fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '16px' }}>
+                  "{review.comment}"
+                </p>
 
-              {review.response ? (
-                <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', borderLeft: '4px solid #8b5cf6', marginLeft: '24px' }}>
-                  <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#0d8a73', marginBottom: '4px' }}>Your Response</div>
-                  <p style={{ fontSize: '0.9rem', color: '#475569', margin: 0 }}>{review.response}</p>
-                </div>
-              ) : (
                 <button style={{ background: 'none', border: 'none', color: '#0d8a73', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '24px' }}>
                   <MessageCircle size={14} /> Reply to Review
                 </button>
-              )}
-            </div>
-          ))}
+              </div>
+            ))
+          )}
         </div>
       </div>
 

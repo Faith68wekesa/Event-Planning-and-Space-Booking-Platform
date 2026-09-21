@@ -1,6 +1,5 @@
 import React from 'react';
 import type { FilterState, PlatformStats } from '../types';
-import { Search, MapPin, Tag, ShieldCheck, Users, Award } from 'lucide-react';
 
 interface HeroSearchProps {
   filters: FilterState;
@@ -9,12 +8,7 @@ interface HeroSearchProps {
   onSearch: () => void;
 }
 
-export const HeroSearch: React.FC<HeroSearchProps> = ({
-  filters,
-  setFilters,
-  stats,
-  onSearch,
-}) => {
+export const HeroSearch: React.FC<HeroSearchProps> = () => {
   return (
     <div style={{
       background: '#ffffff',

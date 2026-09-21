@@ -22,7 +22,8 @@ import { SplashPage } from './components/SplashPage.tsx';
 import { CustomerLogin } from './components/CustomerLogin.tsx';
 import { CustomerRegistration } from './components/CustomerRegistration.tsx';
 import type { User as UserType } from './types';
-import { MapPin, Briefcase } from 'lucide-react';
+import { Toaster } from 'react-hot-toast';
+
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('splash');
   const [activeRole, setActiveRole] = useState<UserRole>('CUSTOMER');
@@ -84,14 +85,20 @@ export const App: React.FC = () => {
   const loadData = async () => {
     const fetchedVenues = await ApiService.getVenues(filters);
     const fetchedVendors = await ApiService.getVendors(filters);
-    const fetchedBookings = await ApiService.getBookings();
     const fetchedStats = await ApiService.getStats();
 
     setVenues(fetchedVenues);
     setVendors(fetchedVendors);
-    setBookings(fetchedBookings);
     setStats(fetchedStats);
   };
+
+  useEffect(() => {
+    if (currentCustomer) {
+      ApiService.getBookings(currentCustomer.id).then(setBookings);
+    } else {
+      setBookings([]);
+    }
+  }, [currentCustomer]);
 
   useEffect(() => {
     loadData();
@@ -125,6 +132,7 @@ export const App: React.FC = () => {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <Toaster position="top-center" reverseOrder={false} />
       {activeTab === 'splash' ? (
         <SplashPage
           onSelectCustomer={() => {
@@ -263,6 +271,7 @@ export const App: React.FC = () => {
             <BookingModal
               venue={bookingTargetVenue}
               vendor={bookingTargetVendor}
+              currentCustomer={currentCustomer}
               onClose={() => {
                 setBookingTargetVenue(null);
                 setBookingTargetVendor(null);
@@ -336,9 +345,6 @@ export const App: React.FC = () => {
       {showRegistration && (
         <VendorRegistration
           onClose={() => setShowRegistration(false)}
-          onSuccess={(vendor) => {
-            setVendors((prev) => [vendor, ...prev]);
-          }}
           onSwitchToLogin={() => {
             setShowRegistration(false);
             setShowLogin(true);
@@ -381,9 +387,6 @@ export const App: React.FC = () => {
       {showVenueOwnerRegistration && (
         <VenueOwnerRegistration
           onClose={() => setShowVenueOwnerRegistration(false)}
-          onSuccess={(_owner) => {
-            // Keep registration modal open with pending verification screen
-          }}
           onSwitchToLogin={() => {
             setShowVenueOwnerRegistration(false);
             setShowVenueOwnerLogin(true);
@@ -413,7 +416,6 @@ export const App: React.FC = () => {
             setBookingTargetVenue(null);
             setBookingTargetVendor(null);
           }}
-          onSuccess={handleCustomerLoginSuccess}
           onSwitchToLogin={() => {
             setShowCustomerRegistration(false);
             setShowCustomerLogin(true);

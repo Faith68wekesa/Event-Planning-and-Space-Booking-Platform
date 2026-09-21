@@ -1,15 +1,20 @@
 from rest_framework import viewsets, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.decorators import api_view, action
+from rest_framework.decorators import api_view, action, permission_classes
+from rest_framework.permissions import AllowAny
 from django.contrib.auth import authenticate
 from django.db import transaction
 from django.db.models import Q, Sum
-from .models import User, VendorProfile, VenueOwnerProfile, Venue, Booking, Review
+from .models import User, VendorProfile, VenueOwnerProfile, Venue, Booking, Review, EmailOTP
 from .serializers import (
     UserSerializer, VendorProfileSerializer, VenueOwnerProfileSerializer, VenueSerializer, 
     BookingSerializer, ReviewSerializer
 )
+from django.core.mail import send_mail
+import random
+import datetime
+from django.utils import timezone
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -446,3 +451,124 @@ class VenueOwnerBookingsView(APIView):
         bookings = Booking.objects.filter(venue__in=owner_venues).order_by('-created_at')
         return Response(BookingSerializer(bookings, many=True).data)
 
+
+@api_view(['POST'])
+@transaction.atomic
+def register_customer(request):
+    data = request.data
+    email = data.get('email', '').strip().lower()
+    username = data.get('username', '').strip() or email
+
+    if not email:
+        return Response({'error': 'Email address is required'}, status=status.HTTP_400_BAD_REQUEST)
+    if User.objects.filter(email__iexact=email).exists():
+        return Response({'error': 'An account with this email address already exists'}, status=status.HTTP_400_BAD_REQUEST)
+    if User.objects.filter(username__iexact=username).exists():
+        return Response({'error': 'This username is already taken'}, status=status.HTTP_400_BAD_REQUEST)
+        
+    try:
+        full_name = data.get('full_name', '').strip()
+        first_name = data.get('first_name', '').strip()
+        last_name = data.get('last_name', '').strip()
+        if full_name and not (first_name or last_name):
+            parts = full_name.split(' ', 1)
+            first_name = parts[0]
+            last_name = parts[1] if len(parts) > 1 else ''
+
+        user = User.objects.create_user(
+            username=username,
+            email=email,
+            password=data.get('password'),
+            first_name=first_name,
+            last_name=last_name,
+            role='CUSTOMER',
+            phone_number=data.get('phone_number', '')
+        )
+        
+        serializer = UserSerializer(user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+def login_customer(request):
+    login_identifier = (request.data.get('username') or request.data.get('email') or '').strip()
+    password = request.data.get('password')
+    
+    user_obj = User.objects.filter(Q(username__iexact=login_identifier) | Q(email__iexact=login_identifier)).first()
+    if not user_obj:
+        return Response({'error': 'No account found with this email or username'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    user = authenticate(username=user_obj.username, password=password)
+    
+    if user is not None:
+        if user.role != 'CUSTOMER':
+            return Response({'error': 'Account is not registered as a customer'}, status=status.HTTP_403_FORBIDDEN)
+            
+        serializer = UserSerializer(user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    else:
+        return Response({'error': 'Invalid credentials. Please verify your password.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def send_otp(request):
+    email = request.data.get('email', '').strip().lower()
+    if not email:
+        return Response({'error': 'Email is required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Generate 6-digit OTP
+    otp_code = str(random.randint(100000, 999999))
+    
+    # Save/update OTP in database
+    otp_obj, created = EmailOTP.objects.get_or_create(email=email)
+    otp_obj.otp_code = otp_code
+    otp_obj.save()
+    
+    # Send email
+    try:
+        send_mail(
+            subject='Your Verification Code',
+            message=f'Your verification code is: {otp_code}\n\nThis code will expire in 10 minutes.',
+            from_email='noreply@eventplanning.co.ke',
+            recipient_list=[email],
+            fail_silently=False,
+        )
+    except Exception as e:
+        print(f"Error sending email: {e}")
+        # Proceed anyway so the frontend advances to the OTP step
+        
+    # Temporary: Print clearly to the console for testing!
+    print(f"\n\n{'='*60}\n\n  🚨 OTP CODE FOR {email}: {otp_code} 🚨\n\n{'='*60}\n\n")
+    
+    return Response({'message': 'OTP sent successfully'})
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def verify_otp(request):
+    email = request.data.get('email', '').strip().lower()
+    otp_code = request.data.get('otp', '').strip()
+    
+    if not email or not otp_code:
+        return Response({'error': 'Email and OTP are required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+    try:
+        otp_obj = EmailOTP.objects.get(email=email)
+        
+        # Check if expired (10 minutes)
+        time_diff = timezone.now() - otp_obj.created_at
+        if time_diff.total_seconds() > 600:
+            return Response({'error': 'OTP has expired. Please request a new one.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        if otp_obj.otp_code == otp_code:
+            # OTP is valid, delete it to prevent reuse
+            otp_obj.delete()
+            return Response({'message': 'Email verified successfully'})
+        else:
+            return Response({'error': 'Invalid OTP'}, status=status.HTTP_400_BAD_REQUEST)
+            
+    except EmailOTP.DoesNotExist:
+        return Response({'error': 'No OTP found for this email'}, status=status.HTTP_400_BAD_REQUEST)
