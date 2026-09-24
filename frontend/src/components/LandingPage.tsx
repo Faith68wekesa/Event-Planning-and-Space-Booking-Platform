@@ -54,16 +54,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <Briefcase size={18} /> Planners & Services
             </button>
           )}
-          {onBecomeVendor && (
-            <button onClick={onBecomeVendor} style={{ padding: '10px 20px', borderRadius: '999px', background: '#ffffff', color: '#096b5a', border: '1px solid #096b5a', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(9,107,90,0.1)' }} onMouseEnter={(e) => { e.currentTarget.style.background = '#096b5a'; e.currentTarget.style.color = '#ffffff'; }} onMouseLeave={(e) => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.color = '#096b5a'; }}>
-              <UserCheck size={18} /> Become a Vendor
-            </button>
-          )}
-          {onListVenue && (
-            <button onClick={onListVenue} style={{ padding: '10px 20px', borderRadius: '999px', background: '#ffffff', color: '#096b5a', border: '1px solid #096b5a', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(9,107,90,0.1)' }} onMouseEnter={(e) => { e.currentTarget.style.background = '#096b5a'; e.currentTarget.style.color = '#ffffff'; }} onMouseLeave={(e) => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.color = '#096b5a'; }}>
-              <Building2 size={18} /> List Venue
-            </button>
-          )}
+
         </div>
 
         <div style={{ maxWidth: '1200px', width: '100%', display: 'flex', flexWrap: 'wrap', gap: '48px', alignItems: 'center' }}>
@@ -145,10 +136,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
       </section>
 
-      {/* 7. Why Choose Event Planning and SpaceBooking Platform? */}
+      {/* 7. Why Choose Event Planning and SpaceBooking? */}
       <section style={{ padding: '80px 24px', background: '#ffffff' }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto', textAlign: 'center' }}>
-          <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#14213D', marginBottom: '48px' }}>Why Choose Event Planning and SpaceBooking Platform?</h2>
+          <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#14213D', marginBottom: '48px' }}>Why Choose Event Planning and SpaceBooking?</h2>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '32px' }}>
             <div>

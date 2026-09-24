@@ -42,7 +42,7 @@ export const SplashPage: React.FC<SplashPageProps> = ({ onSelectCustomer, onSele
           </div>
           <div>
             <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#ffffff', margin: 0 }}>
-              Event Planning and SpaceBooking Platform<span style={{ fontSize: '0.85rem', background: '#ffb800', color: '#0f172a', padding: '2px 8px', borderRadius: '6px', verticalAlign: 'middle', fontWeight: 700 }}>KENYA</span>
+              Event Planning and SpaceBooking
             </h1>
           </div>
         </header>
@@ -53,8 +53,8 @@ export const SplashPage: React.FC<SplashPageProps> = ({ onSelectCustomer, onSele
             Book the perfect space for your next event
           </h2>
           <p style={{ fontSize: '1.1rem', color: '#e2e8f0', marginBottom: '48px', maxWidth: '600px', lineHeight: 1.5 }}>
-            Kenya's premium platform for discovering verified venues and professional event services.
-            How would you like to use Event Planning and SpaceBooking Platform today?
+            The premium platform for discovering verified venues and professional event services.
+            How would you like to use Event Planning and SpaceBooking today?
           </p>
 
           <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -190,7 +190,7 @@ export const SplashPage: React.FC<SplashPageProps> = ({ onSelectCustomer, onSele
 
         {/* Footer */}
         <footer style={{ padding: '24px', textAlign: 'center', color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem' }}>
-          &copy; {new Date().getFullYear()} Event Planning and SpaceBooking Platform. All rights reserved.
+          &copy; {new Date().getFullYear()} Event Planning and SpaceBooking. All rights reserved.
         </footer>
       </div>
     </div>

@@ -1,12 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { UserRole } from '../types';
-import { ShieldCheck, Sparkles, Briefcase, Building2, Search, User } from 'lucide-react';
+import { ShieldCheck, Sparkles, Briefcase, Building2, Search, User, ChevronDown, Lock, ClipboardList } from 'lucide-react';
 
 interface NavbarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   activeRole: UserRole;
   bookingCount: number;
+  onLoginClick?: () => void;
+  onRegisterClick?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -14,7 +16,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   setActiveTab,
   activeRole,
   bookingCount,
+  onLoginClick,
+  onRegisterClick,
 }) => {
+  const [showAccountMenu, setShowAccountMenu] = useState(false);
   return (
     <header style={{ position: 'sticky', top: 0, zIndex: 50 }}>
 
@@ -49,7 +54,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
           <div>
             <h1 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#14213D', margin: 0, whiteSpace: 'nowrap' }}>
-              Event Planning and SpaceBooking Platform <span style={{ fontSize: '0.75rem', background: '#ffb800', color: '#0f172a', padding: '2px 8px', borderRadius: '6px', verticalAlign: 'middle', fontWeight: 700 }}>KENYA</span>
+              Event Planning and SpaceBooking
             </h1>
             <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0, whiteSpace: 'nowrap' }}>Verified Event Spaces & Planners</p>
           </div>
@@ -83,36 +88,70 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
 
           {activeRole === 'CUSTOMER' && (
-            <button
-              onClick={() => setActiveTab('my-bookings')}
-              style={{
-                padding: '8px 16px',
-                fontSize: '0.88rem',
-                position: 'relative',
-                background: activeTab === 'my-bookings' ? '#0F8F7A' : 'transparent',
-                color: activeTab === 'my-bookings' ? '#ffffff' : '#0F8F7A',
-                border: '1px solid #0F8F7A',
-                borderRadius: '8px',
-                fontWeight: 600,
-                display: 'flex', alignItems: 'center', gap: '6px',
-                cursor: 'pointer', transition: 'all 0.2s'
-              }}
-            >
-              <User size={16} /> My Account
-              {bookingCount > 0 && (
-                <span style={{
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setShowAccountMenu(!showAccountMenu)}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: '0.88rem',
+                  background: activeTab === 'my-bookings' || showAccountMenu ? '#0F8F7A' : 'transparent',
+                  color: activeTab === 'my-bookings' || showAccountMenu ? '#ffffff' : '#0F8F7A',
+                  border: '1px solid #0F8F7A',
+                  borderRadius: '8px',
+                  fontWeight: 600,
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  cursor: 'pointer', transition: 'all 0.2s'
+                }}
+              >
+                <div style={{
                   background: '#ffb800',
-                  color: '#0f172a',
-                  fontSize: '0.7rem',
-                  fontWeight: 800,
-                  borderRadius: '999px',
-                  padding: '2px 6px',
-                  marginLeft: '4px'
+                  borderRadius: '50%',
+                  width: '24px',
+                  height: '24px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#000'
                 }}>
-                  {bookingCount}
-                </span>
+                  <Lock size={12} />
+                </div>
+                Account
+                <ChevronDown size={16} />
+              </button>
+              
+              {showAccountMenu && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  marginTop: '8px',
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+                  width: '180px',
+                  zIndex: 100,
+                  overflow: 'hidden'
+                }}>
+                  <button 
+                    onClick={() => { setShowAccountMenu(false); onLoginClick?.(); }}
+                    style={{ width: '100%', textAlign: 'left', padding: '12px 16px', background: 'none', border: 'none', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem', color: '#1e293b' }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                  >
+                    <Lock size={16} /> Login
+                  </button>
+                  <button 
+                    onClick={() => { setShowAccountMenu(false); onRegisterClick?.(); }}
+                    style={{ width: '100%', textAlign: 'left', padding: '12px 16px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem', color: '#1e293b' }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                  >
+                    <ClipboardList size={16} /> Register
+                  </button>
+                </div>
               )}
-            </button>
+            </div>
           )}
 
           {activeRole === 'VENUE_OWNER' ? (
@@ -121,7 +160,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={() => setActiveTab('venue-owner-dashboard')}
               style={{ padding: '8px 16px', fontSize: '0.88rem', background: '#0F8F7A', color: '#fff', border: 'none', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 600 }}
             >
-              <Building2 size={16} /> Venue Owner Portal
+              <Building2 size={16} /> Venue Owner Dashboard
             </button>
           ) : activeRole === 'VENDOR' ? (
             <button
@@ -129,7 +168,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={() => setActiveTab('vendor-dashboard')}
               style={{ padding: '8px 16px', fontSize: '0.88rem', background: '#0F8F7A', color: '#fff', border: 'none', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 600 }}
             >
-              <Briefcase size={16} /> Vendor Portal
+              <Briefcase size={16} /> Vendor Dashboard
             </button>
           ) : null}
 

@@ -99,6 +99,7 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
       {/* Sidebar */}
       <aside className="vendor-sidebar">
         <div className="vendor-sidebar-header">
+          <div style={{ fontSize: '0.9rem', color: '#0F8F7A', marginBottom: '8px', lineHeight: 1.2 }}>Event Planning and SpaceBooking</div>
           {currentVendor.business_name}
           <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 500, marginTop: '4px' }}>{currentVendor.vendor_type_display} Partner</div>
         </div>

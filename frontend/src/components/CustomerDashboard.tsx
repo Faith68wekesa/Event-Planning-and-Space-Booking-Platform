@@ -29,7 +29,8 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
   return (
     <div style={{ maxWidth: '1000px', margin: '32px auto', padding: '0 20px' }}>
       <div style={{ marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '1.75rem', fontWeight: 800 }}>My Booking Requests</h2>
+        <h1 style={{ fontSize: '1.2rem', color: '#0F8F7A', fontWeight: 800, marginBottom: '8px' }}>Event Planning and SpaceBooking</h1>
+        <h2 style={{ fontSize: '1.75rem', fontWeight: 800, margin: '0 0 8px 0' }}>My Booking Requests</h2>
         <p style={{ color: 'var(--text-muted)' }}>
           Track real-time approval status and details for your venue & vendor reservations.
         </p>

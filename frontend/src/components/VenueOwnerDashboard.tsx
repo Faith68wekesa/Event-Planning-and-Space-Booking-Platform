@@ -163,23 +163,8 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
           }}
         >
           <div>
+            <div style={{ fontSize: '1rem', fontWeight: 800, color: '#0d8a73', marginBottom: '8px' }}>Event Planning and SpaceBooking</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-              <span
-                style={{
-                  background: 'rgba(255, 255, 255, 0.2)',
-                  padding: '4px 10px',
-                  borderRadius: '999px',
-                  fontSize: '0.78rem',
-                  fontWeight: 700,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                }}
-              >
-                <Building2 size={13} /> Venue Owner Portal
-              </span>
               {currentOwner.is_verified && (
                 <span
                   style={{

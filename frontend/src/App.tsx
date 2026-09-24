@@ -149,6 +149,8 @@ export const App: React.FC = () => {
             setActiveTab={setActiveTab}
             activeRole={activeRole}
             bookingCount={bookings.length}
+            onLoginClick={() => setShowCustomerLogin(true)}
+            onRegisterClick={() => setShowCustomerRegistration(true)}
           />
 
           <main style={{ flexGrow: 1 }}>
@@ -293,9 +295,9 @@ export const App: React.FC = () => {
             <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '32px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '32px' }}>
                 <div>
-                  <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '16px' }}>Event Planning and SpaceBooking Platform KENYA</h3>
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '16px' }}>Event Planning and SpaceBooking</h3>
                   <p style={{ color: '#e6f7f3', lineHeight: 1.5, maxWidth: '280px' }}>
-                    Your platform for discovering and booking event spaces and trusted event professionals across Kenya.
+                    Your platform for discovering and booking event spaces and trusted event professionals.
                   </p>
                 </div>
 
@@ -334,7 +336,7 @@ export const App: React.FC = () => {
                   <span style={{ cursor: 'pointer' }}>Vendor Verification</span>
                 </div>
                 <div>
-                  &copy; {new Date().getFullYear()} Event Planning and SpaceBooking Platform Kenya. All rights reserved.
+                  &copy; {new Date().getFullYear()} Event Planning and SpaceBooking. All rights reserved.
                 </div>
               </div>
             </div>

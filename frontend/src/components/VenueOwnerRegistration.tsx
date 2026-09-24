@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   X, Mail, Phone, Lock, MapPin, User, Globe,
-  Clock, ArrowRight, ArrowLeft, Upload, Sparkles, Building2, Info
+  Clock, ArrowRight, ArrowLeft, Upload, Building2, Info
 } from 'lucide-react';
 import { ApiService } from '../services/api';
 
@@ -229,6 +229,7 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
       }}
     >
       <div
+        className="hide-scrollbar"
         style={{
           background: '#ffffff',
           borderRadius: '20px',
@@ -240,7 +241,7 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
           position: 'relative',
           display: 'flex',
           flexDirection: 'column',
-          border: '1px solid rgba(226, 232, 240, 0.8)',
+          border: '2px solid #0d8a73',
         }}
       >
         {/* Header */}
@@ -248,8 +249,7 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
           style={{
             padding: '24px 28px',
             borderBottom: '1px solid #f1f5f9',
-            background: 'linear-gradient(135deg, #065f54 0%, #0d8a73 100%)',
-            color: '#fff',
+            background: '#ffffff',
             borderTopLeftRadius: '20px',
             borderTopRightRadius: '20px',
             position: 'relative',
@@ -262,7 +262,7 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
               position: 'absolute',
               top: '20px',
               right: '20px',
-              background: 'rgba(255, 255, 255, 0.15)',
+              background: '#f1f5f9',
               border: 'none',
               borderRadius: '50%',
               width: '32px',
@@ -270,7 +270,7 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#ffffff',
+              color: '#64748b',
               cursor: 'pointer',
               transition: 'background 0.2s',
             }}
@@ -278,13 +278,13 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
             <X size={18} />
           </button>
 
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.2)', padding: '4px 10px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 700, marginBottom: '6px' }}>
-            <Sparkles size={13} /> Property Owner Portal
+          <div style={{ marginBottom: '12px' }}>
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0d8a73', margin: 0 }}>Event Planning and SpaceBooking</h3>
           </div>
-          <h2 style={{ fontSize: '1.45rem', fontWeight: 800, color: '#ffffff', margin: 0 }}>
+          <h2 style={{ fontSize: '1.45rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
             Create Venue Owner Account
           </h2>
-          <p style={{ margin: '6px 0 0', fontSize: '0.85rem', color: '#e2e8f0' }}>
+          <p style={{ margin: '6px 0 0', fontSize: '0.85rem', color: '#64748b' }}>
             List and manage premier conference halls, gardens, and event spaces across Kenya.
           </p>
 

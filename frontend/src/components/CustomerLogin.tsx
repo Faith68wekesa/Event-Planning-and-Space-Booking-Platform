@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Lock, Mail, Sparkles } from 'lucide-react';
+import { X } from 'lucide-react';
 import { ApiService } from '../services/api.ts';
 import type { User as UserType } from '../types';
 
@@ -66,8 +66,8 @@ export const CustomerLogin: React.FC<CustomerLoginProps> = ({ onClose, onSuccess
       }}>
         <div style={{ padding: '24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
           <div>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#e6f7f3', color: '#0d8a73', padding: '4px 10px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 700, marginBottom: '6px' }}>
-              <Sparkles size={13} /> Customer Portal
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#0d8a73', padding: '0', fontSize: '0.85rem', fontWeight: 700, marginBottom: '6px' }}>
+              Event Planning and SpaceBooking
             </div>
             <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#1e293b', margin: 0 }}>
               Login
@@ -86,29 +86,29 @@ export const CustomerLogin: React.FC<CustomerLoginProps> = ({ onClose, onSuccess
           )}
 
           <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Email Address</label>
             <div style={{ position: 'relative' }}>
-              <Mail size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-              <input required type="email" name="email" value={formData.email} onChange={handleChange} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} placeholder="e.g. david@example.com" />
+              <input required type="email" name="email" value={formData.email} onChange={handleChange} style={{ width: '100%', boxSizing: 'border-box', padding: '14px 20px', borderRadius: '30px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.95rem' }} placeholder="Email *" />
             </div>
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Password</label>
             <div style={{ position: 'relative' }}>
-              <Lock size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-              <input required type="password" name="password" value={formData.password} onChange={handleChange} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} placeholder="••••••••" />
+              <input required type="password" name="password" value={formData.password} onChange={handleChange} style={{ width: '100%', boxSizing: 'border-box', padding: '14px 20px', borderRadius: '30px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.95rem' }} placeholder="Password *" />
             </div>
           </div>
 
-          <button type="submit" disabled={loading} className="btn-primary" style={{ width: '100%', padding: '12px', marginTop: '8px', display: 'flex', justifyContent: 'center' }}>
-            {loading ? 'Logging in...' : 'Log In'}
+          <div style={{ textAlign: 'right' }}>
+            <a href="#" style={{ color: '#0F8F7A', textDecoration: 'none', fontSize: '0.9rem', fontWeight: 600 }}>Forgot password?</a>
+          </div>
+
+          <button type="submit" disabled={loading} style={{ width: '100%', padding: '14px', marginTop: '8px', display: 'flex', justifyContent: 'center', background: '#0F8F7A', color: '#fff', border: 'none', borderRadius: '30px', fontSize: '1rem', fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer' }}>
+            {loading ? 'Logging in...' : 'Sign in'}
           </button>
 
-          <div style={{ textAlign: 'center', marginTop: '16px', fontSize: '0.875rem', color: '#64748b' }}>
-            Don't have a customer account?{' '}
-            <button type="button" onClick={onSwitchToRegister} style={{ background: 'none', border: 'none', color: '#0d8a73', fontWeight: 600, cursor: 'pointer', padding: 0 }}>
-              Register here
+          <div style={{ marginTop: '16px', fontSize: '0.9rem', color: '#334155' }}>
+            Don't have an account ?{' '}
+            <button type="button" onClick={onSwitchToRegister} style={{ background: 'none', border: 'none', color: '#0F8F7A', fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+              Sign Up
             </button>
           </div>
         </form>
