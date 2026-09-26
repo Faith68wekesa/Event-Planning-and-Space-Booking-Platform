@@ -46,7 +46,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
         <div style={{ display: 'grid', gap: '16px' }}>
           {bookings.map((b) => {
             const targetName = b.venue_details?.title || b.vendor_details?.business_name || b.event_title;
-            const targetLoc = b.venue_details?.location || b.vendor_details?.location || 'Kenya';
+            const targetLoc = b.venue_details?.location || b.vendor_details?.location || '';
 
             return (
               <div key={b.id} className="card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>

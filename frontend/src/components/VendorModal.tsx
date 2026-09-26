@@ -58,7 +58,7 @@ export const VendorModal: React.FC<VendorModalProps> = ({ vendor, onClose, onBoo
               {vendor.business_name}
             </h2>
             <p style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)', marginTop: '4px', fontSize: '0.9rem' }}>
-              <MapPin size={16} color="#0d8a73" /> Based in {vendor.location}, Kenya
+              <MapPin size={16} color="#0d8a73" /> Based in {vendor.location}
             </p>
           </div>
 

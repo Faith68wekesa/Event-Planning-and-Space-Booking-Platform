@@ -30,7 +30,7 @@ export const HeroSearch: React.FC<HeroSearchProps> = () => {
           textTransform: 'uppercase',
           letterSpacing: '0.5px'
         }}>
-          Premium Event Spaces Across Kenya
+          Premium Event Spaces Across
         </div>
       </div>
 

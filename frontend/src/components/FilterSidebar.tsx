@@ -133,7 +133,7 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
             value={filters.location}
             onChange={(e) => setFilters({ ...filters, location: e.target.value })}
           >
-            <option value="ALL">All Regions in Kenya</option>
+            <option value="ALL">All Regions </option>
             <option value="Nairobi">Nairobi</option>
             <option value="Naivasha">Naivasha</option>
             <option value="Mombasa">Mombasa</option>

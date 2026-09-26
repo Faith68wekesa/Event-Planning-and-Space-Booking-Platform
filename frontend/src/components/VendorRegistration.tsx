@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
-  X, Mail, Phone, Lock, MapPin, User, Globe,
-  Clock, ArrowRight, ArrowLeft, Upload, Building
+  X, Clock, ArrowRight, ArrowLeft
 } from 'lucide-react';
 import { ApiService } from '../services/api';
 
@@ -71,16 +70,7 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({
     }
   };
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, logo_url: reader.result as string }));
-      };
-      reader.readAsDataURL(file);
-    }
-  };
+
 
   // Step 1 Validation
   const validateStep1 = () => {
@@ -288,7 +278,7 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({
             Create Vendor Account
           </h2>
           <p style={{ margin: '6px 0 0', fontSize: '0.85rem', color: '#64748b' }}>
-            Join Kenya's leading event services marketplace and reach thousands of clients.
+            Jo's leading event services marketplace and reach thousands of clients.
           </p>
 
           {!isSuccess && (
@@ -481,15 +471,13 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({
                     Full Name <span style={{ color: '#ef4444' }}>*</span>
                   </label>
                   <div style={{ position: 'relative' }}>
-                    <User size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
                     <input
                       required
                       type="text"
                       name="full_name"
                       value={formData.full_name}
                       onChange={handleChange}
-                      placeholder="e.g. David Mwangi"
-                      style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px 11px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
+                      style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
                     />
                   </div>
                 </div>
@@ -501,35 +489,31 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({
                     <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 400, marginLeft: '6px' }}>(Used for login)</span>
                   </label>
                   <div style={{ position: 'relative' }}>
-                    <Mail size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
                     <input
                       required
                       type="email"
                       name="email"
                       value={formData.email}
                       onChange={handleChange}
-                      placeholder="e.g. david@cateringpros.co.ke"
-                      style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px 11px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
+                      style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
                     />
                   </div>
                 </div>
 
-                {/* Phone Number */}
+                {/* Number */}
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                    Phone Number <span style={{ color: '#ef4444' }}>*</span>
+                    Number <span style={{ color: '#ef4444' }}>*</span>
                     <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 400, marginLeft: '6px' }}>(Business/contact phone)</span>
                   </label>
                   <div style={{ position: 'relative' }}>
-                    <Phone size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
                     <input
                       required
                       type="tel"
                       name="phone_number"
                       value={formData.phone_number}
                       onChange={handleChange}
-                      placeholder="+254 712 345 678"
-                      style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px 11px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
+                      style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
                     />
                   </div>
                 </div>
@@ -542,7 +526,6 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({
                       <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 400, display: 'block' }}>Min. 8 characters</span>
                     </label>
                     <div style={{ position: 'relative' }}>
-                      <Lock size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
                       <input
                         required
                         type="password"
@@ -550,8 +533,7 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({
                         minLength={8}
                         value={formData.password}
                         onChange={handleChange}
-                        placeholder="••••••••"
-                        style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px 11px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
                       />
                     </div>
                   </div>
@@ -562,7 +544,6 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({
                       <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 400, display: 'block' }}>Must match password</span>
                     </label>
                     <div style={{ position: 'relative' }}>
-                      <Lock size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
                       <input
                         required
                         type="password"
@@ -570,8 +551,7 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({
                         minLength={8}
                         value={formData.confirm_password}
                         onChange={handleChange}
-                        placeholder="••••••••"
-                        style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px 11px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
                       />
                     </div>
                   </div>
@@ -630,15 +610,13 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({
                     <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 400, marginLeft: '6px' }}>(Name customers will see)</span>
                   </label>
                   <div style={{ position: 'relative' }}>
-                    <Building size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
                     <input
                       required
                       type="text"
                       name="business_name"
                       value={formData.business_name}
                       onChange={handleChange}
-                      placeholder="e.g. Royal Taste Caterers Ltd"
-                      style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
+                      style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
                     />
                   </div>
                 </div>
@@ -666,15 +644,13 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({
                       Location <span style={{ color: '#ef4444' }}>*</span>
                     </label>
                     <div style={{ position: 'relative' }}>
-                      <MapPin size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
                       <input
                         required
                         type="text"
                         name="location"
                         value={formData.location}
                         onChange={handleChange}
-                        placeholder="e.g. Nyeri, Nairobi, Nakuru"
-                        style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
                       />
                     </div>
                   </div>
@@ -692,7 +668,6 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({
                       name="other_business_type"
                       value={formData.other_business_type}
                       onChange={handleChange}
-                      placeholder="e.g. Pyrotechnics & Special FX, Drone Light Show"
                       style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #0d8a73', outline: 'none', fontSize: '0.9rem' }}
                     />
                   </div>
@@ -710,7 +685,6 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({
                     name="address"
                     value={formData.address}
                     onChange={handleChange}
-                    placeholder="e.g. Kimathi Way, Near Clock Tower, 2nd Floor"
                     style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
                   />
                 </div>
@@ -727,7 +701,6 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({
                     name="description"
                     value={formData.description}
                     onChange={handleChange}
-                    placeholder="Tell clients what you specialize in, packages, or equipment you provide..."
                     style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem', resize: 'vertical' }}
                   />
                 </div>
@@ -744,7 +717,6 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({
                       name="years_in_business"
                       value={formData.years_in_business}
                       onChange={handleChange}
-                      placeholder="e.g. 4"
                       style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
                     />
                   </div>
@@ -754,65 +726,18 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({
                       Portfolio / Website <span style={{ color: '#94a3b8', fontWeight: 400 }}>(Optional)</span>
                     </label>
                     <div style={{ position: 'relative' }}>
-                      <Globe size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
                       <input
                         type="url"
                         name="website_url"
                         value={formData.website_url}
                         onChange={handleChange}
-                        placeholder="https://..."
-                        style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px 10px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
                       />
                     </div>
                   </div>
                 </div>
 
-                {/* Business Logo / Image */}
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                    Business Logo / Image <span style={{ color: '#94a3b8', fontWeight: 400 }}>(Optional)</span>
-                  </label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <label
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '8px 14px',
-                        borderRadius: '8px',
-                        border: '1px solid #cbd5e1',
-                        background: '#f8fafc',
-                        color: '#334155',
-                        fontSize: '0.85rem',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <Upload size={15} /> Upload File
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleLogoUpload}
-                        style={{ display: 'none' }}
-                      />
-                    </label>
-                    <input
-                      type="url"
-                      name="logo_url"
-                      value={formData.logo_url}
-                      onChange={handleChange}
-                      placeholder="or paste logo image URL"
-                      style={{ flex: 1, boxSizing: 'border-box', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.85rem' }}
-                    />
-                    {formData.logo_url && (
-                      <img
-                        src={formData.logo_url}
-                        alt="Logo Preview"
-                        style={{ width: '36px', height: '36px', borderRadius: '6px', objectFit: 'cover', border: '1px solid #cbd5e1' }}
-                      />
-                    )}
-                  </div>
-                </div>
+
 
                 {/* Terms and Conditions */}
                 <div style={{ marginTop: '4px' }}>
@@ -890,7 +815,6 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({
               <div style={{ padding: '8px 0' }}>
                 <div style={{ textAlign: 'center', marginBottom: '24px' }}>
                   <div style={{ display: 'inline-flex', padding: '16px', background: '#f8fafc', borderRadius: '50%', marginBottom: '16px' }}>
-                    <Mail size={32} color="#0d8a73" />
                   </div>
                   <h3 style={{ margin: '0 0 8px 0', fontSize: '1.25rem', color: '#0f172a' }}>Verify Your Email</h3>
                   <p style={{ margin: 0, color: '#475569', fontSize: '0.9rem' }}>
@@ -905,7 +829,6 @@ export const VendorRegistration: React.FC<VendorRegistrationProps> = ({
                       maxLength={6}
                       value={otpCode}
                       onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
-                      placeholder="000000"
                       style={{ width: '100%', boxSizing: 'border-box', padding: '14px', borderRadius: '8px', border: '2px solid #cbd5e1', outline: 'none', fontSize: '1.5rem', textAlign: 'center', letterSpacing: '0.5em', fontWeight: 700, color: '#1e293b' }}
                     />
                   </div>

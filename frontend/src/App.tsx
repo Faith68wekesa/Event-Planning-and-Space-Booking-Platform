@@ -315,7 +315,6 @@ export const App: React.FC = () => {
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => setShowRegistration(true)}>Become a Vendor</li>
                     <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => setShowVenueOwnerRegistration(true)}>List Venue</li>
-                    <li style={{ cursor: 'pointer', color: '#e6f7f3' }}>Verification</li>
                   </ul>
                 </div>
 
@@ -333,7 +332,6 @@ export const App: React.FC = () => {
                 <div style={{ display: 'flex', gap: '24px' }}>
                   <span style={{ cursor: 'pointer' }}>Privacy Policy</span>
                   <span style={{ cursor: 'pointer' }}>Terms of Service</span>
-                  <span style={{ cursor: 'pointer' }}>Vendor Verification</span>
                 </div>
                 <div>
                   &copy; {new Date().getFullYear()} Event Planning and SpaceBooking. All rights reserved.

@@ -40,18 +40,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           onClick={() => setActiveTab('landing')}
           style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
         >
-          <div style={{
-            background: '#0F8F7A',
-            width: '42px',
-            height: '42px',
-            borderRadius: '12px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 4px 14px rgba(15, 143, 122, 0.4)'
-          }}>
-            <Sparkles color="#ffffff" size={24} />
-          </div>
+
           <div>
             <h1 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#14213D', margin: 0, whiteSpace: 'nowrap' }}>
               Event Planning and SpaceBooking
@@ -103,18 +92,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   cursor: 'pointer', transition: 'all 0.2s'
                 }}
               >
-                <div style={{
-                  background: '#ffb800',
-                  borderRadius: '50%',
-                  width: '24px',
-                  height: '24px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#000'
-                }}>
-                  <Lock size={12} />
-                </div>
+                <Lock size={16} />
                 Account
                 <ChevronDown size={16} />
               </button>

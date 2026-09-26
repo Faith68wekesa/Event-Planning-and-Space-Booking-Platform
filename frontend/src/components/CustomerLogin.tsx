@@ -87,13 +87,13 @@ export const CustomerLogin: React.FC<CustomerLoginProps> = ({ onClose, onSuccess
 
           <div>
             <div style={{ position: 'relative' }}>
-              <input required type="email" name="email" value={formData.email} onChange={handleChange} style={{ width: '100%', boxSizing: 'border-box', padding: '14px 20px', borderRadius: '30px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.95rem' }} placeholder="Email *" />
+              <input required type="email" name="email" value={formData.email} onChange={handleChange} style={{ width: '100%', boxSizing: 'border-box', padding: '14px 20px', borderRadius: '30px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.95rem' }} />
             </div>
           </div>
 
           <div>
             <div style={{ position: 'relative' }}>
-              <input required type="password" name="password" value={formData.password} onChange={handleChange} style={{ width: '100%', boxSizing: 'border-box', padding: '14px 20px', borderRadius: '30px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.95rem' }} placeholder="Password *" />
+              <input required type="password" name="password" value={formData.password} onChange={handleChange} style={{ width: '100%', boxSizing: 'border-box', padding: '14px 20px', borderRadius: '30px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.95rem' }} />
             </div>
           </div>
 
@@ -108,7 +108,7 @@ export const CustomerLogin: React.FC<CustomerLoginProps> = ({ onClose, onSuccess
           <div style={{ marginTop: '16px', fontSize: '0.9rem', color: '#334155' }}>
             Don't have an account ?{' '}
             <button type="button" onClick={onSwitchToRegister} style={{ background: 'none', border: 'none', color: '#0F8F7A', fontWeight: 600, cursor: 'pointer', padding: 0 }}>
-              Sign Up
+              Register Account
             </button>
           </div>
         </form>

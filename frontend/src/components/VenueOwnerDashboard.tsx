@@ -443,7 +443,7 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
                   No event venues listed yet
                 </h3>
                 <p style={{ color: '#64748b', maxWidth: '480px', margin: '0 auto 24px' }}>
-                  Add your first event venue to start receiving booking requests from clients across Kenya.
+                  Add your first event venue to start receiving booking requests from clients .
                 </p>
                 <button
                   onClick={() => setShowAddModal(true)}

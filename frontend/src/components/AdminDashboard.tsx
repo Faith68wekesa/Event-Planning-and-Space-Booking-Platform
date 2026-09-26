@@ -135,7 +135,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       business_name: o.business_name,
       account_type: 'Venue Owner' as const,
       category_or_type: o.business_type || 'Event Venue',
-      location: o.location || 'Kenya',
+      location: o.location || '',
       address: o.address,
       description: o.description,
       email: o.contact_email,
@@ -173,7 +173,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           Vendor & Venue Owner Verification Management
         </h2>
         <p style={{ color: '#64748b', fontSize: '0.95rem' }}>
-          Review registered businesses in Kenya and approve or reject their platform verification status.
+          Review registered businesses  and approve or reject their platform verification status.
         </p>
       </div>
 

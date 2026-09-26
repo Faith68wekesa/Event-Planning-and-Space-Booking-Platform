@@ -66,7 +66,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               fontSize: '0.85rem', fontWeight: 600, color: '#0F8F7A', marginBottom: '24px',
               border: '1px solid #c9ede4'
             }}>
-              <CheckCircle size={14} /> Verified Event Spaces & Service Providers in Kenya
+              <CheckCircle size={14} /> Verified Event Spaces & Service Providers 
             </div>
 
             <h1 style={{ fontSize: 'clamp(2.5rem, 5vw, 4rem)', fontWeight: 800, color: '#14213D', lineHeight: 1.1, marginBottom: '24px' }}>

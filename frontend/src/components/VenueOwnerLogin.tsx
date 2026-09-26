@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Lock, User, Building2 } from 'lucide-react';
+import { X } from 'lucide-react';
 import { ApiService } from '../services/api.ts';
 import type { VenueOwner } from '../types';
 
@@ -83,38 +83,29 @@ export const VenueOwnerLogin: React.FC<VenueOwnerLoginProps> = ({
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            background: 'linear-gradient(135deg, #065f54 0%, #0d8a73 100%)',
-            color: '#fff',
+            background: '#f8fafc',
+            borderTopLeftRadius: '16px',
+            borderTopRightRadius: '16px',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div
-              style={{
-                background: 'rgba(255, 255, 255, 0.2)',
-                padding: '8px',
-                borderRadius: '10px',
-                display: 'flex',
-              }}
-            >
-              <Building2 size={22} color="#fff" />
+          <div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#0d8a73', padding: '0', fontSize: '0.85rem', fontWeight: 700, marginBottom: '6px' }}>
+              Event Planning and SpaceBooking
             </div>
-            <div>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: '#fff' }}>
-                Venue Owner Login
-              </h2>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: '#e2e8f0' }}>
-                Manage your event spaces & bookings
-              </p>
-            </div>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: '#1e293b' }}>
+              Venue Owner Login
+            </h2>
+
           </div>
           <button
             onClick={onClose}
             style={{
               background: 'none',
               border: 'none',
-              color: '#fff',
+              color: '#64748b',
               cursor: 'pointer',
               padding: '4px',
+              alignSelf: 'flex-start',
             }}
           >
             <X size={20} />
@@ -154,16 +145,6 @@ export const VenueOwnerLogin: React.FC<VenueOwnerLoginProps> = ({
               Username
             </label>
             <div style={{ position: 'relative' }}>
-              <User
-                size={16}
-                color="#94a3b8"
-                style={{
-                  position: 'absolute',
-                  left: '12px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                }}
-              />
               <input
                 required
                 name="username"
@@ -172,13 +153,12 @@ export const VenueOwnerLogin: React.FC<VenueOwnerLoginProps> = ({
                 style={{
                   width: '100%',
                   boxSizing: 'border-box',
-                  padding: '10px 10px 10px 36px',
+                  padding: '10px',
                   borderRadius: '8px',
                   border: '1px solid #cbd5e1',
                   outline: 'none',
                   fontSize: '0.95rem',
                 }}
-                placeholder="e.g. oasis_owner"
               />
             </div>
           </div>
@@ -196,16 +176,6 @@ export const VenueOwnerLogin: React.FC<VenueOwnerLoginProps> = ({
               Password
             </label>
             <div style={{ position: 'relative' }}>
-              <Lock
-                size={16}
-                color="#94a3b8"
-                style={{
-                  position: 'absolute',
-                  left: '12px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                }}
-              />
               <input
                 required
                 type="password"
@@ -215,13 +185,12 @@ export const VenueOwnerLogin: React.FC<VenueOwnerLoginProps> = ({
                 style={{
                   width: '100%',
                   boxSizing: 'border-box',
-                  padding: '10px 10px 10px 36px',
+                  padding: '10px',
                   borderRadius: '8px',
                   border: '1px solid #cbd5e1',
                   outline: 'none',
                   fontSize: '0.95rem',
                 }}
-                placeholder="••••••••"
               />
             </div>
           </div>
@@ -236,48 +205,46 @@ export const VenueOwnerLogin: React.FC<VenueOwnerLoginProps> = ({
               color: '#64748b',
             }}
           >
-            💡 <strong>Demo Account:</strong> username: <code style={{ color: '#0d8a73' }}>oasis_owner</code> | password: <code style={{ color: '#0d8a73' }}>password123</code>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="btn-primary"
-            style={{
-              width: '100%',
-              padding: '12px',
-              marginTop: '4px',
-              display: 'flex',
-              justifyContent: 'center',
-              fontWeight: 700,
-            }}
-          >
-            {loading ? 'Logging in...' : 'Log In to Venue Dashboard'}
-          </button>
-
-          <div
-            style={{
-              textAlign: 'center',
-              marginTop: '8px',
-              fontSize: '0.875rem',
-              color: '#64748b',
-            }}
-          >
-            Don't have a venue owner account?{' '}
             <button
-              type="button"
-              onClick={onSwitchToRegister}
+              type="submit"
+              disabled={loading}
+              className="btn-primary"
               style={{
-                background: 'none',
-                border: 'none',
-                color: '#0d8a73',
+                width: '100%',
+                padding: '12px',
+                marginTop: '4px',
+                display: 'flex',
+                justifyContent: 'center',
                 fontWeight: 700,
-                cursor: 'pointer',
-                padding: 0,
               }}
             >
-              Register here
+              {loading ? 'Logging in...' : 'Log In to Venue Dashboard'}
             </button>
+
+            <div
+              style={{
+                textAlign: 'center',
+                marginTop: '8px',
+                fontSize: '0.875rem',
+                color: '#64748b',
+              }}
+            >
+              Don't have a venue owner account?{' '}
+              <button
+                type="button"
+                onClick={onSwitchToRegister}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#0d8a73',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  padding: 0,
+                }}
+              >
+                Register here
+              </button>
+            </div>
           </div>
         </form>
       </div>

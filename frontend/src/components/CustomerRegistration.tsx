@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
-  X, Mail, Phone, Lock, User,
-  ArrowRight
+  X, ArrowRight
 } from 'lucide-react';
 import { ApiService } from '../services/api.ts';
 
@@ -170,7 +169,7 @@ export const CustomerRegistration: React.FC<CustomerRegistrationProps> = ({
             Create an Account
           </h2>
           <p style={{ margin: '6px 0 0', fontSize: '0.85rem', color: '#64748b' }}>
-            Join to browse and book premium event spaces and services in Kenya.
+            Join to browse and book premium event spaces and services .
           </p>
         </div>
 
@@ -212,7 +211,6 @@ export const CustomerRegistration: React.FC<CustomerRegistrationProps> = ({
             )}
             <div style={{ textAlign: 'center', marginBottom: '24px' }}>
               <div style={{ display: 'inline-flex', padding: '16px', background: '#f8fafc', borderRadius: '50%', marginBottom: '16px' }}>
-                <Mail size={32} color="#0d8a73" />
               </div>
               <h3 style={{ margin: '0 0 8px 0', fontSize: '1.25rem', color: '#0f172a' }}>Verify Your Email</h3>
               <p style={{ margin: 0, color: '#475569', fontSize: '0.9rem' }}>
@@ -227,7 +225,6 @@ export const CustomerRegistration: React.FC<CustomerRegistrationProps> = ({
                   maxLength={6}
                   value={otpCode}
                   onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
-                  placeholder="000000"
                   style={{ width: '100%', boxSizing: 'border-box', padding: '14px', borderRadius: '8px', border: '2px solid #cbd5e1', outline: 'none', fontSize: '1.5rem', textAlign: 'center', letterSpacing: '0.5em', fontWeight: 700, color: '#1e293b' }}
                 />
               </div>
@@ -271,15 +268,13 @@ export const CustomerRegistration: React.FC<CustomerRegistrationProps> = ({
                   Full Name <span style={{ color: '#ef4444' }}>*</span>
                 </label>
                 <div style={{ position: 'relative' }}>
-                  <User size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
                   <input
                     required
                     type="text"
                     name="full_name"
                     value={formData.full_name}
                     onChange={handleChange}
-                    placeholder="e.g. David Mwangi"
-                    style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px 11px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
                   />
                 </div>
               </div>
@@ -291,34 +286,30 @@ export const CustomerRegistration: React.FC<CustomerRegistrationProps> = ({
                   <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 400, marginLeft: '6px' }}>(Used for login)</span>
                 </label>
                 <div style={{ position: 'relative' }}>
-                  <Mail size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
                   <input
                     required
                     type="email"
                     name="email"
                     value={formData.email}
                     onChange={handleChange}
-                    placeholder="e.g. david@example.com"
-                    style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px 11px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
                   />
                 </div>
               </div>
 
-              {/* Phone Number */}
+              {/* Number */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                  Phone Number <span style={{ color: '#ef4444' }}>*</span>
+                  Number <span style={{ color: '#ef4444' }}>*</span>
                 </label>
                 <div style={{ position: 'relative' }}>
-                  <Phone size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
                   <input
                     required
                     type="tel"
                     name="phone_number"
                     value={formData.phone_number}
                     onChange={handleChange}
-                    placeholder="+254 712 345 678"
-                    style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px 11px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
                   />
                 </div>
               </div>
@@ -330,7 +321,6 @@ export const CustomerRegistration: React.FC<CustomerRegistrationProps> = ({
                   <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 400, marginLeft: '6px' }}>Min. 8 characters</span>
                 </label>
                 <div style={{ position: 'relative' }}>
-                  <Lock size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
                   <input
                     required
                     type="password"
@@ -338,8 +328,7 @@ export const CustomerRegistration: React.FC<CustomerRegistrationProps> = ({
                     minLength={8}
                     value={formData.password}
                     onChange={handleChange}
-                    placeholder="••••••••"
-                    style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px 11px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
                   />
                 </div>
               </div>

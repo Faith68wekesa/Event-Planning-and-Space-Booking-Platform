@@ -28,18 +28,6 @@ export const SplashPage: React.FC<SplashPageProps> = ({ onSelectCustomer, onSele
 
         {/* Simple Header */}
         <header style={{ padding: '24px 48px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{
-            background: '#ffffff',
-            width: '48px',
-            height: '48px',
-            borderRadius: '12px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 4px 14px rgba(0, 0, 0, 0.2)'
-          }}>
-            <Sparkles color="#0d8a73" size={28} />
-          </div>
           <div>
             <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#ffffff', margin: 0 }}>
               Event Planning and SpaceBooking
