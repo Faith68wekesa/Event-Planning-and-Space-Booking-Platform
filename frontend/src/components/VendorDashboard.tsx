@@ -16,7 +16,7 @@ interface VendorDashboardProps {
 export const VendorDashboard: React.FC<VendorDashboardProps> = ({
   currentVendor,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'portfolio' | 'bookings' | 'reviews'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'portfolio' | 'bookings' | 'reviews' | 'profile'>('overview');
   const [showAddModal, setShowAddModal] = useState(false);
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<any>('WEDDING');
@@ -81,6 +81,7 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
     { id: 'bookings', label: 'Bookings', icon: CalendarDays },
     { id: 'portfolio', label: 'Portfolio', icon: Briefcase },
     { id: 'reviews', label: 'Reviews', icon: MessageSquare },
+    { id: 'profile', label: 'My Profile', icon: Settings },
   ];
 
   const getPageTitle = () => {
@@ -89,6 +90,7 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
       case 'portfolio': return 'Portfolio & Listings';
       case 'bookings': return 'Manage Bookings';
       case 'reviews': return 'Client Reviews';
+      case 'profile': return 'My Profile';
       default: return 'Vendor Dashboard';
     }
   };
@@ -125,7 +127,7 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
             Create New Listing
           </button>
 
-          <button className="vendor-sidebar-item">
+          <button className="vendor-sidebar-item" onClick={() => setActiveTab('profile' as any)}>
             <Settings size={18} /> Settings
           </button>
           <button className="vendor-sidebar-item">
@@ -173,6 +175,21 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
 
         {activeTab === 'reviews' && (
           <VendorDashboardReviews reviews={[]} />
+        )}
+
+        {activeTab === 'profile' && (
+          <div style={{ background: '#fff', padding: '32px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '24px', color: '#1e293b' }}>Vendor Profile</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+              <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Business Name</span><strong style={{ fontSize: '1.05rem', color: '#0f172a' }}>{currentVendor.business_name}</strong></div>
+              <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Vendor Category</span><strong style={{ fontSize: '1.05rem', color: '#0f172a' }}>{currentVendor.vendor_type_display}</strong></div>
+              <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Email Address</span><strong style={{ fontSize: '1.05rem', color: '#0f172a' }}>{currentVendor.contact_email || 'Not provided'}</strong></div>
+              <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Phone Number</span><strong style={{ fontSize: '1.05rem', color: '#0f172a' }}>{currentVendor.contact_phone || 'Not provided'}</strong></div>
+              <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Base Location</span><strong style={{ fontSize: '1.05rem', color: '#0f172a' }}>{currentVendor.location || 'Not provided'}</strong></div>
+              <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Account Status</span><strong style={{ fontSize: '1.05rem', color: currentVendor.is_verified ? '#16a34a' : '#d97706' }}>{currentVendor.is_verified ? 'Verified Partner' : 'Pending Verification'}</strong></div>
+              <div style={{ gridColumn: '1 / -1' }}><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Business Description</span><p style={{ margin: '4px 0 0', color: '#334155' }}>{currentVendor.description || 'No description provided.'}</p></div>
+            </div>
+          </div>
         )}
 
       </main>

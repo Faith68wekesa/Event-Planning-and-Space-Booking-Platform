@@ -24,7 +24,7 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
   currentOwner,
   onLogout,
 }) => {
-  const [activeTab, setActiveTab] = useState<'venues' | 'bookings'>('venues');
+  const [activeTab, setActiveTab] = useState<'venues' | 'bookings' | 'profile'>('venues');
   const [venues, setVenues] = useState<Venue[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
@@ -419,6 +419,25 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
           >
             <CalendarDays size={18} /> Booking Requests ({bookings.length})
           </button>
+          <button
+            onClick={() => setActiveTab('profile')}
+            style={{
+              padding: '12px 24px',
+              fontWeight: 700,
+              fontSize: '1rem',
+              color: activeTab === 'profile' ? '#0d8a73' : '#64748b',
+              borderBottom: activeTab === 'profile' ? '3px solid #0d8a73' : '3px solid transparent',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginBottom: '-2px',
+            }}
+          >
+            <ShieldCheck size={18} /> My Profile
+          </button>
         </div>
 
         {/* Tab 1: Listed Venues */}
@@ -751,6 +770,21 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
                 ))}
               </div>
             )}
+          </div>
+        )}
+        {/* Tab 3: Profile */}
+        {activeTab === 'profile' && (
+          <div style={{ background: '#fff', padding: '32px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
+             <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#1e293b', marginBottom: '24px' }}>Venue Owner Profile</h3>
+             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Business/Owner Name</span><strong style={{ fontSize: '1.05rem', color: '#0f172a' }}>{currentOwner.business_name}</strong></div>
+                <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Business Type</span><strong style={{ fontSize: '1.05rem', color: '#0f172a' }}>{currentOwner.business_type || 'N/A'}</strong></div>
+                <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Email Address</span><strong style={{ fontSize: '1.05rem', color: '#0f172a' }}>{currentOwner.contact_email || 'Not provided'}</strong></div>
+                <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Phone Number</span><strong style={{ fontSize: '1.05rem', color: '#0f172a' }}>{currentOwner.contact_phone || 'Not provided'}</strong></div>
+                <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Location</span><strong style={{ fontSize: '1.05rem', color: '#0f172a' }}>{currentOwner.location || 'Not provided'}</strong></div>
+                <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Years in Business</span><strong style={{ fontSize: '1.05rem', color: '#0f172a' }}>{currentOwner.years_in_business || 'N/A'}</strong></div>
+                <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Account Status</span><strong style={{ fontSize: '1.05rem', color: currentOwner.is_verified ? '#16a34a' : '#d97706' }}>{currentOwner.is_verified ? 'Verified Partner' : 'Pending Verification'}</strong></div>
+             </div>
           </div>
         )}
       </div>
