@@ -148,7 +148,6 @@ export const App: React.FC = () => {
             activeTab={activeTab}
             setActiveTab={setActiveTab}
             activeRole={activeRole}
-            bookingCount={bookings.length}
             currentCustomer={currentCustomer}
             onLoginClick={() => setShowCustomerLogin(true)}
             onRegisterClick={() => setShowCustomerRegistration(true)}
@@ -169,8 +168,6 @@ export const App: React.FC = () => {
                 filters={filters}
                 onExploreVenues={() => setActiveTab('venues')}
                 onExploreVendors={() => setActiveTab('vendors')}
-                onBecomeVendor={() => setShowRegistration(true)}
-                onListVenue={() => setShowVenueOwnerRegistration(true)}
               />
             ) : (
               <>

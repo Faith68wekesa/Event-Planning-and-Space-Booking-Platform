@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, MapPin, Briefcase, Calendar, Search, CheckCircle, DollarSign, UserCheck, Building2 } from 'lucide-react';
+import { ArrowRight, MapPin, Briefcase, Calendar, Search, CheckCircle, DollarSign } from 'lucide-react';
 import type { FilterState } from '../types';
 
 interface LandingPageProps {
@@ -7,8 +7,6 @@ interface LandingPageProps {
   filters: FilterState;
   onExploreVenues?: () => void;
   onExploreVendors?: () => void;
-  onBecomeVendor?: () => void;
-  onListVenue?: () => void;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({
@@ -16,8 +14,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   filters,
   onExploreVenues,
   onExploreVendors,
-  onBecomeVendor,
-  onListVenue
 }) => {
   const handleSearchClick = () => {
     onSearch(filters);

@@ -572,3 +572,44 @@ def verify_otp(request):
             
     except EmailOTP.DoesNotExist:
         return Response({'error': 'No OTP found for this email'}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def reset_password(request):
+    email = request.data.get('email', '').strip().lower()
+    otp_code = request.data.get('otp', '').strip()
+    new_password = request.data.get('new_password', '')
+    
+    if not email or not otp_code or not new_password:
+        return Response({'error': 'Email, OTP, and new password are required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+    if len(new_password) < 8:
+        return Response({'error': 'Password must be at least 8 characters long'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        otp_obj = EmailOTP.objects.get(email=email)
+        
+        # Check if expired (10 minutes)
+        time_diff = timezone.now() - otp_obj.created_at
+        if time_diff.total_seconds() > 600:
+            return Response({'error': 'OTP has expired. Please request a new one.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        if otp_obj.otp_code != otp_code:
+            return Response({'error': 'Invalid OTP'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Find the user
+        user = User.objects.filter(email=email).first()
+        if not user:
+            return Response({'error': 'No account found with this email'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Reset password
+        user.set_password(new_password)
+        user.save()
+        
+        # Delete OTP after successful use
+        otp_obj.delete()
+
+        return Response({'message': 'Password reset successfully'}, status=status.HTTP_200_OK)
+        
+    except EmailOTP.DoesNotExist:
+        return Response({'error': 'No OTP found for this email'}, status=status.HTTP_400_BAD_REQUEST)

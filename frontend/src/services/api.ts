@@ -143,6 +143,20 @@ export const ApiService = {
     }
   },
 
+  async resetPassword(email: string, otp: string, newPassword: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/otp/reset-password/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, otp, new_password: newPassword }),
+      });
+      return res.ok;
+    } catch (e) {
+      console.error('Failed to reset password:', e);
+      return false;
+    }
+  },
+
   async getBookings(customerId?: number): Promise<Booking[]> {
     try {
       const url = customerId ? `${API_BASE}/bookings/?customer=${customerId}` : `${API_BASE}/bookings/`;
