@@ -149,8 +149,14 @@ export const App: React.FC = () => {
             setActiveTab={setActiveTab}
             activeRole={activeRole}
             bookingCount={bookings.length}
+            currentCustomer={currentCustomer}
             onLoginClick={() => setShowCustomerLogin(true)}
             onRegisterClick={() => setShowCustomerRegistration(true)}
+            onLogoutClick={() => {
+              setCurrentCustomer(null);
+              setActiveRole('CUSTOMER');
+              setActiveTab('landing');
+            }}
           />
 
           <main style={{ flexGrow: 1 }}>
@@ -222,6 +228,7 @@ export const App: React.FC = () => {
                 {activeTab === 'my-bookings' && (
                   <CustomerDashboard
                     bookings={bookings}
+                    currentCustomer={currentCustomer}
                     onCancelBooking={handleCancelBooking}
                   />
                 )}

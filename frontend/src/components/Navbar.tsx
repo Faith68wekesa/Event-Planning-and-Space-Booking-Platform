@@ -7,8 +7,10 @@ interface NavbarProps {
   setActiveTab: (tab: string) => void;
   activeRole: UserRole;
   bookingCount: number;
+  currentCustomer?: any;
   onLoginClick?: () => void;
   onRegisterClick?: () => void;
+  onLogoutClick?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -16,8 +18,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   setActiveTab,
   activeRole,
   bookingCount,
+  currentCustomer,
   onLoginClick,
   onRegisterClick,
+  onLogoutClick,
 }) => {
   const [showAccountMenu, setShowAccountMenu] = useState(false);
   return (
@@ -93,7 +97,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }}
               >
                 <Lock size={16} />
-                Account
+                {currentCustomer ? currentCustomer.username : 'Account'}
                 <ChevronDown size={16} />
               </button>
               
@@ -111,22 +115,45 @@ export const Navbar: React.FC<NavbarProps> = ({
                   zIndex: 100,
                   overflow: 'hidden'
                 }}>
-                  <button 
-                    onClick={() => { setShowAccountMenu(false); onLoginClick?.(); }}
-                    style={{ width: '100%', textAlign: 'left', padding: '12px 16px', background: 'none', border: 'none', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem', color: '#1e293b' }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
-                  >
-                    <Lock size={16} /> Login
-                  </button>
-                  <button 
-                    onClick={() => { setShowAccountMenu(false); onRegisterClick?.(); }}
-                    style={{ width: '100%', textAlign: 'left', padding: '12px 16px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem', color: '#1e293b' }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
-                  >
-                    <ClipboardList size={16} /> Register
-                  </button>
+                  {currentCustomer ? (
+                    <>
+                      <button 
+                        onClick={() => { setShowAccountMenu(false); setActiveTab('my-bookings'); }}
+                        style={{ width: '100%', textAlign: 'left', padding: '12px 16px', background: 'none', border: 'none', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem', color: '#1e293b' }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                      >
+                        <User size={16} /> Dashboard
+                      </button>
+                      <button 
+                        onClick={() => { setShowAccountMenu(false); onLogoutClick?.(); }}
+                        style={{ width: '100%', textAlign: 'left', padding: '12px 16px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem', color: '#ef4444' }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#fee2e2'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                      >
+                        <Lock size={16} /> Sign Out
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button 
+                        onClick={() => { setShowAccountMenu(false); onLoginClick?.(); }}
+                        style={{ width: '100%', textAlign: 'left', padding: '12px 16px', background: 'none', border: 'none', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem', color: '#1e293b' }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                      >
+                        <Lock size={16} /> Login
+                      </button>
+                      <button 
+                        onClick={() => { setShowAccountMenu(false); onRegisterClick?.(); }}
+                        style={{ width: '100%', textAlign: 'left', padding: '12px 16px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem', color: '#1e293b' }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                      >
+                        <ClipboardList size={16} /> Register
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
