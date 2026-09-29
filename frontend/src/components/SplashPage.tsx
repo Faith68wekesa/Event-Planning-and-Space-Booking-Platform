@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, Sparkles, MapPin, Briefcase } from 'lucide-react';
+import { ArrowRight, MapPin, Briefcase } from 'lucide-react';
 
 interface SplashPageProps {
   onSelectCustomer: () => void;

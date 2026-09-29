@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  X, Clock, ArrowRight, ArrowLeft, Building2, Info
+  X, Clock, ArrowRight, ArrowLeft, Building2, Info, Eye, EyeOff
 } from 'lucide-react';
 import { ApiService } from '../services/api';
 
@@ -32,7 +32,10 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [otpCode, setOtpCode] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -141,6 +144,33 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
         setStep(3); // Go to OTP step
       } else {
         setError('Failed to send verification code. Please check your email and try again.');
+      }
+    } catch (err) {
+      setError('An unexpected network error occurred.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendOTP = async () => {
+    if (resendCooldown > 0) return;
+    setError(null);
+    setLoading(true);
+    try {
+      const sent = await ApiService.sendOTP(formData.email.trim().toLowerCase());
+      if (sent) {
+        setResendCooldown(30);
+        const timer = setInterval(() => {
+          setResendCooldown((prev) => {
+            if (prev <= 1) {
+              clearInterval(timer);
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      } else {
+        setError('Failed to resend verification code.');
       }
     } catch (err) {
       setError('An unexpected network error occurred.');
@@ -526,7 +556,7 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
                     <div style={{ position: 'relative' }}>
                       <input
                         required
-                        type="password"
+                        type={showPassword ? "text" : "password"}
                         name="password"
                         minLength={8}
                         value={formData.password}
@@ -534,6 +564,9 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
 
                         style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
                       />
+                      <button type="button" onClick={() => setShowPassword(!showPassword)} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
                     </div>
                   </div>
 
@@ -545,7 +578,7 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
                     <div style={{ position: 'relative' }}>
                       <input
                         required
-                        type="password"
+                        type={showConfirmPassword ? "text" : "password"}
                         name="confirm_password"
                         minLength={8}
                         value={formData.confirm_password}
@@ -553,6 +586,9 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
 
                         style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
                       />
+                      <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+                        {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -870,6 +906,22 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
                       style={{ flex: 2, padding: '12px', borderRadius: '8px', fontSize: '1rem', fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}
                     >
                       {loading ? 'Verifying...' : 'Verify & Complete'}
+                    </button>
+                  </div>
+                  
+                  <div style={{ textAlign: 'center', marginTop: '12px', fontSize: '0.9rem' }}>
+                    <span style={{ color: '#64748b' }}>Didn't receive the code? </span>
+                    <button
+                      type="button"
+                      onClick={handleResendOTP}
+                      disabled={resendCooldown > 0 || loading}
+                      style={{
+                        background: 'none', border: 'none', 
+                        color: resendCooldown > 0 ? '#94a3b8' : '#0d8a73',
+                        fontWeight: 700, cursor: resendCooldown > 0 ? 'not-allowed' : 'pointer', padding: 0
+                      }}
+                    >
+                      {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend OTP'}
                     </button>
                   </div>
                 </form>

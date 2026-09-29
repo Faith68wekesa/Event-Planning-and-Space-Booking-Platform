@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import type { UserRole } from '../types';
-import { ShieldCheck, Sparkles, Briefcase, Building2, Search, User, ChevronDown, Lock, ClipboardList } from 'lucide-react';
+import { ShieldCheck, Briefcase, Building2, Search, User, ChevronDown, Lock, ClipboardList } from 'lucide-react';
 
 interface NavbarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   activeRole: UserRole;
-  bookingCount: number;
   currentCustomer?: any;
   onLoginClick?: () => void;
   onRegisterClick?: () => void;
@@ -17,7 +16,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   setActiveTab,
   activeRole,
-  bookingCount,
   currentCustomer,
   onLoginClick,
   onRegisterClick,
