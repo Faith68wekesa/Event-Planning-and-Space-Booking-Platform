@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   X, ArrowRight, Eye, EyeOff
 } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import { ApiService } from '../services/api.ts';
 
 interface CustomerRegistrationProps {
@@ -15,7 +16,6 @@ export const CustomerRegistration: React.FC<CustomerRegistrationProps> = ({
 }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isSuccess, setIsSuccess] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [otpStep, setOtpStep] = useState(false);
   const [otpCode, setOtpCode] = useState('');
@@ -83,8 +83,11 @@ export const CustomerRegistration: React.FC<CustomerRegistrationProps> = ({
       if (verified) {
         const user = await ApiService.registerCustomer(formData);
         if (user) {
-          setIsSuccess(true);
-          // Removed onSuccess?.(user) to prevent auto-login
+          toast.success('Registration successful! Redirecting to login...', { duration: 3000, position: 'top-center' });
+          setTimeout(() => {
+            if (onSwitchToLogin) onSwitchToLogin();
+            else onClose();
+          }, 2000);
         } else {
           setError('Registration failed. This email may already be registered.');
         }
@@ -202,36 +205,7 @@ export const CustomerRegistration: React.FC<CustomerRegistrationProps> = ({
           </p>
         </div>
 
-        {isSuccess ? (
-          <div style={{ padding: '40px 32px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-            <div style={{ width: '76px', height: '76px', borderRadius: '50%', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '36px', boxShadow: '0 10px 25px -5px rgba(16, 185, 129, 0.25)' }}>
-              🎉
-            </div>
-            <h3 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#1e293b', margin: '4px 0 0' }}>
-              Account Created!
-            </h3>
-            <p style={{ color: '#475569', fontSize: '0.95rem', lineHeight: 1.6, maxWidth: '440px', margin: 0 }}>
-              Your account has been successfully created. You can now log in to proceed with booking venues and services.
-            </p>
-            <div style={{ width: '100%', maxWidth: '440px', marginTop: '12px' }}>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => {
-                  if (onSwitchToLogin) onSwitchToLogin();
-                  else onClose();
-                }}
-                style={{
-                  width: '100%', padding: '14px', borderRadius: '10px', fontSize: '1rem', fontWeight: 700,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(13, 138, 115, 0.3)'
-                }}
-              >
-                Go to Login <ArrowRight size={18} />
-              </button>
-            </div>
-          </div>
-        ) : otpStep ? (
+        {otpStep ? (
           <div style={{ padding: '32px 28px' }}>
             {error && (
               <div style={{ background: '#fef2f2', color: '#dc2626', padding: '12px', borderRadius: '8px', fontSize: '0.875rem', marginBottom: '16px' }}>

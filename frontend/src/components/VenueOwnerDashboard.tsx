@@ -4,7 +4,6 @@ import { ApiService } from '../services/api';
 import {
   Building2,
   CalendarDays,
-  DollarSign,
   Plus,
   CheckCircle2,
   XCircle,
@@ -28,6 +27,38 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
   const [venues, setVenues] = useState<Venue[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [profileFormData, setProfileFormData] = useState({
+    business_name: currentOwner.business_name || '',
+    business_type: currentOwner.business_type || '',
+    location: currentOwner.location || '',
+    address: currentOwner.address || '',
+    description: currentOwner.description || '',
+    years_in_business: currentOwner.years_in_business || '',
+    website_url: currentOwner.website_url || '',
+  });
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  const handleProfileSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingProfile(true);
+    try {
+      const payload = {
+        ...profileFormData,
+        years_in_business: profileFormData.years_in_business !== '' ? Number(profileFormData.years_in_business) : undefined,
+      };
+      await ApiService.updateVenueOwner(currentOwner.id, payload);
+      toast.success('Profile updated successfully!');
+      setIsEditingProfile(false);
+      window.location.reload();
+    } catch (e) {
+      toast.error('Failed to update profile.');
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
   const [stats, setStats] = useState({
     total_revenue: 0,
     pending_bookings: 0,
@@ -48,8 +79,8 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
     price_per_day: 80000,
     price_per_hour: 10000,
     description: '',
-    amenities: 'Ample Parking, Generator Backup, Security, Restrooms',
-    image_url: 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=800&q=80',
+    amenities: '',
+    image_url: '',
   });
 
   const fetchDashboardData = useCallback(async () => {
@@ -128,8 +159,8 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
         price_per_day: 80000,
         price_per_hour: 10000,
         description: '',
-        amenities: 'Ample Parking, Generator Backup, Security, Restrooms',
-        image_url: 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=800&q=80',
+        amenities: '',
+        image_url: '',
       });
       fetchDashboardData();
       toast.success('Venue listed successfully! It has been submitted for platform verification.');
@@ -165,26 +196,24 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
           <div>
             <div style={{ fontSize: '1rem', fontWeight: 800, color: '#0d8a73', marginBottom: '8px' }}>Event Planning and SpaceBooking</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-              {currentOwner.is_verified && (
-                <span
-                  style={{
-                    background: '#ffb800',
-                    color: '#0f172a',
-                    padding: '2px 8px',
-                    borderRadius: '999px',
-                    fontSize: '0.75rem',
-                    fontWeight: 800,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                  }}
-                >
-                  <ShieldCheck size={12} /> Verified Partner
-                </span>
-              )}
+              <span
+                style={{
+                  background: currentOwner.verification_status === 'APPROVED' || currentOwner.is_verified ? '#dcfce7' : currentOwner.verification_status === 'REJECTED' ? '#fee2e2' : '#fef3c7',
+                  color: currentOwner.verification_status === 'APPROVED' || currentOwner.is_verified ? '#16a34a' : currentOwner.verification_status === 'REJECTED' ? '#991b1b' : '#b45309',
+                  padding: '4px 10px',
+                  borderRadius: '999px',
+                  fontSize: '0.75rem',
+                  fontWeight: 800,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                {currentOwner.verification_status === 'APPROVED' || currentOwner.is_verified ? '🟢 Verified vendor' : currentOwner.verification_status === 'REJECTED' ? '🔴 Action required' : '🟡 Pending verification'}
+              </span>
             </div>
             <h1 style={{ fontSize: '2rem', fontWeight: 800, margin: '0 0 6px 0', letterSpacing: '-0.5px' }}>
-              {currentOwner.business_name}
+              {currentOwner.business_name !== 'Pending Setup' ? currentOwner.business_name : (`${currentOwner.user_details?.first_name || ''} ${currentOwner.user_details?.last_name || ''}`.trim() || currentOwner.user_details?.username || 'Venue Owner')}
             </h1>
             <p style={{ margin: 0, color: '#cbd5e1', fontSize: '0.95rem' }}>
               {currentOwner.location ? `📍 ${currentOwner.location}` : 'Event Space Management'} • Manage venues, approve bookings, and monitor space performance.
@@ -336,37 +365,6 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
               <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 600 }}>Confirmed Bookings</div>
               <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#16a34a' }}>
                 {stats.upcoming_bookings}
-              </div>
-            </div>
-          </div>
-
-          {/* Card 4 */}
-          <div
-            style={{
-              background: '#fff',
-              padding: '24px',
-              borderRadius: '14px',
-              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.06)',
-              border: '1px solid #e2e8f0',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '16px',
-            }}
-          >
-            <div
-              style={{
-                background: '#f3e8ff',
-                color: '#9333ea',
-                padding: '14px',
-                borderRadius: '12px',
-              }}
-            >
-              <DollarSign size={26} />
-            </div>
-            <div>
-              <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 600 }}>Revenue Earned</div>
-              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0f172a' }}>
-                KES {Number(stats.total_revenue).toLocaleString()}
               </div>
             </div>
           </div>
@@ -775,16 +773,69 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
         {/* Tab 3: Profile */}
         {activeTab === 'profile' && (
           <div style={{ background: '#fff', padding: '32px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-             <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#1e293b', marginBottom: '24px' }}>Venue Owner Profile</h3>
-             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-                <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Business/Owner Name</span><strong style={{ fontSize: '1.05rem', color: '#0f172a' }}>{currentOwner.business_name}</strong></div>
-                <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Business Type</span><strong style={{ fontSize: '1.05rem', color: '#0f172a' }}>{currentOwner.business_type || 'N/A'}</strong></div>
-                <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Email Address</span><strong style={{ fontSize: '1.05rem', color: '#0f172a' }}>{currentOwner.contact_email || 'Not provided'}</strong></div>
-                <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Phone Number</span><strong style={{ fontSize: '1.05rem', color: '#0f172a' }}>{currentOwner.contact_phone || 'Not provided'}</strong></div>
-                <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Location</span><strong style={{ fontSize: '1.05rem', color: '#0f172a' }}>{currentOwner.location || 'Not provided'}</strong></div>
-                <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Years in Business</span><strong style={{ fontSize: '1.05rem', color: '#0f172a' }}>{currentOwner.years_in_business || 'N/A'}</strong></div>
-                <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Account Status</span><strong style={{ fontSize: '1.05rem', color: currentOwner.is_verified ? '#16a34a' : '#d97706' }}>{currentOwner.is_verified ? 'Verified Partner' : 'Pending Verification'}</strong></div>
+             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+               <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#1e293b', margin: 0 }}>Venue Owner Profile</h3>
+               {!isEditingProfile && (
+                 <button
+                   onClick={() => setIsEditingProfile(true)}
+                   style={{
+                     background: '#f1f5f9', color: '#0f172a', border: 'none', padding: '8px 16px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem'
+                   }}
+                 >
+                   Edit Profile
+                 </button>
+               )}
              </div>
+
+             {isEditingProfile ? (
+               <form onSubmit={handleProfileSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                   <div>
+                     <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Business Name</label>
+                     <input required type="text" value={profileFormData.business_name} onChange={(e) => setProfileFormData({...profileFormData, business_name: e.target.value})} style={{ width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
+                   </div>
+                   <div>
+                     <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Business Type</label>
+                     <input required type="text" value={profileFormData.business_type} onChange={(e) => setProfileFormData({...profileFormData, business_type: e.target.value})} style={{ width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
+                   </div>
+                   <div>
+                     <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Location</label>
+                     <input required type="text" value={profileFormData.location} onChange={(e) => setProfileFormData({...profileFormData, location: e.target.value})} style={{ width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
+                   </div>
+                   <div>
+                     <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Address</label>
+                     <input type="text" value={profileFormData.address} onChange={(e) => setProfileFormData({...profileFormData, address: e.target.value})} style={{ width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
+                   </div>
+                   <div>
+                     <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Years in Business</label>
+                     <input type="number" value={profileFormData.years_in_business} onChange={(e) => setProfileFormData({...profileFormData, years_in_business: e.target.value})} style={{ width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
+                   </div>
+                   <div>
+                     <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Website URL</label>
+                     <input type="url" value={profileFormData.website_url} onChange={(e) => setProfileFormData({...profileFormData, website_url: e.target.value})} style={{ width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
+                   </div>
+                   <div style={{ gridColumn: '1 / -1' }}>
+                     <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Description</label>
+                     <textarea rows={3} value={profileFormData.description} onChange={(e) => setProfileFormData({...profileFormData, description: e.target.value})} style={{ width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
+                   </div>
+                 </div>
+                 <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '10px' }}>
+                   <button type="button" onClick={() => setIsEditingProfile(false)} style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '10px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
+                   <button type="submit" disabled={isSavingProfile} style={{ background: '#0d8a73', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: '8px', cursor: isSavingProfile ? 'not-allowed' : 'pointer', fontWeight: 600 }}>{isSavingProfile ? 'Saving...' : 'Save Changes'}</button>
+                 </div>
+               </form>
+             ) : (
+               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                  <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Business/Owner Name</span><strong style={{ fontSize: '1.05rem', color: '#0f172a' }}>{currentOwner.business_name}</strong></div>
+                  <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Business Type</span><strong style={{ fontSize: '1.05rem', color: '#0f172a' }}>{currentOwner.business_type || 'N/A'}</strong></div>
+                  <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Email Address</span><strong style={{ fontSize: '1.05rem', color: '#0f172a' }}>{currentOwner.contact_email || 'Not provided'}</strong></div>
+                  <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Phone Number</span><strong style={{ fontSize: '1.05rem', color: '#0f172a' }}>{currentOwner.contact_phone || 'Not provided'}</strong></div>
+                  <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Location</span><strong style={{ fontSize: '1.05rem', color: '#0f172a' }}>{currentOwner.location || 'Not provided'}</strong></div>
+                  <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Years in Business</span><strong style={{ fontSize: '1.05rem', color: '#0f172a' }}>{currentOwner.years_in_business || 'N/A'}</strong></div>
+                  <div><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Account Status</span><strong style={{ fontSize: '1.05rem', color: currentOwner.is_verified ? '#16a34a' : '#d97706' }}>{currentOwner.is_verified ? 'Verified Partner' : 'Pending Verification'}</strong></div>
+                  <div style={{ gridColumn: '1 / -1' }}><span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b' }}>Business Description</span><p style={{ margin: '4px 0 0', color: '#334155' }}>{currentOwner.description || 'No description provided.'}</p></div>
+               </div>
+             )}
           </div>
         )}
       </div>

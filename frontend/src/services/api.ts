@@ -240,6 +240,21 @@ export const ApiService = {
     return null;
   },
 
+  async updateVendor(id: number, vendorData: Partial<Vendor>): Promise<Vendor> {
+    try {
+      const res = await fetch(`${API_BASE}/vendors/${id}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(vendorData),
+      });
+      if (res.ok) return await res.json();
+      throw new Error(await res.text());
+    } catch (e) {
+      console.error("Failed to update vendor", e);
+      throw e;
+    }
+  },
+
   async getVenueOwners(): Promise<VenueOwner[]> {
     try {
       const res = await fetch(`${API_BASE}/venue-owners/`);
@@ -277,6 +292,21 @@ export const ApiService = {
       console.error("Failed to set venue owner verification status", e);
     }
     return null;
+  },
+
+  async updateVenueOwner(id: number, ownerData: Partial<VenueOwner>): Promise<VenueOwner> {
+    try {
+      const res = await fetch(`${API_BASE}/venue-owners/${id}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ownerData),
+      });
+      if (res.ok) return await res.json();
+      throw new Error(await res.text());
+    } catch (e) {
+      console.error("Failed to update venue owner", e);
+      throw e;
+    }
   },
 
   async addVenue(venueData: Partial<Venue>): Promise<Venue> {

@@ -4,6 +4,8 @@ export interface User {
   id: number;
   username: string;
   email: string;
+  first_name?: string;
+  last_name?: string;
   role: UserRole;
   phone_number?: string;
   avatar_url?: string;
@@ -113,6 +115,7 @@ export interface Venue {
   amenities: string[];
   image_url: string;
   is_verified: boolean;
+  verification_status?: VerificationStatus | 'DRAFT' | 'CHANGES_REQUIRED';
   is_available: boolean;
   rating: number;
   review_count: number;

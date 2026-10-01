@@ -8,7 +8,7 @@
 /* Sidebar Styles */
 .vendor-sidebar {
   width: 260px;
-  background-color: #042f2a; /* Deep dark teal instead of indigo */
+  background-color: #0d8a73; /* Main light green instead of dark teal */
   color: #f8fafc;
   display: flex;
   flex-direction: column;
@@ -37,7 +37,7 @@
   padding: 12px 16px;
   border-radius: 8px;
   cursor: pointer;
-  color: #94a3b8;
+  color: #ccfbf1;
   font-weight: 500;
   transition: all 0.2s ease;
   background: transparent;
@@ -48,14 +48,14 @@
 }
 
 .vendor-sidebar-item:hover {
-  background-color: rgba(255, 255, 255, 0.05);
-  color: #f8fafc;
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
 }
 
 .vendor-sidebar-item.active {
-  background-color: rgba(13, 138, 115, 0.15); /* Teal tint */
-  color: #0d8a73; /* Teal text */
-  border-left: 4px solid #0d8a73;
+  background-color: rgba(0, 0, 0, 0.15); /* Slightly darker tint for active */
+  color: #ffffff; 
+  border-left: 4px solid #34d399; /* Light green accent */
   border-radius: 0 8px 8px 0;
 }
 

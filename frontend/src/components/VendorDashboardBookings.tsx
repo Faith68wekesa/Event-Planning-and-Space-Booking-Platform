@@ -114,21 +114,20 @@ export const VendorDashboardBookings: React.FC<BookingsProps> = ({ bookings, onU
         {/* Simple Calendar Widget */}
         <div className="dashboard-card" style={{ background: 'linear-gradient(135deg, #0d8a73, #065f54)', color: '#fff', border: 'none' }}>
           <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: '0 0 16px 0', color: '#fff' }}>Upcoming Dates</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', textAlign: 'center' }}>
-            <div style={{ background: 'rgba(255,255,255,0.1)', padding: '12px 0', borderRadius: '8px' }}>
-              <div style={{ fontSize: '1.2rem', fontWeight: 700 }}>12</div>
-              <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>OCT</div>
-            </div>
-            <div style={{ background: 'rgba(139, 92, 246, 0.2)', padding: '12px 0', borderRadius: '8px', border: '1px solid #8b5cf6' }}>
-              <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#a78bfa' }}>14</div>
-              <div style={{ fontSize: '0.75rem', color: '#a78bfa' }}>OCT</div>
-            </div>
-            <div style={{ background: 'rgba(255,255,255,0.1)', padding: '12px 0', borderRadius: '8px' }}>
-              <div style={{ fontSize: '1.2rem', fontWeight: 700 }}>18</div>
-              <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>OCT</div>
-            </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {bookings.filter(b => b.status === 'APPROVED').length > 0 ? (
+              bookings.filter(b => b.status === 'APPROVED').slice(0, 3).map((b, idx) => (
+                <div key={idx} style={{ background: 'rgba(255,255,255,0.1)', padding: '12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontWeight: 600 }}>{b.event_title}</div>
+                  <div style={{ fontSize: '0.8rem', color: '#ccfbf1' }}>{b.event_date}</div>
+                </div>
+              ))
+            ) : (
+              <div style={{ fontSize: '0.85rem', color: '#94a3b8', textAlign: 'center', padding: '12px' }}>
+                No upcoming events.
+              </div>
+            )}
           </div>
-          <p style={{ fontSize: '0.85rem', color: '#94a3b8', marginTop: '16px', textAlign: 'center' }}>You have 2 events this week.</p>
         </div>
 
         <div className="dashboard-card" style={{ background: 'linear-gradient(135deg, #0d8a73, #065f54)', color: '#fff', border: 'none' }}>

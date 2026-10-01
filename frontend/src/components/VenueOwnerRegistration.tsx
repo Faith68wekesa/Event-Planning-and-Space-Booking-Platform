@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import {
-  X, Clock, ArrowRight, ArrowLeft, Building2, Info, Eye, EyeOff
+  X, ArrowRight, ArrowLeft, Eye, EyeOff
 } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import { ApiService } from '../services/api';
 
 interface VenueOwnerRegistrationProps {
@@ -9,20 +10,7 @@ interface VenueOwnerRegistrationProps {
   onSwitchToLogin?: () => void;
 }
 
-const VENUE_BUSINESS_TYPES = [
-  'Hotel',
-  'Conference Centre',
-  'Event Hall',
-  'Wedding Venue',
-  'Garden',
-  'Restaurant',
-  'Outdoor Space',
-  'Community Centre',
-  'Beach Venue',
-  'Resort',
-  'Private Estate',
-  'Other'
-];
+
 
 export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
   onClose,
@@ -31,7 +19,6 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isSuccess, setIsSuccess] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [otpCode, setOtpCode] = useState('');
@@ -45,18 +32,6 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
     phone_number: '',
     password: '',
     confirm_password: '',
-
-    // Section B - Business Information
-    business_name: '',
-    business_type: 'Hotel',
-    other_business_type: '',
-    location: 'Nyeri',
-    address: '',
-    description: '',
-    years_in_business: '',
-    website_url: '',
-    logo_url: '',
-    agreed_to_terms: false,
   });
 
   const handleChange = (
@@ -99,40 +74,9 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
     return true;
   };
 
-  const handleNextStep = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (validateStep1()) {
-      setStep(2);
-    }
-  };
-
-  // Step 2 Submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-
-    if (!formData.business_name.trim()) {
-      setError('Please enter your business or company name.');
-      return;
-    }
-    if (formData.business_type === 'Other' && !formData.other_business_type.trim()) {
-      setError('Please specify your custom venue type.');
-      return;
-    }
-    if (!formData.location.trim()) {
-      setError('Please specify your town or city.');
-      return;
-    }
-    if (!formData.address.trim()) {
-      setError('Please enter your physical property/business address.');
-      return;
-    }
-    if (!formData.description.trim()) {
-      setError('Please provide a short description of your business.');
-      return;
-    }
-    if (!formData.agreed_to_terms) {
-      setError('You must agree to the Terms and Conditions to register.');
+    if (!validateStep1()) {
       return;
     }
 
@@ -141,7 +85,7 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
     try {
       const sent = await ApiService.sendOTP(formData.email.trim().toLowerCase());
       if (sent) {
-        setStep(3); // Go to OTP step
+        setStep(2); // Go to OTP step
       } else {
         setError('Failed to send verification code. Please check your email and try again.');
       }
@@ -197,30 +141,25 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
         return;
       }
 
-      const finalBusinessType =
-        formData.business_type === 'Other'
-          ? formData.other_business_type.trim()
-          : formData.business_type;
-
       const payload = {
         full_name: formData.full_name.trim(),
         email: formData.email.trim().toLowerCase(),
         phone_number: formData.phone_number.trim(),
         password: formData.password,
-        business_name: formData.business_name.trim(),
-        business_type: finalBusinessType,
-        location: formData.location.trim(),
-        address: formData.address.trim(),
-        description: formData.description.trim(),
-        years_in_business: formData.years_in_business ? parseInt(formData.years_in_business) : undefined,
-        website_url: formData.website_url.trim() || undefined,
-        logo_url: formData.logo_url || undefined,
+        business_name: formData.full_name.trim(),
+        business_type: 'Other',
+        location: '',
+        address: '',
+        description: '',
       };
 
       const owner = await ApiService.registerVenueOwner(payload);
       if (owner) {
-        setIsSuccess(true);
-        // Do not call onSuccess(owner) here to avoid auto-login
+        toast.success('Registration successful!', { duration: 3000, position: 'top-center' });
+        setTimeout(() => {
+          if (onSwitchToLogin) onSwitchToLogin();
+          else onClose();
+        }, 2500);
       } else {
         setError('Registration failed. This email or username may already be registered.');
       }
@@ -308,157 +247,40 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
             List and manage premier conference halls, gardens, and event spaces .
           </p>
 
-          {!isSuccess && (
-            <div style={{ display: 'flex', gap: '8px', marginTop: '18px' }}>
-              <div
-                style={{
-                  flex: 1,
-                  height: '4px',
-                  borderRadius: '2px',
-                  background: step >= 1 ? '#ffffff' : 'rgba(255, 255, 255, 0.3)',
-                  transition: 'background 0.3s',
-                }}
-              />
-              <div
-                style={{
-                  flex: 1,
-                  height: '4px',
-                  borderRadius: '2px',
-                  background: step >= 2 ? '#ffffff' : 'rgba(255, 255, 255, 0.3)',
-                  transition: 'background 0.3s',
-                }}
-              />
-              <div
-                style={{
-                  flex: 1,
-                  height: '4px',
-                  borderRadius: '2px',
-                  background: step >= 3 ? '#ffffff' : 'rgba(255, 255, 255, 0.3)',
-                  transition: 'background 0.3s',
-                }}
-              />
-            </div>
-          )}
+          <div style={{ display: 'flex', gap: '8px', marginTop: '18px' }}>
+            <div
+              style={{
+                flex: 1,
+                height: '4px',
+                borderRadius: '2px',
+                background: step >= 1 ? '#ffffff' : 'rgba(255, 255, 255, 0.3)',
+                transition: 'background 0.3s',
+              }}
+            />
+            <div
+              style={{
+                flex: 1,
+                height: '4px',
+                borderRadius: '2px',
+                background: step >= 2 ? '#ffffff' : 'rgba(255, 255, 255, 0.3)',
+                transition: 'background 0.3s',
+              }}
+            />
+            <div
+              style={{
+                flex: 1,
+                height: '4px',
+                borderRadius: '2px',
+                background: step >= 3 ? '#ffffff' : 'rgba(255, 255, 255, 0.3)',
+                transition: 'background 0.3s',
+              }}
+            />
+          </div>
         </div>
 
         {/* Content Body */}
-        {isSuccess ? (
-          /* Post-Registration Pending Verification Screen */
-          <div
-            style={{
-              padding: '40px 32px',
-              textAlign: 'center',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '16px',
-            }}
-          >
-            <div
-              style={{
-                width: '76px',
-                height: '76px',
-                borderRadius: '50%',
-                background: '#ecfdf5',
-                color: '#059669',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '36px',
-                boxShadow: '0 10px 25px -5px rgba(16, 185, 129, 0.25)',
-              }}
-            >
-              🎉
-            </div>
-
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#fef3c7', color: '#b45309', padding: '4px 12px', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 700 }}>
-              <Clock size={13} /> Status: Pending Admin Verification
-            </div>
-
-            <h3 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#1e293b', margin: '4px 0 0' }}>
-              Registration Successful! 🎉
-            </h3>
-
-            <p
-              style={{
-                color: '#475569',
-                fontSize: '0.95rem',
-                lineHeight: 1.6,
-                maxWidth: '440px',
-                margin: 0,
-              }}
-            >
-              Your venue owner account has been created and is currently <strong>pending verification</strong>. An administrator will review your information before your business is listed as verified.
-            </p>
-
-            <div
-              style={{
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: '12px',
-                padding: '16px',
-                width: '100%',
-                maxWidth: '440px',
-                textAlign: 'left',
-                fontSize: '0.85rem',
-                color: '#334155',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b' }}>Business / Venue:</span>
-                <span style={{ fontWeight: 600 }}>{formData.business_name}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b' }}>Venue Type:</span>
-                <span style={{ fontWeight: 600 }}>
-                  {formData.business_type === 'Other' ? formData.other_business_type : formData.business_type}
-                </span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b' }}>Location:</span>
-                <span style={{ fontWeight: 600 }}>{formData.location}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b' }}>Login Email:</span>
-                <span style={{ fontWeight: 600 }}>{formData.email}</span>
-              </div>
-            </div>
-
-            <div style={{ width: '100%', maxWidth: '440px', marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => {
-                  if (onSwitchToLogin) {
-                    onSwitchToLogin();
-                  } else {
-                    onClose();
-                  }
-                }}
-                style={{
-                  width: '100%',
-                  padding: '14px',
-                  borderRadius: '10px',
-                  fontSize: '1rem',
-                  fontWeight: 700,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(13, 138, 115, 0.3)',
-                }}
-              >
-                Go to Venue Owner Login <ArrowRight size={18} />
-              </button>
-            </div>
-          </div>
-        ) : (
-          /* Form Body */
-          <div style={{ padding: '24px 28px' }}>
+        {/* Form Body */}
+        <div style={{ padding: '24px 28px' }}>
             {error && (
               <div
                 style={{
@@ -482,7 +304,7 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
 
             {step === 1 ? (
               /* Section A — Personal Account Information */
-              <form onSubmit={handleNextStep} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '8px', marginBottom: '4px' }}>
                   <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#1e293b', margin: 0 }}>
                     Section A — Personal Account Information
@@ -610,7 +432,7 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
                       cursor: 'pointer',
                     }}
                   >
-                    Next: Business Information <ArrowRight size={16} />
+                    {loading ? 'Sending OTP...' : 'Register Account'} <ArrowRight size={16} />
                   </button>
                 </div>
 
@@ -628,246 +450,6 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
                 )}
               </form>
             ) : step === 2 ? (
-              /* Section B — Business Information */
-              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
-                  <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#1e293b', margin: 0 }}>
-                    Section B — Business Information
-                  </h3>
-                  <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '2px 0 0' }}>
-                    Company and property brand information for verification.
-                  </p>
-                </div>
-
-                {/* Helpful separation notice */}
-                <div
-                  style={{
-                    background: '#f0fdf4',
-                    border: '1px solid #bbf7d0',
-                    borderRadius: '8px',
-                    padding: '10px 12px',
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '8px',
-                    fontSize: '0.8rem',
-                    color: '#166534',
-                  }}
-                >
-                  <Info size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
-                  <div>
-                    <strong>Streamlined Account Setup:</strong> Individual venue details (capacity, pricing per day, amenities, and photo galleries) are managed directly from your Venue Owner Dashboard after registration.
-                  </div>
-                </div>
-
-                {/* Business Name */}
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                    Business Name <span style={{ color: '#ef4444' }}>*</span>
-                    <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 400, marginLeft: '6px' }}>(Company / Venue business name)</span>
-                  </label>
-                  <div style={{ position: 'relative' }}>
-                    <Building2 size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-                    <input
-                      required
-                      type="text"
-                      name="business_name"
-                      value={formData.business_name}
-                      onChange={handleChange}
-                      style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
-                    />
-                  </div>
-                </div>
-
-                {/* Business Type dropdown & Location */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                      Business Type <span style={{ color: '#ef4444' }}>*</span>
-                    </label>
-                    <select
-                      name="business_type"
-                      value={formData.business_type}
-                      onChange={handleChange}
-                      style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: '#fff', fontSize: '0.9rem' }}
-                    >
-                      {VENUE_BUSINESS_TYPES.map(type => (
-                        <option key={type} value={type}>{type}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                      Location <span style={{ color: '#ef4444' }}>*</span>
-                    </label>
-                    <div style={{ position: 'relative' }}>
-                      <input
-                        required
-                        type="text"
-                        name="location"
-                        value={formData.location}
-                        onChange={handleChange}
-                        style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* If Other is selected: Specify Venue Type */}
-                {formData.business_type === 'Other' && (
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#0d8a73', marginBottom: '6px' }}>
-                      Specify Venue Type <span style={{ color: '#ef4444' }}>*</span>
-                    </label>
-                    <input
-                      required
-                      type="text"
-                      name="other_business_type"
-                      value={formData.other_business_type}
-                      onChange={handleChange}
-                      style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #0d8a73', outline: 'none', fontSize: '0.9rem' }}
-                    />
-                  </div>
-                )}
-
-                {/* Business Address */}
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                    Business Address <span style={{ color: '#ef4444' }}>*</span>
-                    <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 400, marginLeft: '6px' }}>(Specific physical address)</span>
-                  </label>
-                  <input
-                    required
-                    type="text"
-                    name="address"
-                    value={formData.address}
-                    onChange={handleChange}
-                    style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
-                  />
-                </div>
-
-                {/* Business Description */}
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                    Business Description <span style={{ color: '#ef4444' }}>*</span>
-                    <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 400, marginLeft: '6px' }}>(Description of business)</span>
-                  </label>
-                  <textarea
-                    required
-                    rows={2}
-                    name="description"
-                    value={formData.description}
-                    onChange={handleChange}
-                    style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem', resize: 'vertical' }}
-                  />
-                </div>
-
-                {/* Years in Business & Website URL */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                      Years in Business <span style={{ color: '#94a3b8', fontWeight: 400 }}>(Optional)</span>
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      name="years_in_business"
-                      value={formData.years_in_business}
-                      onChange={handleChange}
-                      style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                      Business Website <span style={{ color: '#94a3b8', fontWeight: 400 }}>(Optional)</span>
-                    </label>
-                    <div style={{ position: 'relative' }}>
-                      <input
-                        type="url"
-                        name="website_url"
-                        value={formData.website_url}
-                        onChange={handleChange}
-                        style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.9rem' }}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-
-
-                {/* Terms and Conditions */}
-                <div style={{ marginTop: '4px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem', color: '#334155', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      name="agreed_to_terms"
-                      checked={formData.agreed_to_terms}
-                      onChange={handleChange}
-                      style={{ width: '16px', height: '16px', accentColor: '#0d8a73', cursor: 'pointer' }}
-                    />
-                    <span>
-                      I agree to the <strong style={{ color: '#0d8a73' }}>Terms and Conditions</strong> and venue hosting guidelines
-                    </span>
-                  </label>
-                </div>
-
-                {/* Actions */}
-                <div style={{ display: 'flex', gap: '12px', marginTop: '10px' }}>
-                  <button
-                    type="button"
-                    onClick={() => setStep(1)}
-                    style={{
-                      flex: 1,
-                      padding: '12px',
-                      borderRadius: '8px',
-                      border: '1px solid #cbd5e1',
-                      background: '#fff',
-                      color: '#475569',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px',
-                    }}
-                  >
-                    <ArrowLeft size={16} /> Back
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="btn-primary"
-                    style={{
-                      flex: 2,
-                      padding: '12px',
-                      borderRadius: '8px',
-                      fontWeight: 700,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px',
-                      cursor: loading ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    {loading ? 'Creating Venue Owner Account...' : 'Create Venue Owner Account'}
-                  </button>
-                </div>
-
-                {onSwitchToLogin && (
-                  <div style={{ textAlign: 'center', marginTop: '4px', fontSize: '0.875rem', color: '#64748b' }}>
-                    Already have an account?{' '}
-                    <button
-                      type="button"
-                      onClick={onSwitchToLogin}
-                      style={{ background: 'none', border: 'none', color: '#0d8a73', fontWeight: 700, cursor: 'pointer', padding: 0 }}
-                    >
-                      Login
-                    </button>
-                  </div>
-                )}
-              </form>
-            ) : step === 3 ? (
               /* Section C — OTP Verification */
               <div style={{ padding: '8px 0' }}>
                 <div style={{ textAlign: 'center', marginBottom: '24px' }}>
@@ -927,8 +509,7 @@ export const VenueOwnerRegistration: React.FC<VenueOwnerRegistrationProps> = ({
                 </form>
               </div>
             ) : null}
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );
