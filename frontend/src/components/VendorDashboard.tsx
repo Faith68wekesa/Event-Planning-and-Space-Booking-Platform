@@ -6,8 +6,10 @@ import { VendorDashboardBookings } from './VendorDashboardBookings';
 import { VendorDashboardPortfolio } from './VendorDashboardPortfolio';
 import { VendorDashboardReviews } from './VendorDashboardReviews';
 import { VendorDashboardCalendar } from './VendorDashboardCalendar';
+import { VendorDashboardMessages } from './VendorDashboardMessages';
+import { VendorDashboardSettings } from './VendorDashboardSettings';
 import './vendor-dashboard.css';
-import { LayoutDashboard, Briefcase, MessageSquare, Settings, LogOut, User, ClipboardList, Calendar, Building2, Star } from 'lucide-react';
+import { Home, Building, Package, MessageCircle, Settings, LogOut, User, CalendarCheck, Calendar, Star, ChevronDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface VendorDashboardProps {
@@ -24,7 +26,8 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
   const [location, setLocation] = useState('Nairobi');
   const [priceDay, setPriceDay] = useState(75000);
   const [desc, setDesc] = useState('');
-
+  const [unreadMessages, setUnreadMessages] = useState(0);
+  
   const profileFields = [
     currentVendor.business_name && currentVendor.business_name !== 'Pending Setup',
     currentVendor.location,
@@ -115,20 +118,21 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
   };
 
   const menuItems = [
-    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-    { id: 'profile', label: 'Business Profile', icon: Briefcase },
-    { id: 'portfolio', label: 'My Services', icon: Building2 },
-    { id: 'bookings', label: 'Booking Requests', icon: ClipboardList },
-    { id: 'messages', label: 'Messages', icon: MessageSquare },
+    { id: 'overview', label: 'Overview', icon: Home },
+    { id: 'profile', label: 'Business Profile', icon: Building },
+    { id: 'portfolio', label: 'My Services', icon: Package },
+    { id: 'bookings', label: 'Booking Requests', icon: CalendarCheck },
+    { id: 'messages', label: 'Messages', icon: MessageCircle },
     { id: 'calendar', label: 'Calendar', icon: Calendar },
     { id: 'reviews', label: 'Reviews', icon: Star },
     { id: 'my_profile', label: 'My Profile', icon: User },
+    { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
   const getPageTitle = () => {
     switch (activeTab) {
       case 'overview': return 'Vendor Dashboard';
-      case 'portfolio': return 'Portfolio & Listings';
+      case 'portfolio': return 'My Services';
       case 'bookings': return 'Manage Booking Requests';
       case 'reviews': return 'Client Reviews';
       case 'profile': return 'Business Profile';
@@ -140,26 +144,42 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
     }
   };
 
+  const getPageSubtitle = () => {
+    switch (activeTab) {
+      case 'overview': return 'Manage your account, bookings, and listings.';
+      case 'portfolio': return 'Manage the services you offer, showcase examples of your work, and track their verification status.';
+      case 'bookings': return 'Track and manage your upcoming client events.';
+      case 'reviews': return 'See what clients are saying about your services.';
+      case 'profile': return 'Update your public business information.';
+      case 'messages': return 'Communicate with your clients.';
+      case 'calendar': return 'Manage your availability and schedule.';
+      case 'settings': return 'Update your account preferences.';
+      case 'my_profile': return 'Manage your personal account details.';
+      default: return 'Manage your account, bookings, and listings.';
+    }
+  };
+
   return (
     <div className="vendor-dashboard-layout">
 
       {/* Sidebar */}
       <aside className="vendor-sidebar">
         <div className="vendor-sidebar-header" style={{ padding: '24px 16px', borderBottom: 'none' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingBottom: '16px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
-            <div style={{ width: '42px', height: '42px', minWidth: '42px', flexShrink: 0, borderRadius: '50%', background: '#e2e8f0', overflow: 'hidden', border: '2px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingBottom: '16px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', cursor: 'pointer' }}>
+            <div style={{ width: '42px', height: '42px', minWidth: '42px', flexShrink: 0, borderRadius: '50%', background: '#e2e8f0', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {currentVendor.logo_url || currentVendor.portfolio_images?.[0] ? (
                 <img src={currentVendor.logo_url || currentVendor.portfolio_images?.[0]} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               ) : (
-                <User size={24} color="#94a3b8" fill="#94a3b8" style={{ marginTop: '4px' }} />
+                <User size={24} color="#94a3b8" style={{ marginTop: '4px' }} />
               )}
             </div>
-            <div style={{ overflow: 'hidden' }}>
+            <div style={{ overflow: 'hidden', flexGrow: 1 }}>
               <div style={{ fontWeight: 600, fontSize: '0.95rem', color: '#fff', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
                 {currentVendor.business_name && currentVendor.business_name !== 'Pending Setup' ? currentVendor.business_name : 'Business Profile'}
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Vendor Dashboard</div>
+              <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Vendor</div>
             </div>
+            <ChevronDown size={16} color="#94a3b8" />
           </div>
         </div>
 
@@ -171,50 +191,26 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
               onClick={() => setActiveTab(item.id as any)}
             >
               <item.icon size={18} /> {item.label}
-              {item.id === 'bookings' && stats.total_bookings > 0 && (
-                <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '999px', fontWeight: 700 }}>{stats.total_bookings}</span>
+              {item.id === 'messages' && unreadMessages > 0 && (
+                <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: '0.75rem', padding: '2px 8px', borderRadius: '999px', fontWeight: 700 }}>{unreadMessages}</span>
               )}
             </button>
           ))}
 
           <div style={{ flexGrow: 1 }} />
 
-          <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', borderBottom: '1px solid rgba(255,255,255,0.1)', padding: '16px 0', marginBottom: '16px' }}>
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', padding: '16px 0', marginTop: '16px' }}>
             <button 
-              className={`vendor-sidebar-item ${activeTab === 'my_profile' ? 'active' : ''}`}
-              onClick={() => setActiveTab('my_profile' as any)}
-              style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%', background: 'transparent', border: 'none', textAlign: 'left', cursor: 'pointer', color: '#fff', padding: '8px 16px' }}
+              className="vendor-sidebar-item" 
+              style={{ color: '#f8fafc', opacity: 0.9 }}
+              onClick={() => {
+                // Sign out logic could go here
+                window.location.reload();
+              }}
             >
-              <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#0f766e', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                {currentVendor.logo_url || currentVendor.portfolio_images?.[0] ? (
-                  <img src={currentVendor.logo_url || currentVendor.portfolio_images?.[0]} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
-                ) : (
-                  <User size={16} color="#ccfbf1" />
-                )}
-              </div>
-              <div style={{ overflow: 'hidden' }}>
-                <div style={{ fontWeight: 600, fontSize: '0.9rem', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                  {(`${currentVendor.user_details?.first_name || ''} ${currentVendor.user_details?.last_name || ''}`.trim() || currentVendor.user_details?.username || 'Vendor')}
-                </div>
-                <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>My Profile</div>
-              </div>
+              <LogOut size={18} /> Sign Out
             </button>
           </div>
-
-          <button className="vendor-sidebar-item" onClick={() => setActiveTab('settings' as any)}>
-            <Settings size={18} /> Settings
-          </button>
-          
-          <button 
-            className="vendor-sidebar-item" 
-            style={{ marginTop: '16px', color: '#f8fafc', opacity: 0.9 }}
-            onClick={() => {
-              // Sign out logic could go here
-              window.location.reload();
-            }}
-          >
-            <LogOut size={18} /> Sign Out
-          </button>
         </nav>
       </aside>
 
@@ -224,7 +220,7 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
         <div className="vendor-topbar">
           <div>
             <h1>{getPageTitle()}</h1>
-            <p style={{ color: '#64748b', fontSize: '0.9rem', margin: '4px 0 0 0' }}>Manage your account, bookings, and listings.</p>
+            <p style={{ color: '#64748b', fontSize: '0.9rem', margin: '4px 0 0 0' }}>{getPageSubtitle()}</p>
           </div>
 
           <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
@@ -257,6 +253,10 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
           <VendorDashboardCalendar 
             bookings={bookings}
           />
+        )}
+
+        {activeTab === 'messages' && (
+          <VendorDashboardMessages />
         )}
 
         {activeTab === 'my_profile' && (
@@ -400,6 +400,13 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
               </div>
             )}
           </div>
+        )}
+
+        {activeTab === 'settings' && (
+          <VendorDashboardSettings 
+            email={currentVendor.user_details?.email || currentVendor.contact_email || ''} 
+            phone={currentVendor.contact_phone || ''} 
+          />
         )}
 
       </main>

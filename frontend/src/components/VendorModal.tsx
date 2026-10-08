@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Vendor } from '../types';
-import { X, ShieldCheck, MapPin, Star, Phone, Mail, ArrowRight } from 'lucide-react';
+import { X, ShieldCheck, MapPin, Star, Phone, Mail, ArrowRight, MessageCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 interface VendorModalProps {
   vendor: Vendor;
@@ -108,16 +109,28 @@ export const VendorModal: React.FC<VendorModalProps> = ({ vendor, onClose, onBoo
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255, 255, 255, 0.1)', paddingTop: '20px' }}>
           <button className="btn-secondary" onClick={onClose}>Back</button>
-          <button
-            className="btn-primary"
-            onClick={() => {
-              onClose();
-              onBook(vendor);
-            }}
-            style={{ padding: '12px 24px', fontSize: '1rem' }}
-          >
-            Hire Service <ArrowRight size={18} />
-          </button>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button
+              className="btn-secondary"
+              onClick={() => {
+                // Placeholder for messaging functionality
+                toast.success('Messaging functionality coming soon!');
+              }}
+              style={{ padding: '12px 24px', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', cursor: 'pointer', borderRadius: '8px', fontWeight: 600 }}
+            >
+              <MessageCircle size={18} /> Message Vendor
+            </button>
+            <button
+              className="btn-primary"
+              onClick={() => {
+                onClose();
+                onBook(vendor);
+              }}
+              style={{ padding: '12px 24px', fontSize: '1rem' }}
+            >
+              Send Booking Request <ArrowRight size={18} />
+            </button>
+          </div>
         </div>
       </div>
     </div>

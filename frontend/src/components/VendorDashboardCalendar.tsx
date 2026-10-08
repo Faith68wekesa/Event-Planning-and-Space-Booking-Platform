@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { Booking } from '../types';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, MapPin, Users, Clock, CalendarX, MessageSquare, ClipboardList, Info } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 interface VendorDashboardCalendarProps {
   bookings: Booking[];
@@ -16,7 +17,7 @@ export const VendorDashboardCalendar: React.FC<VendorDashboardCalendarProps> = (
   const [selectedDate, setSelectedDate] = useState<number | null>(null);
   
   // Dummy blocked dates for demonstration
-  const [blockedDates] = useState<BlockedDate[]>([
+  const [blockedDates, setBlockedDates] = useState<BlockedDate[]>([
     { date: '2026-10-18', reason: 'Personal Leave' },
   ]);
 
@@ -44,6 +45,19 @@ export const VendorDashboardCalendar: React.FC<VendorDashboardCalendarProps> = (
   const getBlockedForDate = (day: number) => {
     const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     return blockedDates.find(b => b.date === dateStr);
+  };
+
+  const handleUnblockDate = (date: string) => {
+    setBlockedDates(prev => prev.filter(b => b.date !== date));
+    toast.success('Date unblocked successfully');
+  };
+
+  const handleBlockDate = (date: string) => {
+    const reason = window.prompt("Reason for blocking this date?", "Unavailable");
+    if (reason !== null) {
+      setBlockedDates(prev => [...prev, { date, reason: reason || 'Unavailable' }]);
+      toast.success('Date blocked successfully');
+    }
   };
 
   // Render the selected date details panel
@@ -76,7 +90,10 @@ export const VendorDashboardCalendar: React.FC<VendorDashboardCalendarProps> = (
               <CalendarX size={18} /> Unavailable
             </div>
             <div style={{ color: '#991b1b', fontSize: '0.9rem' }}>Reason: {blocked.reason}</div>
-            <button style={{ background: 'none', border: 'none', color: '#b91c1c', fontSize: '0.85rem', fontWeight: 600, marginTop: '12px', cursor: 'pointer', padding: 0 }}>
+            <button 
+              onClick={() => handleUnblockDate(blocked.date)}
+              style={{ background: 'none', border: 'none', color: '#b91c1c', fontSize: '0.85rem', fontWeight: 600, marginTop: '12px', cursor: 'pointer', padding: 0 }}
+            >
               Unblock Date
             </button>
           </div>
@@ -85,7 +102,13 @@ export const VendorDashboardCalendar: React.FC<VendorDashboardCalendarProps> = (
         {!blocked && dayBookings.length === 0 && (
           <div style={{ padding: '24px 0', textAlign: 'center' }}>
             <div style={{ color: '#64748b', marginBottom: '16px' }}>No events scheduled for this date.</div>
-            <button style={{ background: '#f1f5f9', color: '#334155', border: 'none', padding: '10px 16px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', margin: '0 auto' }}>
+            <button 
+              onClick={() => {
+                const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate).padStart(2, '0')}`;
+                handleBlockDate(dateStr);
+              }}
+              style={{ background: '#f1f5f9', color: '#334155', border: 'none', padding: '10px 16px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', margin: '0 auto' }}
+            >
               <CalendarX size={16} /> Block Date
             </button>
           </div>

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowRight, MapPin, Briefcase, Calendar, Search, CheckCircle, DollarSign } from 'lucide-react';
-import type { FilterState } from '../types';
+import type { FilterState, Venue, Vendor } from '../types';
+import { ApiService } from '../services/api';
 
 interface LandingPageProps {
   onSearch: (filters: FilterState) => void;
@@ -10,14 +11,16 @@ interface LandingPageProps {
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({
-  onSearch,
-  filters,
   onExploreVenues,
   onExploreVendors,
 }) => {
-  const handleSearchClick = () => {
-    onSearch(filters);
-  };
+  const [venues, setVenues] = useState<Venue[]>([]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+
+  useEffect(() => {
+    ApiService.getVenues().then(data => setVenues(data.slice(0, 5)));
+    ApiService.getVendors().then(data => setVendors(data.slice(0, 5)));
+  }, []);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', background: '#ffffff', minHeight: '100vh' }}>
@@ -88,46 +91,81 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
 
 
-      {/* 8. Featured Event Spaces */}
-      <section style={{ padding: '80px 24px', background: '#f8fafc' }}>
+
+
+      {/* Venues Section */}
+      <section style={{ padding: '80px 24px', background: '#ffffff' }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '40px' }}>
             <div>
-              <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#14213D', marginBottom: '8px' }}>Featured Event Spaces</h2>
-              <p style={{ color: '#64748b', fontSize: '1.1rem', margin: 0 }}>Discover highly-rated venues for your next occasion.</p>
+              <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#14213D', marginBottom: '8px' }}>Featured Venues</h2>
+              <p style={{ color: '#64748b', fontSize: '1.1rem', margin: 0 }}>Explore top-rated event spaces for your next occasion.</p>
             </div>
-            <button onClick={handleSearchClick} style={{ background: 'transparent', border: 'none', color: '#0F8F7A', fontWeight: 700, fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <button onClick={onExploreVenues} style={{ background: 'transparent', border: 'none', color: '#0F8F7A', fontWeight: 700, fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
               View All <ArrowRight size={18} />
             </button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '32px' }}>
-            {[
-              { name: 'Karen Oasis Gardens', location: 'Nairobi', price: 'KES 85,000/day', rating: '4.8', img: 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=600&q=80' },
-              { name: 'Rift Valley Heights', location: 'Nakuru', price: 'KES 120,000/day', rating: '4.9', img: 'https://images.unsplash.com/photo-1517457373958-b7bdd4587205?auto=format&fit=crop&w=600&q=80' },
-              { name: 'Ocean Breeze Villa', location: 'Mombasa', price: 'KES 150,000/day', rating: '4.7', img: 'https://images.unsplash.com/photo-1543162255-9a85e839e4e3?auto=format&fit=crop&w=600&q=80' },
-            ].map((venue, i) => (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '32px' }}>
+            {venues.length > 0 ? venues.map((venue, i) => (
               <div key={i} style={{ background: '#ffffff', borderRadius: '16px', overflow: 'hidden', border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
-                <div style={{ height: '200px', background: `url(${venue.img}) center/cover` }}></div>
+                <div style={{ height: '200px', background: `url(${venue.image_url || 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=600&q=80'}) center/cover` }}></div>
                 <div style={{ padding: '24px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#0F8F7A', fontSize: '0.8rem', fontWeight: 700, marginBottom: '8px' }}>
-                    <CheckCircle size={14} /> Verified
-                  </div>
-                  <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#14213D', margin: '0 0 8px 0' }}>{venue.name}</h3>
+                  {venue.is_verified && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#0F8F7A', fontSize: '0.8rem', fontWeight: 700, marginBottom: '8px' }}>
+                      <CheckCircle size={14} /> Verified
+                    </div>
+                  )}
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#14213D', margin: '0 0 8px 0' }}>{venue.title}</h3>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#64748b', fontSize: '0.9rem', marginBottom: '16px' }}>
                     <MapPin size={16} /> {venue.location}
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
                     <div>
-                      <span style={{ color: '#14213D', fontWeight: 800 }}>{venue.price}</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#f59e0b', fontWeight: 600 }}>
-                      ★ {venue.rating}
+                      <span style={{ color: '#14213D', fontWeight: 800 }}>KES {venue.price_per_day.toLocaleString()}</span><span style={{ color: '#64748b', fontSize: '0.85rem' }}>/day</span>
                     </div>
                   </div>
                 </div>
               </div>
-            ))}
+            )) : (
+              <div style={{ padding: '40px', gridColumn: '1 / -1', textAlign: 'center', color: '#64748b' }}>No venues found.</div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Services Section */}
+      <section style={{ padding: '80px 24px', background: '#f8fafc' }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '40px' }}>
+            <div>
+              <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#14213D', marginBottom: '8px' }}>Top Services & Planners</h2>
+              <p style={{ color: '#64748b', fontSize: '1.1rem', margin: 0 }}>Connect with verified event professionals.</p>
+            </div>
+            <button onClick={onExploreVendors} style={{ background: 'transparent', border: 'none', color: '#0F8F7A', fontWeight: 700, fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              View All <ArrowRight size={18} />
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '32px' }}>
+            {vendors.length > 0 ? vendors.map((vendor, i) => (
+              <div key={i} style={{ background: '#ffffff', borderRadius: '16px', overflow: 'hidden', border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+                <div style={{ height: '200px', background: `url(${vendor.logo_url || 'https://images.unsplash.com/photo-1543162255-9a85e839e4e3?auto=format&fit=crop&w=600&q=80'}) center/cover` }}></div>
+                <div style={{ padding: '24px' }}>
+                  {vendor.verification_status === 'APPROVED' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#0F8F7A', fontSize: '0.8rem', fontWeight: 700, marginBottom: '8px' }}>
+                      <CheckCircle size={14} /> Verified
+                    </div>
+                  )}
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#14213D', margin: '0 0 8px 0' }}>{vendor.business_name}</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#64748b', fontSize: '0.9rem', marginBottom: '16px' }}>
+                    <Briefcase size={16} /> {vendor.vendor_type}
+                  </div>
+                </div>
+              </div>
+            )) : (
+              <div style={{ padding: '40px', gridColumn: '1 / -1', textAlign: 'center', color: '#64748b' }}>No services found.</div>
+            )}
           </div>
         </div>
       </section>
