@@ -24,6 +24,23 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
   onLogout,
 }) => {
   const [activeTab, setActiveTab] = useState<'venues' | 'bookings' | 'profile'>('venues');
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleProfilePictureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0 && currentOwner.user_details) {
+      const file = e.target.files[0];
+      setIsUploading(true);
+      const newUrl = await ApiService.uploadProfilePicture(currentOwner.user_details.id, file);
+      if (newUrl) {
+        currentOwner.profile_picture = newUrl;
+        toast.success('Profile picture updated successfully!');
+      } else {
+        toast.error('Failed to upload profile picture.');
+      }
+      setIsUploading(false);
+    }
+  };
+
   const [venues, setVenues] = useState<Venue[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
@@ -220,7 +237,14 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: '12px' }}>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '2px solid rgba(255,255,255,0.4)', marginRight: '8px' }}>
+              {currentOwner.profile_picture ? (
+                <img src={currentOwner.profile_picture} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <User size={24} color="#fff" />
+              )}
+            </div>
             <button
               onClick={() => setShowAddModal(true)}
               style={{
@@ -785,6 +809,22 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
                    Edit Profile
                  </button>
                )}
+             </div>
+
+             <div style={{ display: 'flex', alignItems: 'center', gap: '24px', marginBottom: '32px' }}>
+               <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                 {currentOwner.profile_picture ? (
+                   <img src={currentOwner.profile_picture} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                 ) : (
+                   <User size={40} color="#94a3b8" />
+                 )}
+               </div>
+               <label 
+                 style={{ background: '#f1f5f9', color: '#0f172a', border: 'none', padding: '8px 16px', borderRadius: '8px', fontWeight: 600, cursor: isUploading ? 'not-allowed' : 'pointer', fontSize: '0.9rem', display: 'inline-block', opacity: isUploading ? 0.7 : 1 }}
+               >
+                 {isUploading ? 'Uploading...' : 'Upload Profile Picture'}
+                 <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleProfilePictureUpload} disabled={isUploading} />
+               </label>
              </div>
 
              {isEditingProfile ? (

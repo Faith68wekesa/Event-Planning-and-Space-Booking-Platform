@@ -14,7 +14,11 @@ from .serializers import (
 from django.core.mail import send_mail
 import random
 import datetime
+import os
 from django.utils import timezone
+from django.conf import settings
+from django.core.files.storage import FileSystemStorage
+from rest_framework.parsers import MultiPartParser, FormParser
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -613,3 +617,43 @@ def reset_password(request):
         
     except EmailOTP.DoesNotExist:
         return Response({'error': 'No OTP found for this email'}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def upload_profile_picture(request, user_id):
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if 'file' not in request.FILES:
+        return Response({'error': 'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
+
+    upload = request.FILES['file']
+    fs = FileSystemStorage(location=settings.MEDIA_ROOT)
+    
+    # Save the file with a unique name
+    ext = upload.name.split('.')[-1]
+    filename = f"user_{user_id}_{timezone.now().strftime('%Y%m%d%H%M%S')}.{ext}"
+    saved_name = fs.save(filename, upload)
+    
+    # Construct URL
+    file_url = request.build_absolute_uri(settings.MEDIA_URL + saved_name)
+    
+    # Save to user model
+    user.avatar_url = file_url
+    user.save()
+
+    # Also update profile logo if applicable
+    if user.role == 'VENDOR' and hasattr(user, 'vendor_profile'):
+        user.vendor_profile.logo_url = file_url
+        user.vendor_profile.save()
+    elif user.role == 'VENUE_OWNER' and hasattr(user, 'venue_owner_profile'):
+        user.venue_owner_profile.logo_url = file_url
+        user.venue_owner_profile.save()
+
+    return Response({
+        'message': 'Profile picture uploaded successfully',
+        'profile_picture': file_url
+    })
+

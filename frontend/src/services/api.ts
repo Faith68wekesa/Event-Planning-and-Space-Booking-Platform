@@ -441,5 +441,25 @@ export const ApiService = {
       total_bookings: 0,
       satisfied_clients: 0,
     };
+  },
+
+  async uploadProfilePicture(userId: number, file: File): Promise<string | null> {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch(`${API_BASE}/users/${userId}/upload-avatar/`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data.profile_picture;
+      }
+      const errorData = await res.json();
+      console.error('Failed to upload profile picture:', errorData);
+    } catch (e) {
+      console.error('Error uploading profile picture:', e);
+    }
+    return null;
   }
 };

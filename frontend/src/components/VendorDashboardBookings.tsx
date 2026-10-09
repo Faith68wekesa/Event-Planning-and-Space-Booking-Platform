@@ -89,9 +89,6 @@ export const VendorDashboardBookings: React.FC<BookingsProps> = ({ bookings, onU
                       <div style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '24px' }}>
                         When customers request your services, their requests will appear here.
                       </div>
-                      <button style={{ background: '#0d8a73', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', fontWeight: 600, display: 'inline-flex', cursor: 'pointer' }}>
-                        Manage My Services
-                      </button>
                     </td>
                   </tr>
                 ) : (

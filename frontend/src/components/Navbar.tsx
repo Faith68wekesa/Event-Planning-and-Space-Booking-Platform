@@ -94,8 +94,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                   cursor: 'pointer', transition: 'all 0.2s'
                 }}
               >
-                <Lock size={16} />
-                {currentCustomer ? currentCustomer.username : 'Account'}
+                <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                  {currentCustomer?.profile_picture ? (
+                    <img src={currentCustomer.profile_picture} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <User size={16} color="#94a3b8" />
+                  )}
+                </div>
                 <ChevronDown size={16} />
               </button>
               

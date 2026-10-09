@@ -16,10 +16,7 @@ export const VendorDashboardCalendar: React.FC<VendorDashboardCalendarProps> = (
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<number | null>(null);
   
-  // Dummy blocked dates for demonstration
-  const [blockedDates, setBlockedDates] = useState<BlockedDate[]>([
-    { date: '2026-10-18', reason: 'Personal Leave' },
-  ]);
+  const [blockedDates, setBlockedDates] = useState<BlockedDate[]>([]);
 
   const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
   const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay();

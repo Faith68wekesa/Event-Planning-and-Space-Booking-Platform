@@ -7,7 +7,8 @@ from .views import (
     register_venue_owner, login_venue_owner,
     VenueOwnerDashboardView, VenueOwnerBookingsView,
     register_customer, login_customer,
-    send_otp, verify_otp, reset_password
+    send_otp, verify_otp, reset_password,
+    upload_profile_picture
 )
 
 router = DefaultRouter()
@@ -34,5 +35,6 @@ urlpatterns = [
     path('otp/send/', send_otp, name='send-otp'),
     path('otp/verify/', verify_otp, name='verify-otp'),
     path('otp/reset-password/', reset_password, name='reset-password'),
+    path('users/<int:user_id>/upload-avatar/', upload_profile_picture, name='upload-avatar'),
 ]
 

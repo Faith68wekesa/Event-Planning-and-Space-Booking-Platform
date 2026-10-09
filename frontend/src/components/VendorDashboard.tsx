@@ -20,6 +20,23 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
   currentVendor,
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'portfolio' | 'bookings' | 'reviews' | 'profile' | 'messages' | 'calendar' | 'settings' | 'my_profile'>('overview');
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleProfilePictureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0 && currentVendor.user_details) {
+      const file = e.target.files[0];
+      setIsUploading(true);
+      const newUrl = await ApiService.uploadProfilePicture(currentVendor.user_details.id, file);
+      if (newUrl) {
+        currentVendor.profile_picture = newUrl;
+        toast.success('Profile picture updated successfully!');
+      } else {
+        toast.error('Failed to upload profile picture.');
+      }
+      setIsUploading(false);
+    }
+  };
+
   const [showAddModal, setShowAddModal] = useState(false);
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<any>('WEDDING');
@@ -224,8 +241,12 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
           </div>
 
           <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-            <div style={{ fontWeight: 600, fontSize: '0.95rem', color: '#0f172a', marginRight: '8px' }}>
-              {(`${currentVendor.user_details?.first_name || ''} ${currentVendor.user_details?.last_name || ''}`.trim() || currentVendor.user_details?.username || 'Vendor')}
+            <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '2px solid #fff', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+              {currentVendor.logo_url || currentVendor.profile_picture ? (
+                <img src={currentVendor.logo_url || currentVendor.profile_picture} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <User size={20} color="#94a3b8" />
+              )}
             </div>
             <button style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '50%', width: '40px', height: '40px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               🔔
@@ -266,6 +287,21 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
               <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>
                 Manage your personal account details and preferences.
               </p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '24px', marginBottom: '32px' }}>
+              <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                {currentVendor.logo_url || currentVendor.profile_picture ? (
+                  <img src={currentVendor.logo_url || currentVendor.profile_picture} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <User size={40} color="#94a3b8" />
+                )}
+              </div>
+              <label 
+                style={{ background: '#f1f5f9', color: '#0f172a', border: 'none', padding: '8px 16px', borderRadius: '8px', fontWeight: 600, cursor: isUploading ? 'not-allowed' : 'pointer', fontSize: '0.9rem', display: 'inline-block', opacity: isUploading ? 0.7 : 1 }}
+              >
+                {isUploading ? 'Uploading...' : 'Upload Profile Picture'}
+                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleProfilePictureUpload} disabled={isUploading} />
+              </label>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
               <div>

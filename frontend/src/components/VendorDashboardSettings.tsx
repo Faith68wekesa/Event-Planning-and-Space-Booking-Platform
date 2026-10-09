@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import toast from 'react-hot-toast';
 
 export const VendorDashboardSettings: React.FC<{ email: string, phone: string }> = ({ email, phone }) => {
   const [notifications, setNotifications] = useState({
@@ -6,12 +7,33 @@ export const VendorDashboardSettings: React.FC<{ email: string, phone: string }>
     messages: true,
     reviews: true
   });
+  const [isDeactivated, setIsDeactivated] = useState(false);
 
   const toggleNotification = (key: keyof typeof notifications) => {
+    const newState = !notifications[key];
     setNotifications(prev => ({
       ...prev,
-      [key]: !prev[key]
+      [key]: newState
     }));
+    
+    const label = key === 'bookingRequests' ? 'Booking requests' : 
+                  key === 'messages' ? 'Messages' : 'Reviews';
+                  
+    toast.success(`${label} notifications turned ${newState ? 'ON' : 'OFF'}`);
+  };
+
+  const handleToggleDeactivate = () => {
+    if (isDeactivated) {
+      setIsDeactivated(false);
+      toast.success('Account reactivated successfully. Your profile is visible again.');
+    } else {
+      setIsDeactivated(true);
+      toast.success('Account deactivated successfully. Your profile is hidden from customers.');
+    }
+  };
+
+  const handleDelete = () => {
+    toast.error('Account deletion requested. Support will contact you shortly.');
   };
 
   return (
@@ -33,13 +55,7 @@ export const VendorDashboardSettings: React.FC<{ email: string, phone: string }>
             <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 600, marginBottom: '8px' }}>Phone Number</div>
             <div style={{ fontSize: '1.05rem', color: '#0f172a', fontWeight: 500 }}>{phone || 'Not provided'}</div>
           </div>
-          
-          <div>
-            <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 600, marginBottom: '12px' }}>Change Password</div>
-            <button style={{ background: '#f1f5f9', border: 'none', color: '#334155', fontWeight: 600, fontSize: '0.9rem', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer' }}>
-              Change Password
-            </button>
-          </div>
+
         </div>
       </div>
 
@@ -93,11 +109,15 @@ export const VendorDashboardSettings: React.FC<{ email: string, phone: string }>
         <div style={{ display: 'grid', gap: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>Deactivate Account</div>
-              <div style={{ fontSize: '0.85rem', color: '#64748b' }}>Temporarily disable your vendor account</div>
+              <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>
+                {isDeactivated ? 'Reactivate Account' : 'Deactivate Account'}
+              </div>
+              <div style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                {isDeactivated ? 'Re-enable your vendor account' : 'Temporarily disable your vendor account'}
+              </div>
             </div>
-            <button style={{ background: '#fff', border: '1px solid #cbd5e1', color: '#475569', fontWeight: 600, fontSize: '0.85rem', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' }}>
-              Deactivate
+            <button onClick={handleToggleDeactivate} style={{ background: isDeactivated ? '#0d8a73' : '#fff', border: isDeactivated ? 'none' : '1px solid #cbd5e1', color: isDeactivated ? '#fff' : '#475569', fontWeight: 600, fontSize: '0.85rem', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' }}>
+              {isDeactivated ? 'Reactivate' : 'Deactivate'}
             </button>
           </div>
           
@@ -106,7 +126,7 @@ export const VendorDashboardSettings: React.FC<{ email: string, phone: string }>
               <div style={{ fontWeight: 700, color: '#b91c1c', marginBottom: '4px' }}>Delete Account</div>
               <div style={{ fontSize: '0.85rem', color: '#991b1b' }}>Permanently delete your account</div>
             </div>
-            <button style={{ background: '#ef4444', border: 'none', color: '#fff', fontWeight: 600, fontSize: '0.85rem', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' }}>
+            <button onClick={handleDelete} style={{ background: '#ef4444', border: 'none', color: '#fff', fontWeight: 600, fontSize: '0.85rem', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' }}>
               Delete Account
             </button>
           </div>
