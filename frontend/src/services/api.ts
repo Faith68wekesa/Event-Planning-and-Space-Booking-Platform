@@ -43,9 +43,9 @@ export const ApiService = {
     return [];
   },
 
-  async registerVendor(data: any): Promise<Vendor | null> {
+  async registerUser(data: any): Promise<any | null> {
     try {
-      const res = await fetch(`${API_BASE}/vendors/register/`, {
+      const res = await fetch(`${API_BASE}/auth/register/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -56,32 +56,14 @@ export const ApiService = {
       const errorData = await res.json();
       console.error('Registration failed:', errorData);
     } catch (e) {
-      console.error('Failed to register vendor:', e);
+      console.error('Failed to register:', e);
     }
     return null;
   },
 
-  async registerCustomer(data: any): Promise<any | null> {
+  async loginUser(credentials: any): Promise<any | null> {
     try {
-      const res = await fetch(`${API_BASE}/customers/register/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      if (res.ok) {
-        return await res.json();
-      }
-      const errorData = await res.json();
-      console.error('Registration failed:', errorData);
-    } catch (e) {
-      console.error('Failed to register customer:', e);
-    }
-    return null;
-  },
-
-  async loginVendor(credentials: any): Promise<Vendor | null> {
-    try {
-      const res = await fetch(`${API_BASE}/vendors/login/`, {
+      const res = await fetch(`${API_BASE}/auth/login/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(credentials),
@@ -92,25 +74,25 @@ export const ApiService = {
       const errorData = await res.json();
       console.error('Login failed:', errorData);
     } catch (e) {
-      console.error('Failed to login vendor:', e);
+      console.error('Failed to login:', e);
     }
     return null;
   },
 
-  async loginCustomer(credentials: any): Promise<any | null> {
+  async requestRole(userId: number, role: 'CUSTOMER' | 'VENDOR' | 'VENUE_OWNER'): Promise<any | null> {
     try {
-      const res = await fetch(`${API_BASE}/customers/login/`, {
+      const res = await fetch(`${API_BASE}/auth/request-role/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(credentials),
+        body: JSON.stringify({ user_id: userId, role }),
       });
       if (res.ok) {
         return await res.json();
       }
       const errorData = await res.json();
-      console.error('Login failed:', errorData);
+      console.error('Failed to request role:', errorData);
     } catch (e) {
-      console.error('Failed to login customer:', e);
+      console.error('Failed to request role:', e);
     }
     return null;
   },
@@ -342,41 +324,7 @@ export const ApiService = {
     return await res.json();
   },
 
-  async registerVenueOwner(data: any): Promise<VenueOwner | null> {
-    try {
-      const res = await fetch(`${API_BASE}/venue-owners/register/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      if (res.ok) {
-        return await res.json();
-      }
-      const errorData = await res.json();
-      console.error('Venue owner registration failed:', errorData);
-    } catch (e) {
-      console.error('Failed to register venue owner:', e);
-    }
-    return null;
-  },
 
-  async loginVenueOwner(credentials: any): Promise<VenueOwner | null> {
-    try {
-      const res = await fetch(`${API_BASE}/venue-owners/login/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(credentials),
-      });
-      if (res.ok) {
-        return await res.json();
-      }
-      const errorData = await res.json();
-      console.error('Venue owner login failed:', errorData);
-    } catch (e) {
-      console.error('Failed to login venue owner:', e);
-    }
-    return null;
-  },
 
   async getVenueOwnerDashboard(ownerId: number): Promise<{
     total_revenue: number;

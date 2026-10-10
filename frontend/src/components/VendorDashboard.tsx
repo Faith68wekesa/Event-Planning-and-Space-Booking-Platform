@@ -9,7 +9,7 @@ import { VendorDashboardCalendar } from './VendorDashboardCalendar';
 import { VendorDashboardMessages } from './VendorDashboardMessages';
 import { VendorDashboardSettings } from './VendorDashboardSettings';
 import './vendor-dashboard.css';
-import { Home, Building, Package, MessageCircle, Settings, LogOut, User, CalendarCheck, Calendar, Star, ChevronDown } from 'lucide-react';
+import { Home, Building, Package, MessageCircle, Settings, LogOut, User, CalendarCheck, Calendar, Star } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface VendorDashboardProps {
@@ -28,7 +28,7 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
       setIsUploading(true);
       const newUrl = await ApiService.uploadProfilePicture(currentVendor.user_details.id, file);
       if (newUrl) {
-        currentVendor.profile_picture = newUrl;
+        currentVendor.logo_url = newUrl;
         toast.success('Profile picture updated successfully!');
       } else {
         toast.error('Failed to upload profile picture.');
@@ -43,7 +43,7 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
   const [location, setLocation] = useState('Nairobi');
   const [priceDay, setPriceDay] = useState(75000);
   const [desc, setDesc] = useState('');
-  const [unreadMessages, setUnreadMessages] = useState(0);
+  const [unreadMessages] = useState(0);
   
   const profileFields = [
     currentVendor.business_name && currentVendor.business_name !== 'Pending Setup',
@@ -181,24 +181,6 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
 
       {/* Sidebar */}
       <aside className="vendor-sidebar">
-        <div className="vendor-sidebar-header" style={{ padding: '24px 16px', borderBottom: 'none' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingBottom: '16px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', cursor: 'pointer' }}>
-            <div style={{ width: '42px', height: '42px', minWidth: '42px', flexShrink: 0, borderRadius: '50%', background: '#e2e8f0', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {currentVendor.logo_url || currentVendor.portfolio_images?.[0] ? (
-                <img src={currentVendor.logo_url || currentVendor.portfolio_images?.[0]} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              ) : (
-                <User size={24} color="#94a3b8" style={{ marginTop: '4px' }} />
-              )}
-            </div>
-            <div style={{ overflow: 'hidden', flexGrow: 1 }}>
-              <div style={{ fontWeight: 600, fontSize: '0.95rem', color: '#fff', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                {currentVendor.business_name && currentVendor.business_name !== 'Pending Setup' ? currentVendor.business_name : 'Business Profile'}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Vendor</div>
-            </div>
-            <ChevronDown size={16} color="#94a3b8" />
-          </div>
-        </div>
 
         <nav className="vendor-sidebar-nav" style={{ paddingTop: '8px' }}>
           {menuItems.map(item => (
@@ -241,13 +223,6 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
           </div>
 
           <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-            <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '2px solid #fff', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-              {currentVendor.logo_url || currentVendor.profile_picture ? (
-                <img src={currentVendor.logo_url || currentVendor.profile_picture} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              ) : (
-                <User size={20} color="#94a3b8" />
-              )}
-            </div>
             <button style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '50%', width: '40px', height: '40px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               🔔
             </button>
@@ -290,8 +265,8 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '24px', marginBottom: '32px' }}>
               <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                {currentVendor.logo_url || currentVendor.profile_picture ? (
-                  <img src={currentVendor.logo_url || currentVendor.profile_picture} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                {currentVendor.logo_url || currentVendor.user_details?.avatar_url ? (
+                  <img src={currentVendor.logo_url || currentVendor.user_details?.avatar_url} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
                   <User size={40} color="#94a3b8" />
                 )}

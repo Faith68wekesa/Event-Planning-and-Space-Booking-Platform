@@ -4,7 +4,7 @@ from .models import User, VendorProfile, VenueOwnerProfile, Venue, Booking, Revi
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'role', 'phone_number', 'avatar_url', 'bio']
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'role', 'phone_number', 'avatar_url', 'bio', 'is_customer', 'is_vendor', 'is_venue_owner']
 
 
 class VenueOwnerProfileSerializer(serializers.ModelSerializer):

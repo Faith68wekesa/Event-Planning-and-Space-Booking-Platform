@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import type { Booking, BookingStatus } from '../types';
-import { Search, MessageSquare, Check, X } from 'lucide-react';
+
 
 interface BookingsProps {
   bookings: Booking[];
   onUpdateStatus: (id: number, status: BookingStatus) => void;
 }
 
-export const VendorDashboardBookings: React.FC<BookingsProps> = ({ bookings, onUpdateStatus }) => {
+export const VendorDashboardBookings: React.FC<BookingsProps> = ({ bookings }) => {
   const [filter, setFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'COMPLETED' | 'REJECTED'>('ALL');
 
   const filteredBookings = bookings.filter(b => {

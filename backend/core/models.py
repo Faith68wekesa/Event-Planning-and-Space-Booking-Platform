@@ -9,6 +9,9 @@ class User(AbstractUser):
         ('ADMIN', 'Administrator'),
     ]
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='CUSTOMER')
+    is_customer = models.BooleanField(default=True)
+    is_vendor = models.BooleanField(default=False)
+    is_venue_owner = models.BooleanField(default=False)
     phone_number = models.CharField(max_length=20, blank=True, null=True)
     avatar_url = models.URLField(max_length=500, blank=True, null=True)
     bio = models.TextField(blank=True, null=True)

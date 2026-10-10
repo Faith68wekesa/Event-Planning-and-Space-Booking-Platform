@@ -1,5 +1,5 @@
 import React from 'react';
-import { Star, MessageCircle, ThumbsUp, ChevronDown } from 'lucide-react';
+import { Star, ThumbsUp, ChevronDown } from 'lucide-react';
 import type { Review } from '../types';
 
 interface VendorDashboardReviewsProps {

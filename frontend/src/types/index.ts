@@ -7,9 +7,23 @@ export interface User {
   first_name?: string;
   last_name?: string;
   role: UserRole;
+  is_customer?: boolean;
+  is_vendor?: boolean;
+  is_venue_owner?: boolean;
   phone_number?: string;
   avatar_url?: string;
   bio?: string;
+}
+
+export interface AuthResponse {
+  user: User;
+  roles: {
+    is_customer: boolean;
+    is_vendor: boolean;
+    is_venue_owner: boolean;
+  };
+  vendor_profile?: Vendor;
+  venue_owner_profile?: VenueOwner;
 }
 
 export type VerificationStatus = 'PENDING' | 'APPROVED' | 'REJECTED';

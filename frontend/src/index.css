@@ -143,3 +143,13 @@ code {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* Hide scrollbar universally as requested */
+::-webkit-scrollbar {
+  display: none;
+}
+* {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+

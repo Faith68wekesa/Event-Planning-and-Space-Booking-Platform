@@ -6,25 +6,25 @@ import toast from 'react-hot-toast';
 
 interface CustomerDashboardProps {
   bookings: Booking[];
-  currentCustomer: any;
+  currentUser: any;
   onCancelBooking: (id: number) => void;
 }
 
 export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
   bookings,
-  currentCustomer,
+  currentUser,
   onCancelBooking,
 }) => {
   const [activeTab, setActiveTab] = useState<'bookings' | 'profile'>('bookings');
   const [isUploading, setIsUploading] = useState(false);
 
   const handleProfilePictureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0 && currentCustomer) {
+    if (e.target.files && e.target.files.length > 0 && currentUser) {
       const file = e.target.files[0];
       setIsUploading(true);
-      const newUrl = await ApiService.uploadProfilePicture(currentCustomer.id, file);
+      const newUrl = await ApiService.uploadProfilePicture(currentUser.id, file);
       if (newUrl) {
-        currentCustomer.profile_picture = newUrl;
+        currentUser.profile_picture = newUrl;
         toast.success('Profile picture updated successfully!');
       } else {
         toast.error('Failed to upload profile picture.');
@@ -83,12 +83,12 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
         </button>
       </div>
 
-      {activeTab === 'profile' && currentCustomer && (
+      {activeTab === 'profile' && currentUser && (
         <div className="card" style={{ padding: '32px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '24px', marginBottom: '32px' }}>
             <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-              {currentCustomer.profile_picture ? (
-                <img src={currentCustomer.profile_picture} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              {currentUser.profile_picture ? (
+                <img src={currentUser.profile_picture} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               ) : (
                 <UserIcon size={40} color="#94a3b8" />
               )}
@@ -104,10 +104,10 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
           </div>
           <h3 style={{ fontSize: '1.3rem', fontWeight: 800, marginBottom: '24px' }}>Personal Information</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-            <div><span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.85rem' }}>Username</span><strong>{currentCustomer.username}</strong></div>
-            <div><span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.85rem' }}>Email Address</span><strong>{currentCustomer.email}</strong></div>
-            <div><span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.85rem' }}>Phone Number</span><strong>{currentCustomer.phone_number || 'Not provided'}</strong></div>
-            <div><span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.85rem' }}>Account Role</span><strong>{currentCustomer.role}</strong></div>
+            <div><span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.85rem' }}>Username</span><strong>{currentUser.username}</strong></div>
+            <div><span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.85rem' }}>Email Address</span><strong>{currentUser.email}</strong></div>
+            <div><span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.85rem' }}>Phone Number</span><strong>{currentUser.phone_number || 'Not provided'}</strong></div>
+            <div><span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.85rem' }}>Account Role</span><strong>{currentUser.role}</strong></div>
           </div>
         </div>
       )}

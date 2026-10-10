@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { UserRole, Venue, Vendor, VenueOwner, Booking, PlatformStats, FilterState } from './types';
 import { ApiService } from './services/api.ts';
+import { LandingPage } from './components/LandingPage.tsx';
 import { Navbar } from './components/Navbar.tsx';
 import { HeroSearch } from './components/HeroSearch.tsx';
 import { VenueGrid } from './components/VenueGrid.tsx';
@@ -13,19 +14,12 @@ import { CustomerDashboard } from './components/CustomerDashboard.tsx';
 import { VendorDashboard } from './components/VendorDashboard.tsx';
 import { VenueOwnerDashboard } from './components/VenueOwnerDashboard.tsx';
 import { AdminDashboard } from './components/AdminDashboard.tsx';
-import { VendorRegistration } from './components/VendorRegistration.tsx';
-import { VendorLogin } from './components/VendorLogin.tsx';
-import { VenueOwnerLogin } from './components/VenueOwnerLogin.tsx';
-import { VenueOwnerRegistration } from './components/VenueOwnerRegistration.tsx';
-import { LandingPage } from './components/LandingPage.tsx';
-import { SplashPage } from './components/SplashPage.tsx';
-import { CustomerLogin } from './components/CustomerLogin.tsx';
-import { CustomerRegistration } from './components/CustomerRegistration.tsx';
+import { AuthModal } from './components/AuthModal.tsx';
 import type { User as UserType } from './types';
-import { Toaster } from 'react-hot-toast';
+import { Toaster, toast } from 'react-hot-toast';
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<string>('splash');
+  const [activeTab, setActiveTab] = useState<string>('landing');
   const [activeRole, setActiveRole] = useState<UserRole>('CUSTOMER');
 
   const [filters, setFilters] = useState<FilterState>({
@@ -54,32 +48,19 @@ export const App: React.FC = () => {
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
   const [bookingTargetVenue, setBookingTargetVenue] = useState<Venue | null>(null);
   const [bookingTargetVendor, setBookingTargetVendor] = useState<Vendor | null>(null);
-  const [showRegistration, setShowRegistration] = useState(false);
-  const [showLogin, setShowLogin] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [currentUser, setCurrentUser] = useState<UserType | null>(null);
   const [currentVendor, setCurrentVendor] = useState<Vendor | null>(null);
-  const [showVenueOwnerRegistration, setShowVenueOwnerRegistration] = useState(false);
-  const [showVenueOwnerLogin, setShowVenueOwnerLogin] = useState(false);
   const [currentVenueOwner, setCurrentVenueOwner] = useState<VenueOwner | null>(null);
-
-  const [showCustomerLogin, setShowCustomerLogin] = useState(false);
-  const [showCustomerRegistration, setShowCustomerRegistration] = useState(false);
-  const [currentCustomer, setCurrentCustomer] = useState<UserType | null>(null);
 
   const handleInterceptBook = (target: any, type: 'venue' | 'vendor') => {
     if (type === 'venue') setBookingTargetVenue(target);
     else setBookingTargetVendor(target);
 
-    if (!currentCustomer) {
-      setShowCustomerLogin(true);
+    if (!currentUser) {
+      setAuthMode('login'); setShowAuthModal(true);;
     }
-  };
-
-  const handleCustomerLoginSuccess = (user: UserType) => {
-    setShowCustomerLogin(false);
-    setShowCustomerRegistration(false);
-    setCurrentCustomer(user);
-    setActiveRole('CUSTOMER');
-    // If bookingTarget exists, the BookingModal will now open
   };
 
   const loadData = async () => {
@@ -93,12 +74,12 @@ export const App: React.FC = () => {
   };
 
   useEffect(() => {
-    if (currentCustomer) {
-      ApiService.getBookings(currentCustomer.id).then(setBookings);
+    if (currentUser) {
+      ApiService.getBookings(currentUser.id).then(setBookings);
     } else {
       setBookings([]);
     }
-  }, [currentCustomer]);
+  }, [currentUser]);
 
   useEffect(() => {
     loadData();
@@ -130,29 +111,45 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleRequestRole = async (role: 'CUSTOMER' | 'VENDOR' | 'VENUE_OWNER') => {
+    if (!currentUser) return;
+    const roleName = role === 'VENDOR' ? 'Vendor' : role === 'VENUE_OWNER' ? 'Venue Owner' : 'Customer';
+    const toastId = toast.loading(`Adding ${roleName} role...`);
+    try {
+      const data = await ApiService.requestRole(currentUser.id, role);
+      if (data && data.user) {
+        toast.success(`Role added successfully!`, { id: toastId });
+        setCurrentUser(data.user);
+        if (data.vendor_profile) setCurrentVendor(data.vendor_profile);
+        if (data.venue_owner_profile) setCurrentVenueOwner(data.venue_owner_profile);
+        
+        setActiveRole(role);
+        setActiveTab(role === 'VENDOR' ? 'vendor-dashboard' : role === 'VENUE_OWNER' ? 'venue-owner-dashboard' : 'venues');
+      } else {
+        toast.error("Failed to add role.", { id: toastId });
+      }
+    } catch (err) {
+      toast.error("An error occurred.", { id: toastId });
+    }
+  };
+
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <Toaster position="top-center" reverseOrder={false} />
-      {activeTab === 'splash' ? (
-        <SplashPage
-          onSelectCustomer={() => {
-            setActiveRole('CUSTOMER');
-            setActiveTab('landing');
-          }}
-          onSelectVendor={() => setShowLogin(true)}
-          onSelectVenueOwner={() => setShowVenueOwnerLogin(true)}
-        />
-      ) : (
-        <>
+      <>
           <Navbar
             activeTab={activeTab}
             setActiveTab={setActiveTab}
             activeRole={activeRole}
-            currentCustomer={currentCustomer}
-            onLoginClick={() => setShowCustomerLogin(true)}
-            onRegisterClick={() => setShowCustomerRegistration(true)}
+            setActiveRole={setActiveRole}
+            currentUser={currentUser}
+            onLoginClick={() => { setAuthMode('login'); setShowAuthModal(true); }}
+            onRegisterClick={() => { setAuthMode('register'); setShowAuthModal(true); }}
+            onRequestRole={handleRequestRole}
+            searchQuery={filters.search}
+            onSearchChange={(q) => setFilters((f) => ({ ...f, search: q }))}
             onLogoutClick={() => {
-              setCurrentCustomer(null);
+              setCurrentUser(null);
               setActiveRole('CUSTOMER');
               setActiveTab('landing');
             }}
@@ -225,7 +222,7 @@ export const App: React.FC = () => {
                 {activeTab === 'my-bookings' && (
                   <CustomerDashboard
                     bookings={bookings}
-                    currentCustomer={currentCustomer}
+                    currentUser={currentUser}
                     onCancelBooking={handleCancelBooking}
                   />
                 )}
@@ -273,11 +270,11 @@ export const App: React.FC = () => {
             />
           )}
 
-          {currentCustomer && (bookingTargetVenue || bookingTargetVendor) && (
+          {currentUser && (bookingTargetVenue || bookingTargetVendor) && (
             <BookingModal
               venue={bookingTargetVenue}
               vendor={bookingTargetVendor}
-              currentCustomer={currentCustomer}
+              currentUser={currentUser}
               onClose={() => {
                 setBookingTargetVenue(null);
                 setBookingTargetVendor(null);
@@ -317,8 +314,8 @@ export const App: React.FC = () => {
                 <div>
                   <h4 style={{ fontWeight: 700, marginBottom: '16px', letterSpacing: '0.05em', textTransform: 'uppercase', fontSize: '0.8rem' }}>For Vendors</h4>
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => setShowRegistration(true)}>Become a Vendor</li>
-                    <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => setShowVenueOwnerRegistration(true)}>List Venue</li>
+                    <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => setShowAuthModal(true)}>Become a Vendor</li>
+                    <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => setShowAuthModal(true)}>List Venue</li>
                   </ul>
                 </div>
 
@@ -344,85 +341,33 @@ export const App: React.FC = () => {
             </div>
           </footer>
         </>
-      )}
 
-      {showRegistration && (
-        <VendorRegistration
-          onClose={() => setShowRegistration(false)}
-          onSwitchToLogin={() => {
-            setShowRegistration(false);
-            setShowLogin(true);
-          }}
-        />
-      )}
-
-      {showLogin && (
-        <VendorLogin
-          onClose={() => setShowLogin(false)}
-          onSuccess={(vendor) => {
-            setShowLogin(false);
-            setCurrentVendor(vendor);
-            setActiveRole('VENDOR');
-            setActiveTab('vendor-dashboard');
-          }}
-          onSwitchToRegister={() => {
-            setShowLogin(false);
-            setShowRegistration(true);
-          }}
-        />
-      )}
-
-      {showVenueOwnerLogin && (
-        <VenueOwnerLogin
-          onClose={() => setShowVenueOwnerLogin(false)}
-          onSuccess={(owner) => {
-            setShowVenueOwnerLogin(false);
-            setCurrentVenueOwner(owner);
-            setActiveRole('VENUE_OWNER');
-            setActiveTab('venue-owner-dashboard');
-          }}
-          onSwitchToRegister={() => {
-            setShowVenueOwnerLogin(false);
-            setShowVenueOwnerRegistration(true);
-          }}
-        />
-      )}
-
-      {showVenueOwnerRegistration && (
-        <VenueOwnerRegistration
-          onClose={() => setShowVenueOwnerRegistration(false)}
-          onSwitchToLogin={() => {
-            setShowVenueOwnerRegistration(false);
-            setShowVenueOwnerLogin(true);
-          }}
-        />
-      )}
-
-      {showCustomerLogin && (
-        <CustomerLogin
+      {showAuthModal && (
+        <AuthModal
+          initialMode={authMode}
           onClose={() => {
-            setShowCustomerLogin(false);
+            setShowAuthModal(false);
             setBookingTargetVenue(null);
             setBookingTargetVendor(null);
           }}
-          onSuccess={handleCustomerLoginSuccess}
-          onSwitchToRegister={() => {
-            setShowCustomerLogin(false);
-            setShowCustomerRegistration(true);
-          }}
-        />
-      )}
-
-      {showCustomerRegistration && (
-        <CustomerRegistration
-          onClose={() => {
-            setShowCustomerRegistration(false);
-            setBookingTargetVenue(null);
-            setBookingTargetVendor(null);
-          }}
-          onSwitchToLogin={() => {
-            setShowCustomerRegistration(false);
-            setShowCustomerLogin(true);
+          onSuccess={(data) => {
+            setShowAuthModal(false);
+            setCurrentUser(data.user);
+            if (data.vendor_profile) setCurrentVendor(data.vendor_profile);
+            if (data.venue_owner_profile) setCurrentVenueOwner(data.venue_owner_profile);
+            
+            // Set primary active role based on selection or roles available
+            if (data.roles?.is_vendor) {
+              setActiveRole('VENDOR');
+              setActiveTab('vendor-dashboard');
+            } else if (data.roles?.is_venue_owner) {
+              setActiveRole('VENUE_OWNER');
+              setActiveTab('venue-owner-dashboard');
+            } else {
+              setActiveRole('CUSTOMER');
+              // If there's a booking target, we might want to trigger the modal open here
+              // For now, we just stay on landing
+            }
           }}
         />
       )}

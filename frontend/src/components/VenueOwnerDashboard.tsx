@@ -10,7 +10,8 @@ import {
   Clock,
   MapPin,
   Trash2,
-  ShieldCheck
+  ShieldCheck,
+  User as UserIcon
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -32,7 +33,7 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
       setIsUploading(true);
       const newUrl = await ApiService.uploadProfilePicture(currentOwner.user_details.id, file);
       if (newUrl) {
-        currentOwner.profile_picture = newUrl;
+        currentOwner.logo_url = newUrl;
         toast.success('Profile picture updated successfully!');
       } else {
         toast.error('Failed to upload profile picture.');
@@ -239,10 +240,10 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
 
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
             <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '2px solid rgba(255,255,255,0.4)', marginRight: '8px' }}>
-              {currentOwner.profile_picture ? (
-                <img src={currentOwner.profile_picture} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              {currentOwner.user_details?.avatar_url ? (
+                <img src={currentOwner.user_details?.avatar_url} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               ) : (
-                <User size={24} color="#fff" />
+                <UserIcon size={24} color="#fff" />
               )}
             </div>
             <button
@@ -813,10 +814,10 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
 
              <div style={{ display: 'flex', alignItems: 'center', gap: '24px', marginBottom: '32px' }}>
                <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                 {currentOwner.profile_picture ? (
-                   <img src={currentOwner.profile_picture} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                 {currentOwner.user_details?.avatar_url ? (
+                   <img src={currentOwner.user_details?.avatar_url} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                  ) : (
-                   <User size={40} color="#94a3b8" />
+                   <UserIcon size={40} color="#94a3b8" />
                  )}
                </div>
                <label 

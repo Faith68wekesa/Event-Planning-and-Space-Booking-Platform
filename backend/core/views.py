@@ -220,88 +220,9 @@ def platform_stats(request):
     })
 
 
-@api_view(['POST'])
-@transaction.atomic
-def register_vendor(request):
-    data = request.data
-    email = data.get('email', '').strip().lower()
-    username = data.get('username', '').strip() or email
 
-    if not email:
-        return Response({'error': 'Email address is required'}, status=status.HTTP_400_BAD_REQUEST)
-    if User.objects.filter(email__iexact=email).exists():
-        return Response({'error': 'An account with this email address already exists'}, status=status.HTTP_400_BAD_REQUEST)
-    if User.objects.filter(username__iexact=username).exists():
-        return Response({'error': 'This username is already taken'}, status=status.HTTP_400_BAD_REQUEST)
-        
-    try:
-        full_name = data.get('full_name', '').strip()
-        first_name = data.get('first_name', '').strip()
-        last_name = data.get('last_name', '').strip()
-        if full_name and not (first_name or last_name):
-            parts = full_name.split(' ', 1)
-            first_name = parts[0]
-            last_name = parts[1] if len(parts) > 1 else ''
 
-        # Create User
-        user = User.objects.create_user(
-            username=username,
-            email=email,
-            password=data.get('password'),
-            first_name=first_name,
-            last_name=last_name,
-            role='VENDOR',
-            phone_number=data.get('phone_number', '')
-        )
-        
-        # Create VendorProfile
-        vendor = VendorProfile.objects.create(
-            user=user,
-            business_name=data.get('business_name'),
-            vendor_type=data.get('vendor_type', 'Other'),
-            description=data.get('description', ''),
-            location=data.get('location', ''),
-            address=data.get('address', ''),
-            starting_price=data.get('starting_price', 0) or 0,
-            contact_email=email,
-            contact_phone=data.get('phone_number', ''),
-            years_in_business=data.get('years_in_business') if data.get('years_in_business') else None,
-            website_url=data.get('website_url', '') or data.get('portfolio_url', ''),
-            logo_url=data.get('logo_url', ''),
-            verification_status='PENDING',
-            is_verified=False
-        )
-        
-        serializer = VendorProfileSerializer(vendor)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-        
-    except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-@api_view(['POST'])
-def login_vendor(request):
-    login_identifier = (request.data.get('username') or request.data.get('email') or '').strip()
-    password = request.data.get('password')
-    
-    # Try finding user by username or email
-    user_obj = User.objects.filter(Q(username__iexact=login_identifier) | Q(email__iexact=login_identifier)).first()
-    if not user_obj:
-        return Response({'error': 'No account found with this email or username'}, status=status.HTTP_401_UNAUTHORIZED)
-
-    user = authenticate(username=user_obj.username, password=password)
-    
-    if user is not None:
-        if user.role != 'VENDOR':
-            return Response({'error': 'Account is not registered as a vendor'}, status=status.HTTP_403_FORBIDDEN)
-            
-        try:
-            vendor = VendorProfile.objects.get(user=user)
-            serializer = VendorProfileSerializer(vendor)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        except VendorProfile.DoesNotExist:
-            return Response({'error': 'Vendor profile not found'}, status=status.HTTP_404_NOT_FOUND)
-    else:
-        return Response({'error': 'Invalid credentials. Please verify your password.'}, status=status.HTTP_401_UNAUTHORIZED)
 
 
 class VendorDashboardView(APIView):
@@ -338,85 +259,10 @@ class VendorBookingsView(APIView):
         return Response(BookingSerializer(bookings, many=True).data)
 
 
-@api_view(['POST'])
-@transaction.atomic
-def register_venue_owner(request):
-    data = request.data
-    email = data.get('email', '').strip().lower()
-    username = data.get('username', '').strip() or email
-
-    if not email:
-        return Response({'error': 'Email address is required'}, status=status.HTTP_400_BAD_REQUEST)
-    if User.objects.filter(email__iexact=email).exists():
-        return Response({'error': 'An account with this email address already exists'}, status=status.HTTP_400_BAD_REQUEST)
-    if User.objects.filter(username__iexact=username).exists():
-        return Response({'error': 'This username is already taken'}, status=status.HTTP_400_BAD_REQUEST)
-        
-    try:
-        full_name = data.get('full_name', '').strip()
-        first_name = data.get('first_name', '').strip()
-        last_name = data.get('last_name', '').strip()
-        if full_name and not (first_name or last_name):
-            parts = full_name.split(' ', 1)
-            first_name = parts[0]
-            last_name = parts[1] if len(parts) > 1 else ''
-
-        user = User.objects.create_user(
-            username=username,
-            email=email,
-            password=data.get('password'),
-            first_name=first_name,
-            last_name=last_name,
-            role='VENUE_OWNER',
-            phone_number=data.get('phone_number', '')
-        )
-        
-        venue_owner = VenueOwnerProfile.objects.create(
-            user=user,
-            business_name=data.get('business_name'),
-            business_type=data.get('business_type', 'Event Venue'),
-            contact_email=email,
-            contact_phone=data.get('phone_number', ''),
-            location=data.get('location', ''),
-            address=data.get('address', ''),
-            description=data.get('description', ''),
-            years_in_business=data.get('years_in_business') if data.get('years_in_business') else None,
-            website_url=data.get('website_url', ''),
-            logo_url=data.get('logo_url', ''),
-            verification_status='PENDING',
-            is_verified=False
-        )
-        
-        serializer = VenueOwnerProfileSerializer(venue_owner)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-        
-    except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-@api_view(['POST'])
-def login_venue_owner(request):
-    login_identifier = (request.data.get('username') or request.data.get('email') or '').strip()
-    password = request.data.get('password')
-    
-    user_obj = User.objects.filter(Q(username__iexact=login_identifier) | Q(email__iexact=login_identifier)).first()
-    if not user_obj:
-        return Response({'error': 'No account found with this email or username'}, status=status.HTTP_401_UNAUTHORIZED)
 
-    user = authenticate(username=user_obj.username, password=password)
-    
-    if user is not None:
-        if user.role != 'VENUE_OWNER':
-            return Response({'error': 'Account is not registered as a venue owner'}, status=status.HTTP_403_FORBIDDEN)
-            
-        try:
-            venue_owner = VenueOwnerProfile.objects.get(user=user)
-            serializer = VenueOwnerProfileSerializer(venue_owner)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        except VenueOwnerProfile.DoesNotExist:
-            return Response({'error': 'Venue owner profile not found'}, status=status.HTTP_404_NOT_FOUND)
-    else:
-        return Response({'error': 'Invalid credentials. Please verify your password.'}, status=status.HTTP_401_UNAUTHORIZED)
+
 
 
 class VenueOwnerDashboardView(APIView):
@@ -456,65 +302,10 @@ class VenueOwnerBookingsView(APIView):
         return Response(BookingSerializer(bookings, many=True).data)
 
 
-@api_view(['POST'])
-@transaction.atomic
-def register_customer(request):
-    data = request.data
-    email = data.get('email', '').strip().lower()
-    username = data.get('username', '').strip() or email
-
-    if not email:
-        return Response({'error': 'Email address is required'}, status=status.HTTP_400_BAD_REQUEST)
-    if User.objects.filter(email__iexact=email).exists():
-        return Response({'error': 'An account with this email address already exists'}, status=status.HTTP_400_BAD_REQUEST)
-    if User.objects.filter(username__iexact=username).exists():
-        return Response({'error': 'This username is already taken'}, status=status.HTTP_400_BAD_REQUEST)
-        
-    try:
-        full_name = data.get('full_name', '').strip()
-        first_name = data.get('first_name', '').strip()
-        last_name = data.get('last_name', '').strip()
-        if full_name and not (first_name or last_name):
-            parts = full_name.split(' ', 1)
-            first_name = parts[0]
-            last_name = parts[1] if len(parts) > 1 else ''
-
-        user = User.objects.create_user(
-            username=username,
-            email=email,
-            password=data.get('password'),
-            first_name=first_name,
-            last_name=last_name,
-            role='CUSTOMER',
-            phone_number=data.get('phone_number', '')
-        )
-        
-        serializer = UserSerializer(user)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-        
-    except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-@api_view(['POST'])
-def login_customer(request):
-    login_identifier = (request.data.get('username') or request.data.get('email') or '').strip()
-    password = request.data.get('password')
-    
-    user_obj = User.objects.filter(Q(username__iexact=login_identifier) | Q(email__iexact=login_identifier)).first()
-    if not user_obj:
-        return Response({'error': 'No account found with this email or username'}, status=status.HTTP_401_UNAUTHORIZED)
 
-    user = authenticate(username=user_obj.username, password=password)
-    
-    if user is not None:
-        if user.role != 'CUSTOMER':
-            return Response({'error': 'Account is not registered as a customer'}, status=status.HTTP_403_FORBIDDEN)
-            
-        serializer = UserSerializer(user)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    else:
-        return Response({'error': 'Invalid credentials. Please verify your password.'}, status=status.HTTP_401_UNAUTHORIZED)
+
 
 
 @api_view(['POST'])
@@ -657,3 +448,146 @@ def upload_profile_picture(request, user_id):
         'profile_picture': file_url
     })
 
+
+
+@api_view(['POST'])
+@transaction.atomic
+def register_user(request):
+    data = request.data
+    email = data.get('email', '').strip().lower()
+    username = data.get('username', '').strip() or email
+
+    if not email:
+        return Response({'error': 'Email address is required'}, status=status.HTTP_400_BAD_REQUEST)
+    if User.objects.filter(email__iexact=email).exists():
+        return Response({'error': 'An account with this email address already exists'}, status=status.HTTP_400_BAD_REQUEST)
+    if User.objects.filter(username__iexact=username).exists():
+        return Response({'error': 'This username is already taken'}, status=status.HTTP_400_BAD_REQUEST)
+        
+    try:
+        full_name = data.get('full_name', '').strip()
+        first_name = data.get('first_name', '').strip()
+        last_name = data.get('last_name', '').strip()
+        if full_name and not (first_name or last_name):
+            parts = full_name.split(' ', 1)
+            first_name = parts[0]
+            last_name = parts[1] if len(parts) > 1 else ''
+
+        user = User.objects.create_user(
+            username=username,
+            email=email,
+            password=data.get('password'),
+            first_name=first_name,
+            last_name=last_name,
+            is_customer=False, # Wait for explicit role selection
+            phone_number=data.get('phone_number', '')
+        )
+        
+        serializer = UserSerializer(user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+def login_user(request):
+    login_identifier = (request.data.get('username') or request.data.get('email') or '').strip()
+    password = request.data.get('password')
+    
+    user_obj = User.objects.filter(Q(username__iexact=login_identifier) | Q(email__iexact=login_identifier)).first()
+    if not user_obj:
+        return Response({'error': 'No account found with this email or username'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    user = authenticate(username=user_obj.username, password=password)
+    
+    if user is not None:
+        response_data = {
+            'user': UserSerializer(user).data,
+            'roles': {
+                'is_customer': user.is_customer,
+                'is_vendor': user.is_vendor,
+                'is_venue_owner': user.is_venue_owner
+            }
+        }
+        
+        if user.is_vendor and hasattr(user, 'vendor_profile'):
+            response_data['vendor_profile'] = VendorProfileSerializer(user.vendor_profile).data
+            
+        if user.is_venue_owner and hasattr(user, 'venue_owner_profile'):
+            response_data['venue_owner_profile'] = VenueOwnerProfileSerializer(user.venue_owner_profile).data
+            
+        return Response(response_data, status=status.HTTP_200_OK)
+    else:
+        return Response({'error': 'Invalid credentials. Please verify your password.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+@api_view(['POST'])
+@transaction.atomic
+def request_role(request):
+    user_id = request.data.get('user_id')
+    role = request.data.get('role')
+    
+    if not user_id or not role:
+        return Response({'error': 'User ID and role are required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+    try:
+        user = User.objects.get(id=user_id)
+        
+        if role == 'CUSTOMER':
+            user.is_customer = True
+            user.save()
+        elif role == 'VENDOR':
+            if not user.is_vendor:
+                user.is_vendor = True
+                user.save()
+                # Create empty profile
+                VendorProfile.objects.get_or_create(
+                    user=user,
+                    defaults={
+                        'business_name': f"{user.first_name}'s Business" if user.first_name else "My Business",
+                        'vendor_type': 'Other',
+                        'location': '',
+                        'contact_email': user.email,
+                        'contact_phone': user.phone_number
+                    }
+                )
+        elif role == 'VENUE_OWNER':
+            if not user.is_venue_owner:
+                user.is_venue_owner = True
+                user.save()
+                # Create empty profile
+                VenueOwnerProfile.objects.get_or_create(
+                    user=user,
+                    defaults={
+                        'business_name': f"{user.first_name}'s Venues" if user.first_name else "My Venues",
+                        'contact_email': user.email,
+                        'contact_phone': user.phone_number,
+                        'business_type': 'Event Venue'
+                    }
+                )
+        else:
+            return Response({'error': 'Invalid role'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        # Refetch to get updated profiles
+        response_data = {
+            'user': UserSerializer(user).data,
+            'roles': {
+                'is_customer': user.is_customer,
+                'is_vendor': user.is_vendor,
+                'is_venue_owner': user.is_venue_owner
+            }
+        }
+        
+        if user.is_vendor and hasattr(user, 'vendor_profile'):
+            response_data['vendor_profile'] = VendorProfileSerializer(user.vendor_profile).data
+            
+        if user.is_venue_owner and hasattr(user, 'venue_owner_profile'):
+            response_data['venue_owner_profile'] = VenueOwnerProfileSerializer(user.venue_owner_profile).data
+            
+        return Response(response_data, status=status.HTTP_200_OK)
+        
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

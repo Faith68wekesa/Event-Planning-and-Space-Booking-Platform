@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { Venue } from '../types';
-import { Plus, CheckCircle, MapPin, Star, MoreHorizontal, Briefcase } from 'lucide-react';
+import { Plus, CheckCircle, MapPin, Star, MoreHorizontal } from 'lucide-react';
 
 interface PortfolioProps {
   venues: Venue[];

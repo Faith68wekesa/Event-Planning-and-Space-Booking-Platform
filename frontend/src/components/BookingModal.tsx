@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 interface BookingModalProps {
   venue?: Venue | null;
   vendor?: Vendor | null;
-  currentCustomer: User;
+  currentUser: User;
   onClose: () => void;
   onSuccess: (newBooking: Booking) => void;
 }
@@ -15,7 +15,7 @@ interface BookingModalProps {
 export const BookingModal: React.FC<BookingModalProps> = ({
   venue,
   vendor,
-  currentCustomer,
+  currentUser,
   onClose,
   onSuccess,
 }) => {
@@ -35,10 +35,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // Pre-filled contact info (readonly or editable? We'll make it editable just in case, but initialized from currentCustomer)
-  const [contactName, setContactName] = useState(currentCustomer.username || '');
-  const [contactEmail, setContactEmail] = useState(currentCustomer.email || '');
-  const [contactPhone, setContactPhone] = useState(currentCustomer.phone_number || '');
+  // Pre-filled contact info (readonly or editable? We'll make it editable just in case, but initialized from currentUser)
+  const [contactName, setContactName] = useState(currentUser.username || '');
+  const [contactEmail, setContactEmail] = useState(currentUser.email || '');
+  const [contactPhone, setContactPhone] = useState(currentUser.phone_number || '');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,7 +71,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       const combinedNotes = `Start Time: ${startTime}\nEnd Time: ${endTime}\n\n${notes}`;
 
       const created = await ApiService.createBooking({
-        customer: currentCustomer.id,
+        customer: currentUser.id,
         venue: venue?.id,
         vendor: vendor?.id,
         venue_details: venue || undefined,
