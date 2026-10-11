@@ -185,7 +185,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <CheckCircle size={14} /> Verified Event Spaces & Service Providers Across Kenya
             </div>
 
-            <h1 style={{ fontSize: 'clamp(2.5rem, 5vw, 4rem)', fontWeight: 800, color: '#14213D', lineHeight: 1.1, marginBottom: '24px' }}>
+            <h1 style={{ fontSize: 'clamp(2.5rem, 5vw, 4rem)', fontWeight: 800, color: '#0f172a', lineHeight: 1.1, marginBottom: '24px' }}>
               Everything You Need <br />
               <span style={{ color: '#0F8F7A' }}>for Your Next Event</span>
             </h1>
@@ -241,7 +241,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0F8F7A', fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', marginBottom: '6px' }}>
                 <MapPin size={16} /> Physical Event Spaces
               </div>
-              <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#14213D', margin: '0 0 6px 0' }}>Featured Venues</h2>
+              <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>Featured Venues</h2>
               <p style={{ color: '#64748b', fontSize: '1.05rem', margin: 0 }}>Explore verified event halls, gardens, and conference centers.</p>
             </div>
             {onExploreVenues && (
@@ -402,7 +402,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0F8F7A', fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', marginBottom: '6px' }}>
                 <Sparkles size={16} /> Professional Event Services
               </div>
-              <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#14213D', margin: '0 0 6px 0' }}>Top Services & Packages</h2>
+              <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>Top Services & Packages</h2>
               <p style={{ color: '#64748b', fontSize: '1.05rem', margin: 0 }}>Hire verified photographers, caterers, decorators, and planners.</p>
             </div>
             {onExploreVendors && (
@@ -529,7 +529,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                             style={{
                               padding: '8px 16px',
                               borderRadius: '8px',
-                              background: '#14213D',
+                              background: '#0d8a73',
                               border: 'none',
                               color: '#fff',
                               fontSize: '0.82rem',
@@ -557,7 +557,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       {/* 4. Why Choose Platform Section */}
       <section style={{ padding: '80px 24px', background: '#ffffff' }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto', textAlign: 'center' }}>
-          <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#14213D', marginBottom: '48px' }}>
+          <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#0f172a', marginBottom: '48px' }}>
             Why Plan & Book With Us?
           </h2>
 
@@ -566,7 +566,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: '#e6f7f3', color: '#0F8F7A', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px' }}>
                 <CheckCircle size={28} />
               </div>
-              <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#14213D', marginBottom: '8px' }}>Verified Listings</h3>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#0f172a', marginBottom: '8px' }}>Verified Listings</h3>
               <p style={{ color: '#64748b', fontSize: '0.9rem', lineHeight: 1.5, margin: 0 }}>Every venue and service provider is screened to ensure dependable event execution.</p>
             </div>
 
@@ -574,7 +574,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: '#e6f7f3', color: '#0F8F7A', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px' }}>
                 <Search size={28} />
               </div>
-              <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#14213D', marginBottom: '8px' }}>Instant Discovery</h3>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#0f172a', marginBottom: '8px' }}>Instant Discovery</h3>
               <p style={{ color: '#64748b', fontSize: '0.9rem', lineHeight: 1.5, margin: 0 }}>Find venues and packages by location, capacity, or budget with instant live previews.</p>
             </div>
 
@@ -582,7 +582,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: '#e6f7f3', color: '#0F8F7A', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px' }}>
                 <DollarSign size={28} />
               </div>
-              <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#14213D', marginBottom: '8px' }}>Direct Pricing</h3>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#0f172a', marginBottom: '8px' }}>Direct Pricing</h3>
               <p style={{ color: '#64748b', fontSize: '0.9rem', lineHeight: 1.5, margin: 0 }}>Clear, transparent daily and event rates set directly by venue owners and providers.</p>
             </div>
 
@@ -590,7 +590,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: '#e6f7f3', color: '#0F8F7A', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px' }}>
                 <Calendar size={28} />
               </div>
-              <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#14213D', marginBottom: '8px' }}>Seamless Booking</h3>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#0f172a', marginBottom: '8px' }}>Seamless Booking</h3>
               <p style={{ color: '#64748b', fontSize: '0.9rem', lineHeight: 1.5, margin: 0 }}>Send booking requests in seconds and manage communications from your dashboard.</p>
             </div>
           </div>

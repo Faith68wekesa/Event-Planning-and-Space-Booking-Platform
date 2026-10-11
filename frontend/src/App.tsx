@@ -11,8 +11,6 @@ import { VenueModal } from './components/VenueModal.tsx';
 import { VendorModal } from './components/VendorModal.tsx';
 import { BookingModal } from './components/BookingModal.tsx';
 import { CustomerDashboard } from './components/CustomerDashboard.tsx';
-import { VendorDashboard } from './components/VendorDashboard.tsx';
-import { VenueOwnerDashboard } from './components/VenueOwnerDashboard.tsx';
 import { AdminDashboard } from './components/AdminDashboard.tsx';
 import { ProviderDashboard } from './components/ProviderDashboard.tsx';
 import { AuthModal } from './components/AuthModal.tsx';
@@ -112,9 +110,9 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleRequestRole = async (role: 'CUSTOMER' | 'VENDOR' | 'VENUE_OWNER') => {
+  const handleRequestRole = async (role: 'CUSTOMER' | 'VENDOR' | 'VENUE_OWNER' | 'PROVIDER') => {
     if (!currentUser) return;
-    const roleName = role === 'VENDOR' ? 'Vendor' : role === 'VENUE_OWNER' ? 'Venue Owner' : 'Customer';
+    const roleName = role === 'PROVIDER' ? 'Business Provider' : role === 'VENDOR' ? 'Vendor' : role === 'VENUE_OWNER' ? 'Venue Owner' : 'Customer';
     const toastId = toast.loading(`Adding ${roleName} role...`);
     try {
       const data = await ApiService.requestRole(currentUser.id, role);
@@ -124,8 +122,7 @@ export const App: React.FC = () => {
         if (data.vendor_profile) setCurrentVendor(data.vendor_profile);
         if (data.venue_owner_profile) setCurrentVenueOwner(data.venue_owner_profile);
         
-        setActiveRole(role);
-        setActiveTab(role === 'VENDOR' ? 'vendor-dashboard' : role === 'VENUE_OWNER' ? 'venue-owner-dashboard' : 'venues');
+        setActiveTab(role === 'CUSTOMER' ? 'my-bookings' : 'provider-dashboard');
       } else {
         toast.error("Failed to add role.", { id: toastId });
       }
@@ -230,7 +227,7 @@ export const App: React.FC = () => {
                   />
                 )}
 
-                {activeTab === 'provider-dashboard' && (
+                {(activeTab === 'provider-dashboard' || activeTab === 'vendor-dashboard' || activeTab === 'venue-owner-dashboard') && (
                   <ProviderDashboard
                     currentUser={currentUser}
                     currentVendor={currentVendor}
@@ -244,21 +241,6 @@ export const App: React.FC = () => {
                     }}
                     onExplore={() => {
                       loadData();
-                      setActiveRole('CUSTOMER');
-                      setActiveTab('venues');
-                    }}
-                  />
-                )}
-
-                {activeTab === 'vendor-dashboard' && currentVendor && (
-                  <VendorDashboard currentVendor={currentVendor} />
-                )}
-
-                {activeTab === 'venue-owner-dashboard' && currentVenueOwner && (
-                  <VenueOwnerDashboard
-                    currentOwner={currentVenueOwner}
-                    onLogout={() => {
-                      setCurrentVenueOwner(null);
                       setActiveRole('CUSTOMER');
                       setActiveTab('venues');
                     }}
@@ -308,7 +290,7 @@ export const App: React.FC = () => {
 
           <footer
             style={{
-              background: '#0F8F7A',
+              background: '#0d8a73',
               borderTop: '1px solid rgba(255, 255, 255, 0.15)',
               padding: '48px 24px',
               color: '#ffffff',
@@ -319,9 +301,9 @@ export const App: React.FC = () => {
             <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '32px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '32px' }}>
                 <div>
-                  <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '16px' }}>Event Planning and SpaceBooking</h3>
-                  <p style={{ color: '#e6f7f3', lineHeight: 1.5, maxWidth: '280px' }}>
-                    Your platform for discovering and booking event spaces and trusted event professionals.
+                  <h3 style={{ fontSize: '1.4rem', fontWeight: 800, marginBottom: '14px', letterSpacing: '-0.5px' }}>Locyfy</h3>
+                  <p style={{ color: '#e6f7f3', lineHeight: 1.6, maxWidth: '280px', fontSize: '0.9rem' }}>
+                    Your unified platform for discovering, listing, and booking physical event spaces and trusted services across Kenya.
                   </p>
                 </div>
 

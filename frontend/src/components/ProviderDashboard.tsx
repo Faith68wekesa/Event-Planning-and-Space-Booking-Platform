@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { Booking, Venue, BookingStatus, Vendor, VenueOwner, VenueCategory, User } from '../types';
 import { ApiService } from '../services/api';
+import './vendor-dashboard.css';
 import {
   Building2,
   Plus,
-  XCircle,
+  X,
   MapPin,
   Trash2,
   ShieldCheck,
@@ -21,7 +22,8 @@ import {
   ChevronRight,
   Eye,
   AlertCircle,
-  Image as ImageIcon
+  Users,
+  ClipboardList
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cleanImageUrl, handleImageError, DEFAULT_SPACE_IMAGE, DEFAULT_SERVICE_IMAGE } from '../utils/imageUtils';
@@ -47,7 +49,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   const [spaces, setSpaces] = useState<Venue[]>([]);
   const [services, setServices] = useState<Venue[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
 
   // Business profile form
   const businessName = currentVenueOwner?.business_name || currentVendor?.business_name || 'My Business';
@@ -63,6 +65,8 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
     description: currentVenueOwner?.description || currentVendor?.description || '',
     website_url: currentVenueOwner?.website_url || currentVendor?.website_url || '',
   });
+
+  const [isUploading, setIsUploading] = useState(false);
 
   // Modal states
   const [showAddSpaceModal, setShowAddSpaceModal] = useState(false);
@@ -99,6 +103,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   const [spaceFilter, setSpaceFilter] = useState<'ALL' | 'APPROVED' | 'PENDING'>('ALL');
   const [serviceFilter, setServiceFilter] = useState<'ALL' | 'APPROVED' | 'PENDING'>('ALL');
   const [bookingFilter, setBookingFilter] = useState<'ALL' | 'SPACES' | 'SERVICES'>('ALL');
+  const [bookingStatusFilter, setBookingStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'CANCELLED'>('ALL');
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -117,7 +122,6 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
       let fetchedBookings: Booking[] = [];
 
-      // Fetch bookings specifically for this business provider
       if (ownerId) {
         const ownerBookings = await ApiService.getVenueOwnerBookings(ownerId);
         fetchedBookings = [...fetchedBookings, ...ownerBookings];
@@ -130,27 +134,22 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
         });
       }
 
-      // Query only listings belonging to this specific business provider
       const providerVenues = await ApiService.getVenues({
         user: userId,
         owner: ownerId,
         vendor: vendorId,
       });
 
-      // Strict ownership check: only include venues and services belonging to this provider
       const isMyListing = (v: Venue) => {
         const vOwnerId = typeof v.owner === 'object' ? (v.owner as any)?.id : v.owner;
         const vVendorId = typeof v.vendor === 'object' ? (v.vendor as any)?.id : v.vendor;
-
         const matchesOwner = Boolean(ownerId && vOwnerId === ownerId);
         const matchesVendor = Boolean(vendorId && vVendorId === vendorId);
-
         return matchesOwner || matchesVendor;
       };
 
       const myOwnListings = providerVenues.filter(isMyListing);
 
-      // Separate into spaces (capacity > 0) and services (capacity === 0)
       const mySpaces = myOwnListings.filter(v => (v.capacity ?? 0) > 0);
       const myServices = myOwnListings.filter(v => (v.capacity ?? 0) === 0);
 
@@ -167,6 +166,21 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const handleProfilePictureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0 && currentUser?.id) {
+      const file = e.target.files[0];
+      setIsUploading(true);
+      const newUrl = await ApiService.uploadProfilePicture(currentUser.id, file);
+      if (newUrl) {
+        if (currentVendor) currentVendor.logo_url = newUrl;
+        toast.success('Business logo/photo updated successfully!');
+      } else {
+        toast.error('Failed to upload picture.');
+      }
+      setIsUploading(false);
+    }
+  };
 
   // Add Space Submit
   const handleAddSpaceSubmit = async (e: React.FormEvent) => {
@@ -198,7 +212,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
         image_url: cleanImageUrl(newSpace.image_url) || DEFAULT_SPACE_IMAGE,
       });
 
-      toast.success("Event space submitted! Awaiting platform verification.");
+      toast.success("Event space submitted! Awaiting verification.");
       setShowAddSpaceModal(false);
       setSpaceErrorNotice(null);
       setNewSpace({
@@ -270,6 +284,17 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
     }
   };
 
+  const handleDeleteListing = async (id: number, title: string) => {
+    if (!window.confirm(`Are you sure you want to delete "${title}"?`)) return;
+    const ok = await ApiService.deleteVenue(id);
+    if (ok) {
+      toast.success(`"${title}" deleted successfully`);
+      fetchData();
+    } else {
+      toast.error("Failed to delete listing.");
+    }
+  };
+
   const handleUpdateBookingStatus = async (id: number, status: BookingStatus) => {
     const ok = await ApiService.updateBookingStatus(id, status);
     if (ok) {
@@ -305,198 +330,233 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
   const hasNoListings = spaces.length === 0 && services.length === 0;
 
+  // Filtered views
+  const filteredSpaces = spaces.filter(s => {
+    if (spaceFilter === 'APPROVED') return s.is_verified;
+    if (spaceFilter === 'PENDING') return !s.is_verified;
+    return true;
+  });
+
+  const filteredServices = services.filter(s => {
+    if (serviceFilter === 'APPROVED') return s.is_verified;
+    if (serviceFilter === 'PENDING') return !s.is_verified;
+    return true;
+  });
+
+  const filteredBookings = bookings.filter(b => {
+    const venueCapacity = b.venue_details?.capacity;
+    if (bookingFilter === 'SPACES' && venueCapacity === 0) return false;
+    if (bookingFilter === 'SERVICES' && venueCapacity !== undefined && venueCapacity > 0) return false;
+    if (bookingStatusFilter !== 'ALL' && b.status !== bookingStatusFilter) return false;
+    return true;
+  });
+
+  const getPageTitle = () => {
+    switch (activeTab) {
+      case 'overview': return 'Business Overview';
+      case 'spaces': return 'My Event Spaces';
+      case 'services': return 'My Services & Packages';
+      case 'bookings': return 'Booking Requests';
+      case 'calendar': return 'Event Calendar';
+      case 'reviews': return 'Client Reviews';
+      case 'profile': return 'Business Profile';
+      case 'settings': return 'Account Settings';
+      default: return 'Business Dashboard';
+    }
+  };
+
+  const getPageSubtitle = () => {
+    switch (activeTab) {
+      case 'overview': return 'Manage your event spaces, service packages, bookings, and revenue in one unified portal.';
+      case 'spaces': return 'List, showcase, and manage your physical event venues and banquet halls.';
+      case 'services': return 'Configure your professional service packages, rates, and coverage.';
+      case 'bookings': return 'Review incoming customer booking inquiries and confirm schedules.';
+      case 'calendar': return 'Track upcoming approved events and venue reservations.';
+      case 'reviews': return 'See feedback and star ratings from clients who booked your spaces or services.';
+      case 'profile': return 'Update your public business branding, logo, contact details, and location.';
+      case 'settings': return 'Platform preferences and notification settings.';
+      default: return 'Manage your business operations.';
+    }
+  };
+
+  const menuItems = [
+    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'spaces', label: 'My Spaces', icon: Building2, badge: spaces.length },
+    { id: 'services', label: 'My Services', icon: Package, badge: services.length },
+    { id: 'bookings', label: 'Booking Requests', icon: CalendarCheck, badge: pendingRequestsCount > 0 ? pendingRequestsCount : undefined, badgeColor: '#ef4444' },
+    { id: 'calendar', label: 'Calendar', icon: Calendar },
+    { id: 'reviews', label: 'Reviews', icon: Star },
+    { id: 'profile', label: 'Business Profile', icon: UserIcon },
+    { id: 'settings', label: 'Settings', icon: Settings },
+  ];
+
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#f8fafc', color: '#1e293b' }}>
+    <div className="vendor-dashboard-layout">
       
-      {/* 1. Unified Sidebar */}
-      <aside style={{ width: '260px', background: '#ffffff', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-        {/* Brand / Logo */}
-        <div style={{ padding: '24px 20px', borderBottom: '1px solid #e2e8f0' }}>
+      {/* 1. Signature Vendor Green Sidebar */}
+      <aside className="vendor-sidebar">
+        
+        {/* Header Branding */}
+        <div className="vendor-sidebar-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ width: '38px', height: '38px', background: '#0F8F7A', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: '1.2rem' }}>
+            <div style={{ width: '36px', height: '36px', background: 'rgba(255, 255, 255, 0.2)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff', fontWeight: 800, fontSize: '1.15rem' }}>
               L
             </div>
             <div>
-              <div style={{ fontWeight: 800, fontSize: '1.15rem', color: '#0F8F7A' }}>Locyfy</div>
-              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>Business Provider</div>
+              <div style={{ fontWeight: 800, fontSize: '1.15rem', color: '#ffffff' }}>Locyfy</div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#ccfbf1' }}>Business Portal</div>
             </div>
           </div>
         </div>
 
         {/* Business Badge */}
-        <div style={{ padding: '16px 20px', background: '#f1f5f9', margin: '12px 16px', borderRadius: '12px' }}>
-          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div style={{ padding: '12px 16px', background: 'rgba(0, 0, 0, 0.12)', margin: '14px 16px', borderRadius: '10px' }}>
+          <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#ffffff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {businessName}
           </div>
-          <div style={{ fontSize: '0.75rem', color: '#0F8F7A', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+          <div style={{ fontSize: '0.75rem', color: '#34d399', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '3px' }}>
             <ShieldCheck size={13} /> Verified Business
           </div>
         </div>
 
-        {/* Navigation Items */}
-        <nav style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: '4px', flexGrow: 1 }}>
-          <NavItem 
-            icon={<LayoutDashboard size={18} />} 
-            label="Overview" 
-            active={activeTab === 'overview'} 
-            onClick={() => setActiveTab('overview')} 
-          />
-          <NavItem 
-            icon={<Building2 size={18} />} 
-            label="My Spaces" 
-            badge={spaces.length} 
-            active={activeTab === 'spaces'} 
-            onClick={() => setActiveTab('spaces')} 
-          />
-          <NavItem 
-            icon={<Package size={18} />} 
-            label="My Services" 
-            badge={services.length} 
-            active={activeTab === 'services'} 
-            onClick={() => setActiveTab('services')} 
-          />
-          <NavItem 
-            icon={<CalendarCheck size={18} />} 
-            label="Booking Requests" 
-            badge={pendingRequestsCount > 0 ? pendingRequestsCount : undefined}
-            badgeColor="#ef4444"
-            active={activeTab === 'bookings'} 
-            onClick={() => setActiveTab('bookings')} 
-          />
-          <NavItem 
-            icon={<Calendar size={18} />} 
-            label="Calendar" 
-            active={activeTab === 'calendar'} 
-            onClick={() => setActiveTab('calendar')} 
-          />
-          <NavItem 
-            icon={<Star size={18} />} 
-            label="Reviews" 
-            active={activeTab === 'reviews'} 
-            onClick={() => setActiveTab('reviews')} 
-          />
-          <NavItem 
-            icon={<UserIcon size={18} />} 
-            label="Business Profile" 
-            active={activeTab === 'profile'} 
-            onClick={() => setActiveTab('profile')} 
-          />
-          <NavItem 
-            icon={<Settings size={18} />} 
-            label="Settings" 
-            active={activeTab === 'settings'} 
-            onClick={() => setActiveTab('settings')} 
-          />
-        </nav>
-
-        {/* Sidebar Footer */}
-        <div style={{ padding: '16px 20px', borderTop: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {onExplore && (
+        {/* Nav List */}
+        <nav className="vendor-sidebar-nav" style={{ paddingTop: '8px' }}>
+          {menuItems.map(item => (
             <button
-              onClick={onExplore}
-              style={{ width: '100%', padding: '10px', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', color: '#0F8F7A', fontWeight: 600, fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer' }}
+              key={item.id}
+              className={`vendor-sidebar-item ${activeTab === item.id ? 'active' : ''}`}
+              onClick={() => setActiveTab(item.id as any)}
             >
-              <Eye size={15} /> Switch to Customer View
+              <item.icon size={18} /> {item.label}
+              {item.badge !== undefined && (
+                <span style={{
+                  marginLeft: 'auto',
+                  background: item.badgeColor || '#34d399',
+                  color: item.badgeColor ? '#ffffff' : '#042f2a',
+                  fontSize: '0.72rem',
+                  padding: '2px 8px',
+                  borderRadius: '999px',
+                  fontWeight: 800
+                }}>
+                  {item.badge}
+                </span>
+              )}
             </button>
-          )}
-          <button
-            onClick={onLogout}
-            style={{ width: '100%', padding: '10px', background: 'none', border: 'none', borderRadius: '8px', color: '#ef4444', fontWeight: 600, fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer' }}
-          >
-            <LogOut size={16} /> Log Out
-          </button>
-        </div>
+          ))}
+
+          <div style={{ flexGrow: 1 }} />
+
+          {/* Footer Actions inside Sidebar */}
+          <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)', padding: '16px 16px 0', marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {onExplore && (
+              <button 
+                onClick={onExplore}
+                className="vendor-sidebar-item"
+                style={{ background: 'rgba(255, 255, 255, 0.08)', color: '#ffffff', justifyContent: 'center', fontSize: '0.85rem' }}
+              >
+                <Eye size={16} /> Customer View
+              </button>
+            )}
+            <button 
+              onClick={onLogout}
+              className="vendor-sidebar-item" 
+              style={{ color: '#fca5a5', justifyContent: 'center', fontSize: '0.85rem' }}
+            >
+              <LogOut size={16} /> Sign Out
+            </button>
+          </div>
+        </nav>
       </aside>
 
-      {/* 2. Main Dashboard Content */}
-      <main style={{ flexGrow: 1, padding: '32px', overflowY: 'auto', maxHeight: '100vh' }}>
+      {/* 2. Main Content Area */}
+      <main className="vendor-main-content">
         
         {/* Top Header Row */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px', flexWrap: 'wrap', gap: '16px' }}>
+        <div className="vendor-topbar">
           <div>
-            <h1 style={{ fontSize: '1.85rem', fontWeight: 800, color: '#0f172a', margin: '0 0 6px' }}>
-              {activeTab === 'overview' && 'Business Overview'}
-              {activeTab === 'spaces' && 'My Event Spaces'}
-              {activeTab === 'services' && 'My Services'}
-              {activeTab === 'bookings' && 'Booking Requests & Management'}
-              {activeTab === 'calendar' && 'Bookings Calendar'}
-              {activeTab === 'reviews' && 'Client Reviews & Ratings'}
-              {activeTab === 'profile' && 'Business Profile Settings'}
-              {activeTab === 'settings' && 'Account Settings'}
-            </h1>
-            <p style={{ margin: 0, color: '#64748b', fontSize: '0.95rem' }}>
-              {activeTab === 'overview' && 'Manage your spaces, services, bookings, and revenue in one unified place.'}
-              {activeTab === 'spaces' && 'List, edit, and organize all your physical event spaces and venues.'}
-              {activeTab === 'services' && 'Create and manage your event services, packages, and vendor pricing.'}
-              {activeTab === 'bookings' && 'Review incoming customer booking inquiries and confirm schedules.'}
-              {activeTab === 'calendar' && 'Track upcoming approved events and venue reservations.'}
-              {activeTab === 'reviews' && 'Feedback from clients who booked your spaces or services.'}
-              {activeTab === 'profile' && 'Update your business branding, contact details, and location.'}
-              {activeTab === 'settings' && 'Platform preferences and security settings.'}
-            </p>
+            <h1>{getPageTitle()}</h1>
+            <p style={{ color: '#64748b', fontSize: '0.9rem', margin: '4px 0 0 0' }}>{getPageSubtitle()}</p>
           </div>
 
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button
-              onClick={() => setShowAddSpaceModal(true)}
-              style={{ background: '#0F8F7A', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: '10px', fontWeight: 700, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', boxShadow: '0 2px 4px rgba(15, 143, 122, 0.2)' }}
-            >
-              <Plus size={16} /> Add Space
-            </button>
-            <button
-              onClick={() => setShowAddServiceModal(true)}
-              style={{ background: '#14213D', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: '10px', fontWeight: 700, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
-            >
-              <Plus size={16} /> Add Service
-            </button>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            {activeTab === 'overview' && (
+              <>
+                <button
+                  onClick={() => setShowAddSpaceModal(true)}
+                  className="btn-primary-light"
+                >
+                  <Plus size={16} /> Add Space
+                </button>
+                <button
+                  onClick={() => setShowAddServiceModal(true)}
+                  className="btn-secondary-light"
+                >
+                  <Plus size={16} /> Add Service
+                </button>
+              </>
+            )}
+            {activeTab === 'spaces' && (
+              <button
+                onClick={() => setShowAddSpaceModal(true)}
+                className="btn-primary-light"
+              >
+                <Plus size={16} /> Add Space
+              </button>
+            )}
+            {activeTab === 'services' && (
+              <button
+                onClick={() => setShowAddServiceModal(true)}
+                className="btn-primary-light"
+              >
+                <Plus size={16} /> Add Service
+              </button>
+            )}
           </div>
         </div>
 
-        {/* 3. Empty State (Step 7: Dynamic Empty States with calls-to-action) */}
-        {hasNoListings && activeTab === 'overview' && (
-          <div style={{ background: '#ffffff', borderRadius: '20px', border: '1px solid #e2e8f0', padding: '48px 32px', textAlign: 'center', marginBottom: '32px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
-            <div style={{ width: '64px', height: '64px', background: '#ccfbf1', borderRadius: '16px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#0F8F7A', marginBottom: '20px' }}>
+        {/* 3. Empty State Banner (If Provider has no listings) */}
+        {hasNoListings && activeTab === 'overview' && !loading && (
+          <div className="dashboard-card" style={{ padding: '48px 32px', textAlign: 'center', marginBottom: '32px' }}>
+            <div style={{ width: '64px', height: '64px', background: '#ccfbf1', borderRadius: '16px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#0d8a73', marginBottom: '20px' }}>
               <Sparkles size={32} />
             </div>
             <h2 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0f172a', margin: '0 0 10px' }}>
-              Welcome to Your Business Provider Hub!
+              Welcome to Your Unified Business Portal!
             </h2>
-            <p style={{ color: '#64748b', fontSize: '1rem', maxWidth: '580px', margin: '0 auto 32px', lineHeight: 1.6 }}>
-              You don't have any active listings yet. As a unified business provider on Locyfy, you can list event spaces, offer services, or both. Choose an option below to get started:
+            <p style={{ color: '#64748b', fontSize: '0.95rem', maxWidth: '560px', margin: '0 auto 32px', lineHeight: 1.6 }}>
+              You don't have any active listings yet. On Locyfy, you can list physical event spaces, offer professional services, or both. Choose an option below to publish your first offering:
             </p>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px', maxWidth: '720px', margin: '0 auto' }}>
-              {/* Add Space Card */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px', maxWidth: '640px', margin: '0 auto' }}>
               <div 
-                style={{ background: '#f8fafc', border: '2px dashed #0F8F7A', borderRadius: '16px', padding: '28px', textAlign: 'left', cursor: 'pointer', transition: 'all 0.2s' }}
+                style={{ background: '#f8fafc', border: '2px dashed #0d8a73', borderRadius: '14px', padding: '24px', textAlign: 'left', cursor: 'pointer' }}
                 onClick={() => setShowAddSpaceModal(true)}
               >
-                <div style={{ width: '48px', height: '48px', background: '#ccfbf1', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0F8F7A', marginBottom: '16px' }}>
-                  <Building2 size={24} />
+                <div style={{ width: '44px', height: '44px', background: '#ccfbf1', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0d8a73', marginBottom: '14px' }}>
+                  <Building2 size={22} />
                 </div>
-                <h3 style={{ margin: '0 0 8px', fontSize: '1.2rem', fontWeight: 700, color: '#0f172a' }}>Add an Event Space</h3>
-                <p style={{ margin: '0 0 20px', fontSize: '0.88rem', color: '#64748b', lineHeight: 1.5 }}>
-                  List wedding halls, conference centers, party grounds, or private gardens with pricing and capacity.
+                <h3 style={{ margin: '0 0 6px', fontSize: '1.15rem', fontWeight: 700, color: '#0f172a' }}>Add an Event Space</h3>
+                <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: '#64748b', lineHeight: 1.5 }}>
+                  List wedding halls, banquet spaces, or conference grounds with guest capacity and daily rates.
                 </p>
-                <button style={{ background: '#0F8F7A', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Plus size={16} /> Add Space Now
+                <button className="btn-primary-light" style={{ background: '#0d8a73', color: '#fff', fontSize: '0.82rem', padding: '6px 14px' }}>
+                  <Plus size={14} /> Add Space Now
                 </button>
               </div>
 
-              {/* Add Service Card */}
               <div 
-                style={{ background: '#f8fafc', border: '2px dashed #14213D', borderRadius: '16px', padding: '28px', textAlign: 'left', cursor: 'pointer', transition: 'all 0.2s' }}
+                style={{ background: '#f8fafc', border: '2px dashed #0d8a73', borderRadius: '14px', padding: '24px', textAlign: 'left', cursor: 'pointer' }}
                 onClick={() => setShowAddServiceModal(true)}
               >
-                <div style={{ width: '48px', height: '48px', background: '#e2e8f0', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#14213D', marginBottom: '16px' }}>
-                  <Package size={24} />
+                <div style={{ width: '44px', height: '44px', background: '#ccfbf1', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0d8a73', marginBottom: '14px' }}>
+                  <Package size={22} />
                 </div>
-                <h3 style={{ margin: '0 0 8px', fontSize: '1.2rem', fontWeight: 700, color: '#0f172a' }}>Add a Service</h3>
-                <p style={{ margin: '0 0 20px', fontSize: '0.88rem', color: '#64748b', lineHeight: 1.5 }}>
-                  Offer professional catering, photography, DJ/music, decor, or event coordination.
+                <h3 style={{ margin: '0 0 6px', fontSize: '1.15rem', fontWeight: 700, color: '#0f172a' }}>Add a Service</h3>
+                <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: '#64748b', lineHeight: 1.5 }}>
+                  Offer professional catering, photography, DJ sound, decor, or event coordination packages.
                 </p>
-                <button style={{ background: '#14213D', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Plus size={16} /> Add Service Now
+                <button className="btn-primary-light" style={{ background: '#0d8a73', color: '#fff', fontSize: '0.82rem', padding: '6px 14px' }}>
+                  <Plus size={14} /> Add Service Now
                 </button>
               </div>
             </div>
@@ -506,70 +566,93 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
         {/* 4. Tab: OVERVIEW */}
         {activeTab === 'overview' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
-            {/* KPI Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>
-              <KpiCard 
-                icon={<Building2 size={24} color="#0F8F7A" />} 
-                bg="#e6f7f3" 
-                title="Active Spaces" 
-                value={spaces.length} 
-                subtitle={`${activeSpacesCount} verified & public`} 
-                onClick={() => setActiveTab('spaces')}
-              />
-              <KpiCard 
-                icon={<Package size={24} color="#0284c7" />} 
-                bg="#e0f2fe" 
-                title="Active Services" 
-                value={services.length} 
-                subtitle={`${activeServicesCount} published`} 
-                onClick={() => setActiveTab('services')}
-              />
-              <KpiCard 
-                icon={<CalendarCheck size={24} color="#d97706" />} 
-                bg="#fef3c7" 
-                title="Booking Requests" 
-                value={pendingRequestsCount} 
-                subtitle={`${bookings.length} total bookings`} 
-                onClick={() => setActiveTab('bookings')}
-              />
-              <KpiCard 
-                icon={<DollarSign size={24} color="#16a34a" />} 
-                bg="#dcfce7" 
-                title="Estimated Revenue" 
-                value={`KES ${totalRevenue.toLocaleString()}`} 
-                subtitle="From approved bookings" 
-              />
+            
+            {/* Top 4 Metric Cards in Vendor Style */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '20px' }}>
+              
+              {/* Card 1: Active Spaces */}
+              <div className="dashboard-card stat-card" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('spaces')}>
+                <div style={{ background: '#e0f2fe', color: '#0284c7', padding: '12px', borderRadius: '12px', width: 'fit-content', marginBottom: '16px' }}>
+                  <Building2 size={24} />
+                </div>
+                <div className="stat-card-title">Active Spaces</div>
+                <div className="stat-card-value">{spaces.length}</div>
+                <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '6px' }}>
+                  {spaces.length === 0 ? 'No spaces added yet' : `${activeSpacesCount} verified & public`}
+                </div>
+              </div>
+
+              {/* Card 2: Active Services */}
+              <div className="dashboard-card stat-card" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('services')}>
+                <div style={{ background: '#ccfbf1', color: '#0d8a73', padding: '12px', borderRadius: '12px', width: 'fit-content', marginBottom: '16px' }}>
+                  <Package size={24} />
+                </div>
+                <div className="stat-card-title">Active Services</div>
+                <div className="stat-card-value">{services.length}</div>
+                <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '6px' }}>
+                  {services.length === 0 ? 'No services added yet' : `${activeServicesCount} verified & public`}
+                </div>
+              </div>
+
+              {/* Card 3: Booking Requests */}
+              <div className="dashboard-card stat-card" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('bookings')}>
+                <div style={{ background: '#fef3c7', color: '#d97706', padding: '12px', borderRadius: '12px', width: 'fit-content', marginBottom: '16px' }}>
+                  <ClipboardList size={24} />
+                </div>
+                <div className="stat-card-title">Booking Requests</div>
+                <div className="stat-card-value">{pendingRequestsCount}</div>
+                <div style={{ fontSize: '0.85rem', color: pendingRequestsCount > 0 ? '#d97706' : '#64748b', marginTop: '6px', fontWeight: pendingRequestsCount > 0 ? 600 : 400 }}>
+                  {pendingRequestsCount === 0 ? 'All caught up' : `${pendingRequestsCount} awaiting response`}
+                </div>
+              </div>
+
+              {/* Card 4: Total Revenue */}
+              <div className="dashboard-card stat-card">
+                <div style={{ background: '#dcfce7', color: '#16a34a', padding: '12px', borderRadius: '12px', width: 'fit-content', marginBottom: '16px' }}>
+                  <DollarSign size={24} />
+                </div>
+                <div className="stat-card-title">Total Revenue</div>
+                <div className="stat-card-value">KES {totalRevenue.toLocaleString()}</div>
+                <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '6px' }}>
+                  From approved & completed events
+                </div>
+              </div>
+
             </div>
 
             {/* Quick Context Summary Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+              
               {/* Left: Spaces Preview */}
-              <div style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '24px' }}>
+              <div className="dashboard-card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                   <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#0f172a' }}>My Spaces ({spaces.length})</h3>
-                  <button onClick={() => setActiveTab('spaces')} style={{ background: 'none', border: 'none', color: '#0F8F7A', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <button onClick={() => setActiveTab('spaces')} style={{ background: 'none', border: 'none', color: '#0d8a73', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
                     View All <ChevronRight size={16} />
                   </button>
                 </div>
+
                 {spaces.length === 0 ? (
-                  <div style={{ padding: '32px 16px', textAlign: 'center', color: '#64748b', fontSize: '0.9rem' }}>
-                    No spaces added yet. <span onClick={() => setShowAddSpaceModal(true)} style={{ color: '#0F8F7A', fontWeight: 600, cursor: 'pointer' }}>Add your first space</span>
+                  <div style={{ padding: '24px', textAlign: 'center', color: '#64748b', background: '#f8fafc', borderRadius: '10px', fontSize: '0.9rem' }}>
+                    No spaces listed yet. Click <strong>+ Add Space</strong> in the topbar to list your first venue.
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {spaces.slice(0, 3).map(s => (
-                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', background: '#f8fafc', borderRadius: '10px' }}>
-                        <img 
-                          src={s.image_url || DEFAULT_SPACE_IMAGE} 
-                          onError={(e) => handleImageError(e, DEFAULT_SPACE_IMAGE)} 
-                          alt={s.title || ""} 
-                          style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover' }} 
-                        />
-                        <div style={{ flexGrow: 1 }}>
-                          <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#0f172a' }}>{s.title}</div>
-                          <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Capacity: {s.capacity} · KES {Number(s.price_per_day).toLocaleString()}/day</div>
+                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: '#f8fafc', borderRadius: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <img 
+                            src={cleanImageUrl(s.image_url) || DEFAULT_SPACE_IMAGE} 
+                            alt={s.title} 
+                            onError={(e) => handleImageError(e, DEFAULT_SPACE_IMAGE)}
+                            style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover' }} 
+                          />
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#0f172a' }}>{s.title}</div>
+                            <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Capacity: {s.capacity} · KES {Number(s.price_per_day).toLocaleString()}/day</div>
+                          </div>
                         </div>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: s.is_verified ? '#16a34a' : '#d97706', background: s.is_verified ? '#dcfce7' : '#fef3c7', padding: '4px 8px', borderRadius: '999px' }}>
+                        <span className={`status-badge ${s.is_verified ? 'approved' : 'pending'}`}>
                           {s.is_verified ? 'Verified' : 'Pending'}
                         </span>
                       </div>
@@ -579,313 +662,299 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
               </div>
 
               {/* Right: Services Preview */}
-              <div style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '24px' }}>
+              <div className="dashboard-card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                   <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#0f172a' }}>My Services ({services.length})</h3>
-                  <button onClick={() => setActiveTab('services')} style={{ background: 'none', border: 'none', color: '#0F8F7A', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <button onClick={() => setActiveTab('services')} style={{ background: 'none', border: 'none', color: '#0d8a73', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
                     View All <ChevronRight size={16} />
                   </button>
                 </div>
+
                 {services.length === 0 ? (
-                  <div style={{ padding: '32px 16px', textAlign: 'center', color: '#64748b', fontSize: '0.9rem' }}>
-                    No services added yet. <span onClick={() => setShowAddServiceModal(true)} style={{ color: '#0F8F7A', fontWeight: 600, cursor: 'pointer' }}>Add your first service</span>
+                  <div style={{ padding: '24px', textAlign: 'center', color: '#64748b', background: '#f8fafc', borderRadius: '10px', fontSize: '0.9rem' }}>
+                    No services offered yet. Click <strong>+ Add Service</strong> in the topbar to publish a service package.
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {services.slice(0, 3).map(s => (
-                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', background: '#f8fafc', borderRadius: '10px' }}>
-                        <img 
-                          src={s.image_url || DEFAULT_SERVICE_IMAGE} 
-                          onError={(e) => handleImageError(e, DEFAULT_SERVICE_IMAGE)} 
-                          alt={s.title || ""} 
-                          style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover' }} 
-                        />
-                        <div style={{ flexGrow: 1 }}>
-                          <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#0f172a' }}>{s.title}</div>
-                          <div style={{ fontSize: '0.78rem', color: '#64748b' }}>From KES {Number(s.price_per_day).toLocaleString()}</div>
+                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: '#f8fafc', borderRadius: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <img 
+                            src={cleanImageUrl(s.image_url) || DEFAULT_SERVICE_IMAGE} 
+                            alt={s.title} 
+                            onError={(e) => handleImageError(e, DEFAULT_SERVICE_IMAGE)}
+                            style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover' }} 
+                          />
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#0f172a' }}>{s.title}</div>
+                            <div style={{ fontSize: '0.78rem', color: '#64748b' }}>From KES {Number(s.price_per_day).toLocaleString()}</div>
+                          </div>
                         </div>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0F8F7A', background: '#e6f7f3', padding: '4px 8px', borderRadius: '999px' }}>
-                          Active
+                        <span className={`status-badge ${s.is_verified ? 'approved' : 'pending'}`}>
+                          {s.is_verified ? 'Verified' : 'Pending'}
                         </span>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
+
             </div>
 
-            {/* Recent Bookings Section */}
-            <div style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '24px' }}>
+            {/* Recent Booking Inquiries Table in Vendor Table Style */}
+            <div className="dashboard-card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>Recent Booking Inquiries</h3>
-                <button onClick={() => setActiveTab('bookings')} style={{ background: 'none', border: 'none', color: '#0F8F7A', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}>
-                  Manage All ({bookings.length})
+                <div>
+                  <h3 style={{ margin: '0 0 4px', fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>Recent Booking Inquiries</h3>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>Customer booking inquiries for your listed spaces and services.</p>
+                </div>
+                <button onClick={() => setActiveTab('bookings')} className="btn-secondary-light">
+                  View All Requests <ChevronRight size={16} />
                 </button>
               </div>
 
               {bookings.length === 0 ? (
-                <div style={{ padding: '40px 20px', textAlign: 'center', color: '#64748b' }}>
-                  No incoming bookings yet. Your listings will appear in customer searches once verified.
+                <div style={{ padding: '36px', textAlign: 'center', color: '#64748b', background: '#f8fafc', borderRadius: '12px' }}>
+                  No incoming booking inquiries yet.
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {bookings.slice(0, 5).map(b => (
-                    <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', background: '#f8fafc', borderRadius: '12px', flexWrap: 'wrap', gap: '12px' }}>
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: '0.98rem', color: '#0f172a' }}>
-                          {b.event_title} ({b.event_type})
-                        </div>
-                        <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '2px' }}>
-                          Client: {b.customer_name} · Date: {b.event_date} · Guests: {b.guest_count}
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                        <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.95rem' }}>
-                          KES {Number(b.total_price).toLocaleString()}
-                        </div>
-                        <span style={{
-                          fontSize: '0.75rem',
-                          fontWeight: 700,
-                          padding: '4px 10px',
-                          borderRadius: '999px',
-                          background: b.status === 'APPROVED' ? '#dcfce7' : b.status === 'PENDING' ? '#fef3c7' : '#fee2e2',
-                          color: b.status === 'APPROVED' ? '#16a34a' : b.status === 'PENDING' ? '#d97706' : '#ef4444'
-                        }}>
-                          {b.status}
-                        </span>
-                        {b.status === 'PENDING' && (
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <button
-                              onClick={() => handleUpdateBookingStatus(b.id, 'APPROVED')}
-                              style={{ background: '#0F8F7A', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
-                            >
-                              Approve
-                            </button>
-                            <button
-                              onClick={() => handleUpdateBookingStatus(b.id, 'REJECTED')}
-                              style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
-                            >
-                              Decline
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="vendor-table">
+                    <thead>
+                      <tr>
+                        <th>Event & Client</th>
+                        <th>Type</th>
+                        <th>Date</th>
+                        <th>Guests</th>
+                        <th>Quote Amount</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bookings.slice(0, 5).map(b => (
+                        <tr key={b.id}>
+                          <td>
+                            <div style={{ fontWeight: 700, color: '#0f172a' }}>{b.event_title}</div>
+                            <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{b.customer_name}</div>
+                          </td>
+                          <td>
+                            <span style={{ fontSize: '0.78rem', fontWeight: 600, padding: '2px 8px', borderRadius: '6px', background: '#f1f5f9', color: '#475569' }}>
+                              {b.event_type}
+                            </span>
+                          </td>
+                          <td>{b.event_date}</td>
+                          <td>{b.guest_count}</td>
+                          <td style={{ fontWeight: 700, color: '#0d8a73' }}>
+                            KES {Number(b.total_price).toLocaleString()}
+                          </td>
+                          <td>
+                            <span className={`status-badge ${b.status.toLowerCase()}`}>
+                              {b.status}
+                            </span>
+                          </td>
+                          <td>
+                            {b.status === 'PENDING' ? (
+                              <div style={{ display: 'flex', gap: '6px' }}>
+                                <button
+                                  onClick={() => handleUpdateBookingStatus(b.id, 'APPROVED')}
+                                  style={{ padding: '6px 12px', background: '#0d8a73', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}
+                                >
+                                  Accept
+                                </button>
+                                <button
+                                  onClick={() => handleUpdateBookingStatus(b.id, 'REJECTED')}
+                                  style={{ padding: '6px 12px', background: '#fee2e2', color: '#991b1b', border: 'none', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}
+                                >
+                                  Decline
+                                </button>
+                              </div>
+                            ) : (
+                              <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Processed</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
+
           </div>
         )}
 
-        {/* 5. Tab: MY SPACES (Step 9 & 10) */}
+        {/* 5. Tab: MY SPACES */}
         {activeTab === 'spaces' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
               <div style={{ display: 'flex', gap: '8px' }}>
-                {(['ALL', 'APPROVED', 'PENDING'] as const).map(f => (
-                  <button
-                    key={f}
-                    onClick={() => setSpaceFilter(f)}
-                    style={{
-                      padding: '8px 16px',
-                      borderRadius: '8px',
-                      border: '1px solid #cbd5e1',
-                      background: spaceFilter === f ? '#0F8F7A' : '#ffffff',
-                      color: spaceFilter === f ? '#ffffff' : '#475569',
-                      fontWeight: 600,
-                      fontSize: '0.85rem',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {f === 'ALL' ? `All Spaces (${spaces.length})` : f === 'APPROVED' ? `Verified (${spaces.filter(s => s.is_verified).length})` : `Pending Review (${spaces.filter(s => !s.is_verified).length})`}
-                  </button>
-                ))}
+                <button 
+                  className={`filter-pill ${spaceFilter === 'ALL' ? 'active' : ''}`}
+                  onClick={() => setSpaceFilter('ALL')}
+                >
+                  All Spaces ({spaces.length})
+                </button>
+                <button 
+                  className={`filter-pill ${spaceFilter === 'APPROVED' ? 'active' : ''}`}
+                  onClick={() => setSpaceFilter('APPROVED')}
+                >
+                  Verified ({activeSpacesCount})
+                </button>
+                <button 
+                  className={`filter-pill ${spaceFilter === 'PENDING' ? 'active' : ''}`}
+                  onClick={() => setSpaceFilter('PENDING')}
+                >
+                  Pending ({spaces.length - activeSpacesCount})
+                </button>
               </div>
-
-              <button
-                onClick={() => setShowAddSpaceModal(true)}
-                style={{ background: '#0F8F7A', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: '8px', fontWeight: 700, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
-              >
-                <Plus size={16} /> Add New Space
-              </button>
             </div>
 
-            {spaces.length === 0 ? (
-              <div style={{ background: '#fff', borderRadius: '16px', padding: '64px 20px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
-                <Building2 size={48} color="#94a3b8" style={{ marginBottom: '16px' }} />
-                <h3 style={{ margin: '0 0 8px', fontSize: '1.25rem', fontWeight: 700 }}>No event spaces listed yet</h3>
-                <p style={{ color: '#64748b', maxWidth: '400px', margin: '0 auto 24px' }}>
-                  List your first space to start receiving venue reservations from event planners and customers.
-                </p>
-                <button
-                  onClick={() => setShowAddSpaceModal(true)}
-                  style={{ background: '#0F8F7A', color: '#fff', border: 'none', padding: '12px 24px', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
-                >
-                  <Plus size={18} /> Add an Event Space
+            {filteredSpaces.length === 0 ? (
+              <div className="dashboard-card" style={{ padding: '48px', textAlign: 'center', color: '#64748b' }}>
+                <Building2 size={40} color="#cbd5e1" style={{ marginBottom: '12px' }} />
+                <h3 style={{ margin: '0 0 8px', color: '#0f172a' }}>No spaces found in this category</h3>
+                <p style={{ margin: '0 0 20px', fontSize: '0.9rem' }}>Add wedding gardens, conference halls, or event spaces to start taking bookings.</p>
+                <button onClick={() => setShowAddSpaceModal(true)} className="btn-primary-light" style={{ background: '#0d8a73', color: '#fff' }}>
+                  <Plus size={16} /> Add an Event Space
                 </button>
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '24px' }}>
-                {spaces
-                  .filter(s => spaceFilter === 'ALL' ? true : spaceFilter === 'APPROVED' ? s.is_verified : !s.is_verified)
-                  .map(s => (
-                    <div key={s.id} style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
-                      <div style={{ height: '180px', position: 'relative' }}>
-                        <img 
-                          src={s.image_url || DEFAULT_SPACE_IMAGE} 
-                          onError={(e) => handleImageError(e, DEFAULT_SPACE_IMAGE)} 
-                          alt={s.title || ""} 
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                        />
-                        <span style={{ position: 'absolute', top: '12px', right: '12px', background: s.is_verified ? '#16a34a' : '#d97706', color: '#fff', padding: '4px 10px', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 700 }}>
-                          {s.is_verified ? 'Verified & Public' : 'Under Review'}
-                        </span>
+              <div className="listing-grid">
+                {filteredSpaces.map(s => (
+                  <div key={s.id} className="listing-card">
+                    <div style={{ position: 'relative', height: '180px', background: '#f1f5f9' }}>
+                      <img 
+                        src={cleanImageUrl(s.image_url) || DEFAULT_SPACE_IMAGE} 
+                        alt={s.title} 
+                        onError={(e) => handleImageError(e, DEFAULT_SPACE_IMAGE)}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                      />
+                      <span className={`status-badge ${s.is_verified ? 'approved' : 'pending'}`} style={{ position: 'absolute', top: '12px', right: '12px' }}>
+                        {s.is_verified ? 'Verified Space' : 'Pending Review'}
+                      </span>
+                    </div>
+
+                    <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0d8a73', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+                        {s.category_display || s.category}
+                      </div>
+                      <h3 style={{ margin: '0 0 8px', fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>
+                        {s.title}
+                      </h3>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '0.85rem', marginBottom: '12px' }}>
+                        <MapPin size={14} color="#0d8a73" /> {s.location}
                       </div>
 
-                      <div style={{ padding: '20px' }}>
-                        <h4 style={{ margin: '0 0 6px', fontSize: '1.15rem', fontWeight: 700, color: '#0f172a' }}>{s.title}</h4>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '0.85rem', marginBottom: '12px' }}>
-                          <MapPin size={14} /> {s.location}
+                      <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', fontSize: '0.85rem', color: '#475569' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Users size={14} /> {s.capacity} Guests</span>
+                      </div>
+
+                      <div style={{ marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Daily Rate</span>
+                          <span style={{ fontWeight: 800, color: '#0d8a73', fontSize: '1.1rem' }}>
+                            KES {Number(s.price_per_day).toLocaleString()}
+                          </span>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', padding: '12px', background: '#f8fafc', borderRadius: '8px', marginBottom: '16px', fontSize: '0.82rem' }}>
-                          <div>
-                            <span style={{ color: '#64748b' }}>Capacity:</span>
-                            <div style={{ fontWeight: 700, color: '#0f172a' }}>👥 {s.capacity} guests</div>
-                          </div>
-                          <div>
-                            <span style={{ color: '#64748b' }}>Rate per day:</span>
-                            <div style={{ fontWeight: 700, color: '#0F8F7A' }}>KES {Number(s.price_per_day).toLocaleString()}</div>
-                          </div>
-                        </div>
-
-                        <p style={{ margin: '0 0 16px', color: '#64748b', fontSize: '0.85rem', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                          {s.description}
-                        </p>
-
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '12px' }}>
-                          <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Rating: ⭐ {s.rating || 5.0}</span>
-                          <button
-                            onClick={async () => {
-                              if (confirm(`Are you sure you want to delete ${s.title}?`)) {
-                                await ApiService.deleteVenue(s.id);
-                                toast.success("Space deleted.");
-                                fetchData();
-                              }
-                            }}
-                            style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
-                          >
-                            <Trash2 size={14} /> Delete
-                          </button>
-                        </div>
+                        <button
+                          onClick={() => handleDeleteListing(s.id, s.title)}
+                          style={{ background: 'none', border: 'none', color: '#ef4444', padding: '6px', cursor: 'pointer', borderRadius: '6px' }}
+                          title="Delete space"
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </div>
                     </div>
-                  ))}
+                  </div>
+                ))}
               </div>
             )}
           </div>
         )}
 
-        {/* 6. Tab: MY SERVICES (Step 8 & 10) */}
+        {/* 6. Tab: MY SERVICES */}
         {activeTab === 'services' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
               <div style={{ display: 'flex', gap: '8px' }}>
-                {(['ALL', 'APPROVED', 'PENDING'] as const).map(f => (
-                  <button
-                    key={f}
-                    onClick={() => setServiceFilter(f)}
-                    style={{
-                      padding: '8px 16px',
-                      borderRadius: '8px',
-                      border: '1px solid #cbd5e1',
-                      background: serviceFilter === f ? '#0F8F7A' : '#ffffff',
-                      color: serviceFilter === f ? '#ffffff' : '#475569',
-                      fontWeight: 600,
-                      fontSize: '0.85rem',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {f === 'ALL' ? `All Services (${services.length})` : f === 'APPROVED' ? `Published (${services.filter(s => s.is_verified).length})` : `Pending (${services.filter(s => !s.is_verified).length})`}
-                  </button>
-                ))}
+                <button 
+                  className={`filter-pill ${serviceFilter === 'ALL' ? 'active' : ''}`}
+                  onClick={() => setServiceFilter('ALL')}
+                >
+                  All Services ({services.length})
+                </button>
+                <button 
+                  className={`filter-pill ${serviceFilter === 'APPROVED' ? 'active' : ''}`}
+                  onClick={() => setServiceFilter('APPROVED')}
+                >
+                  Verified ({activeServicesCount})
+                </button>
+                <button 
+                  className={`filter-pill ${serviceFilter === 'PENDING' ? 'active' : ''}`}
+                  onClick={() => setServiceFilter('PENDING')}
+                >
+                  Pending ({services.length - activeServicesCount})
+                </button>
               </div>
-
-              <button
-                onClick={() => setShowAddServiceModal(true)}
-                style={{ background: '#14213D', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: '8px', fontWeight: 700, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
-              >
-                <Plus size={16} /> Add New Service
-              </button>
             </div>
 
-            {services.length === 0 ? (
-              <div style={{ background: '#fff', borderRadius: '16px', padding: '64px 20px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
-                <Package size={48} color="#94a3b8" style={{ marginBottom: '16px' }} />
-                <h3 style={{ margin: '0 0 8px', fontSize: '1.25rem', fontWeight: 700 }}>No services listed yet</h3>
-                <p style={{ color: '#64748b', maxWidth: '400px', margin: '0 auto 24px' }}>
-                  Offer professional catering, photography, decoration, entertainment, or event planning to clients.
-                </p>
-                <button
-                  onClick={() => setShowAddServiceModal(true)}
-                  style={{ background: '#14213D', color: '#fff', border: 'none', padding: '12px 24px', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
-                >
-                  <Plus size={18} /> Add a Service
+            {filteredServices.length === 0 ? (
+              <div className="dashboard-card" style={{ padding: '48px', textAlign: 'center', color: '#64748b' }}>
+                <Package size={40} color="#cbd5e1" style={{ marginBottom: '12px' }} />
+                <h3 style={{ margin: '0 0 8px', color: '#0f172a' }}>No services found in this category</h3>
+                <p style={{ margin: '0 0 20px', fontSize: '0.9rem' }}>Add catering packages, DJ setups, or photography services.</p>
+                <button onClick={() => setShowAddServiceModal(true)} className="btn-primary-light" style={{ background: '#0d8a73', color: '#fff' }}>
+                  <Plus size={16} /> Add a Service
                 </button>
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '24px' }}>
-                {services
-                  .filter(s => serviceFilter === 'ALL' ? true : serviceFilter === 'APPROVED' ? s.is_verified : !s.is_verified)
-                  .map(s => (
-                    <div key={s.id} style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
-                      <div style={{ height: '180px', position: 'relative' }}>
-                        <img 
-                          src={s.image_url || DEFAULT_SERVICE_IMAGE} 
-                          onError={(e) => handleImageError(e, DEFAULT_SERVICE_IMAGE)} 
-                          alt={s.title || ""} 
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                        />
-                        <span style={{ position: 'absolute', top: '12px', right: '12px', background: '#0F8F7A', color: '#fff', padding: '4px 10px', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 700 }}>
-                          Active Service
-                        </span>
+              <div className="listing-grid">
+                {filteredServices.map(s => (
+                  <div key={s.id} className="listing-card">
+                    <div style={{ position: 'relative', height: '180px', background: '#f1f5f9' }}>
+                      <img 
+                        src={cleanImageUrl(s.image_url) || DEFAULT_SERVICE_IMAGE} 
+                        alt={s.title} 
+                        onError={(e) => handleImageError(e, DEFAULT_SERVICE_IMAGE)}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                      />
+                      <span className={`status-badge ${s.is_verified ? 'approved' : 'pending'}`} style={{ position: 'absolute', top: '12px', right: '12px' }}>
+                        {s.is_verified ? 'Verified Service' : 'Pending Review'}
+                      </span>
+                    </div>
+
+                    <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0d8a73', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+                        {s.category_display || s.category}
                       </div>
+                      <h3 style={{ margin: '0 0 8px', fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>
+                        {s.title}
+                      </h3>
+                      <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: '#64748b', lineClamp: 2, WebkitLineClamp: 2, display: '-webkit-box', WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                        {s.description}
+                      </p>
 
-                      <div style={{ padding: '20px' }}>
-                        <h4 style={{ margin: '0 0 6px', fontSize: '1.15rem', fontWeight: 700, color: '#0f172a' }}>{s.title}</h4>
-                        <div style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '12px' }}>
-                          Category: {s.category}
+                      <div style={{ marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Starting Package Fee</span>
+                          <span style={{ fontWeight: 800, color: '#0d8a73', fontSize: '1.1rem' }}>
+                            KES {Number(s.price_per_day).toLocaleString()}
+                          </span>
                         </div>
 
-                        <div style={{ padding: '10px 14px', background: '#f8fafc', borderRadius: '8px', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: '0.82rem', color: '#64748b' }}>Advertised Price:</span>
-                          <span style={{ fontWeight: 800, color: '#0F8F7A', fontSize: '1rem' }}>KES {Number(s.price_per_day).toLocaleString()}</span>
-                        </div>
-
-                        <p style={{ margin: '0 0 16px', color: '#64748b', fontSize: '0.85rem', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                          {s.description}
-                        </p>
-
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '12px' }}>
-                          <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Reviews: ⭐ 4.9 (12)</span>
-                          <button
-                            onClick={async () => {
-                              if (confirm(`Are you sure you want to delete ${s.title}?`)) {
-                                await ApiService.deleteVenue(s.id);
-                                toast.success("Service removed.");
-                                fetchData();
-                              }
-                            }}
-                            style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
-                          >
-                            <Trash2 size={14} /> Remove
-                          </button>
-                        </div>
+                        <button
+                          onClick={() => handleDeleteListing(s.id, s.title)}
+                          style={{ background: 'none', border: 'none', color: '#ef4444', padding: '6px', cursor: 'pointer', borderRadius: '6px' }}
+                          title="Delete service"
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </div>
                     </div>
-                  ))}
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -894,63 +963,88 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
         {/* 7. Tab: BOOKINGS */}
         {activeTab === 'bookings' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
-              {(['ALL', 'SPACES', 'SERVICES'] as const).map(f => (
+            
+            {/* Filters Row */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+              <div style={{ display: 'flex', gap: '8px' }}>
                 <button
-                  key={f}
-                  onClick={() => setBookingFilter(f)}
-                  style={{
-                    padding: '8px 16px',
-                    borderRadius: '8px',
-                    border: 'none',
-                    background: bookingFilter === f ? '#0F8F7A' : 'none',
-                    color: bookingFilter === f ? '#ffffff' : '#64748b',
-                    fontWeight: 700,
-                    fontSize: '0.9rem',
-                    cursor: 'pointer'
-                  }}
+                  className={`filter-pill ${bookingFilter === 'ALL' ? 'active' : ''}`}
+                  onClick={() => setBookingFilter('ALL')}
                 >
-                  {f === 'ALL' ? `All Inquiries (${bookings.length})` : f === 'SPACES' ? 'Space Bookings' : 'Service Bookings'}
+                  All Inquiries ({bookings.length})
                 </button>
-              ))}
+                <button
+                  className={`filter-pill ${bookingFilter === 'SPACES' ? 'active' : ''}`}
+                  onClick={() => setBookingFilter('SPACES')}
+                >
+                  Spaces Only
+                </button>
+                <button
+                  className={`filter-pill ${bookingFilter === 'SERVICES' ? 'active' : ''}`}
+                  onClick={() => setBookingFilter('SERVICES')}
+                >
+                  Services Only
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', gap: '6px' }}>
+                {(['ALL', 'PENDING', 'APPROVED', 'CANCELLED'] as const).map(st => (
+                  <button
+                    key={st}
+                    onClick={() => setBookingStatusFilter(st)}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      border: '1px solid #e2e8f0',
+                      background: bookingStatusFilter === st ? '#1e293b' : '#fff',
+                      color: bookingStatusFilter === st ? '#fff' : '#64748b',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {st}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {bookings.length === 0 ? (
-              <div style={{ background: '#fff', borderRadius: '16px', padding: '48px', textAlign: 'center', border: '1px solid #e2e8f0', color: '#64748b' }}>
-                No bookings found.
+            {filteredBookings.length === 0 ? (
+              <div className="dashboard-card" style={{ padding: '48px', textAlign: 'center', color: '#64748b' }}>
+                No bookings match your current filter selection.
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                {bookings.map(b => (
-                  <div key={b.id} style={{ background: '#fff', borderRadius: '14px', border: '1px solid #e2e8f0', padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                {filteredBookings.map(b => (
+                  <div key={b.id} className="dashboard-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', padding: '20px' }}>
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
                         <span style={{ fontWeight: 800, fontSize: '1.05rem', color: '#0f172a' }}>{b.event_title}</span>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', background: '#e0f2fe', color: '#0369a1' }}>{b.event_type}</span>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', background: '#e0f2fe', color: '#0369a1' }}>
+                          {b.event_type}
+                        </span>
                       </div>
                       <div style={{ fontSize: '0.85rem', color: '#64748b', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
                         <span>👤 Client: <strong>{b.customer_name}</strong></span>
                         <span>📅 Date: <strong>{b.event_date}</strong></span>
                         <span>👥 Guests: <strong>{b.guest_count}</strong></span>
                       </div>
+                      {b.notes && (
+                        <div style={{ marginTop: '8px', fontSize: '0.85rem', color: '#475569', background: '#f8fafc', padding: '8px 12px', borderRadius: '6px' }}>
+                          💬 Notes: {b.notes}
+                        </div>
+                      )}
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                       <div style={{ textAlign: 'right' }}>
                         <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Total Quote</div>
-                        <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0F8F7A' }}>
+                        <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0d8a73' }}>
                           KES {Number(b.total_price).toLocaleString()}
                         </div>
                       </div>
 
-                      <span style={{
-                        fontSize: '0.8rem',
-                        fontWeight: 700,
-                        padding: '6px 14px',
-                        borderRadius: '999px',
-                        background: b.status === 'APPROVED' ? '#dcfce7' : b.status === 'PENDING' ? '#fef3c7' : '#fee2e2',
-                        color: b.status === 'APPROVED' ? '#16a34a' : b.status === 'PENDING' ? '#d97706' : '#ef4444'
-                      }}>
+                      <span className={`status-badge ${b.status.toLowerCase()}`}>
                         {b.status}
                       </span>
 
@@ -958,13 +1052,13 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                         <div style={{ display: 'flex', gap: '8px' }}>
                           <button
                             onClick={() => handleUpdateBookingStatus(b.id, 'APPROVED')}
-                            style={{ background: '#0F8F7A', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}
+                            style={{ background: '#0d8a73', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}
                           >
                             Approve
                           </button>
                           <button
                             onClick={() => handleUpdateBookingStatus(b.id, 'REJECTED')}
-                            style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}
+                            style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}
                           >
                             Decline
                           </button>
@@ -978,10 +1072,80 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
           </div>
         )}
 
-        {/* 8. Tab: BUSINESS PROFILE */}
+        {/* 8. Tab: CALENDAR */}
+        {activeTab === 'calendar' && (
+          <div className="dashboard-card" style={{ padding: '32px' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>Scheduled Bookings & Event Calendar</h3>
+            <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '24px' }}>All confirmed and approved bookings for your spaces and services appear here chronologically.</p>
+            {bookings.filter(b => b.status === 'APPROVED').length === 0 ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: '#64748b', background: '#f8fafc', borderRadius: '12px' }}>
+                No events currently scheduled. When you approve booking requests, they will populate here.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {bookings.filter(b => b.status === 'APPROVED').map(b => (
+                  <div key={b.id} style={{ padding: '16px 20px', borderLeft: '4px solid #0d8a73', background: '#f8fafc', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '1.02rem', color: '#0f172a' }}>{b.event_title}</div>
+                      <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '2px' }}>Date: {b.event_date} · Client: {b.customer_name} · Guests: {b.guest_count}</div>
+                    </div>
+                    <span style={{ fontWeight: 800, color: '#0d8a73', fontSize: '1.1rem' }}>
+                      KES {Number(b.total_price).toLocaleString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 9. Tab: REVIEWS */}
+        {activeTab === 'reviews' && (
+          <div className="dashboard-card" style={{ padding: '32px' }}>
+            <h3 style={{ margin: '0 0 16px', fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>Customer Reviews & Ratings</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '20px', padding: '24px', background: '#f8fafc', borderRadius: '12px', marginBottom: '24px' }}>
+              <div style={{ fontSize: '2.8rem', fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>4.9</div>
+              <div>
+                <div style={{ display: 'flex', gap: '4px', color: '#fbbf24' }}>
+                  <Star fill="#fbbf24" size={20} />
+                  <Star fill="#fbbf24" size={20} />
+                  <Star fill="#fbbf24" size={20} />
+                  <Star fill="#fbbf24" size={20} />
+                  <Star fill="#fbbf24" size={20} />
+                </div>
+                <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '6px' }}>Based on verified customer bookings across all your listings</div>
+              </div>
+            </div>
+            <div style={{ color: '#64748b', fontSize: '0.9rem' }}>
+              Client reviews from completed events automatically display here with detailed feedback and ratings.
+            </div>
+          </div>
+        )}
+
+        {/* 10. Tab: BUSINESS PROFILE */}
         {activeTab === 'profile' && (
-          <div style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '32px', maxWidth: '720px' }}>
-            <h3 style={{ margin: '0 0 20px', fontSize: '1.3rem', fontWeight: 800 }}>Business Profile Information</h3>
+          <div className="dashboard-card" style={{ maxWidth: '720px', padding: '32px' }}>
+            <h3 style={{ margin: '0 0 6px', fontSize: '1.3rem', fontWeight: 800, color: '#0f172a' }}>Business Profile & Branding</h3>
+            <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '24px' }}>Update public business credentials, branding logo, and contact info.</p>
+
+            {/* Profile Avatar Upload */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '28px', paddingBottom: '24px', borderBottom: '1px solid #e2e8f0' }}>
+              <div style={{ width: '72px', height: '72px', borderRadius: '50%', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                {currentVendor?.logo_url ? (
+                  <img src={currentVendor.logo_url} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <UserIcon size={36} color="#94a3b8" />
+                )}
+              </div>
+              <div>
+                <label style={{ background: '#f1f5f9', color: '#0f172a', border: '1px solid #cbd5e1', padding: '8px 16px', borderRadius: '8px', fontWeight: 600, cursor: isUploading ? 'not-allowed' : 'pointer', fontSize: '0.85rem', display: 'inline-block' }}>
+                  {isUploading ? 'Uploading...' : 'Change Business Logo'}
+                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleProfilePictureUpload} disabled={isUploading} />
+                </label>
+                <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '6px' }}>JPG, PNG or GIF up to 5MB</div>
+              </div>
+            </div>
+
             <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Business Name</label>
@@ -1036,7 +1200,8 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
               <button 
                 type="submit" 
-                style={{ background: '#0F8F7A', color: '#fff', border: 'none', padding: '14px', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', marginTop: '10px' }}
+                className="btn-primary-light"
+                style={{ background: '#0d8a73', color: '#fff', padding: '12px 20px', borderRadius: '8px', fontWeight: 700, width: 'fit-content' }}
               >
                 Save Business Profile
               </button>
@@ -1044,72 +1209,35 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
           </div>
         )}
 
-        {/* 9. Tab: CALENDAR */}
-        {activeTab === 'calendar' && (
-          <div style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '32px' }}>
-            <h3 style={{ margin: '0 0 16px', fontSize: '1.2rem', fontWeight: 800 }}>Scheduled Events Calendar</h3>
-            <p style={{ color: '#64748b', marginBottom: '24px' }}>All approved bookings for your spaces and services appear here chronologically.</p>
-            {bookings.filter(b => b.status === 'APPROVED').length === 0 ? (
-              <div style={{ padding: '40px', textAlign: 'center', color: '#64748b', background: '#f8fafc', borderRadius: '12px' }}>
-                No events currently scheduled. Approved bookings will be displayed on this calendar.
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {bookings.filter(b => b.status === 'APPROVED').map(b => (
-                  <div key={b.id} style={{ padding: '16px', borderLeft: '4px solid #0F8F7A', background: '#f8fafc', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: '1rem', color: '#0f172a' }}>{b.event_title}</div>
-                      <div style={{ fontSize: '0.85rem', color: '#64748b' }}>Date: {b.event_date} · Client: {b.customer_name}</div>
-                    </div>
-                    <span style={{ fontWeight: 700, color: '#0F8F7A' }}>KES {Number(b.total_price).toLocaleString()}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 10. Tab: REVIEWS */}
-        {activeTab === 'reviews' && (
-          <div style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '32px' }}>
-            <h3 style={{ margin: '0 0 16px', fontSize: '1.2rem', fontWeight: 800 }}>Customer Reviews & Ratings</h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '20px', background: '#f8fafc', borderRadius: '12px', marginBottom: '24px' }}>
-              <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#0f172a' }}>4.9</div>
-              <div>
-                <div style={{ display: 'flex', gap: '4px', color: '#eab308' }}>
-                  <Star fill="#eab308" size={18} />
-                  <Star fill="#eab308" size={18} />
-                  <Star fill="#eab308" size={18} />
-                  <Star fill="#eab308" size={18} />
-                  <Star fill="#eab308" size={18} />
-                </div>
-                <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px' }}>Based on 28 verified customer bookings</div>
-              </div>
-            </div>
-            <div style={{ color: '#64748b', fontSize: '0.9rem' }}>
-              Customer reviews will automatically populate here after completed event bookings.
-            </div>
-          </div>
-        )}
-
         {/* 11. Tab: SETTINGS */}
         {activeTab === 'settings' && (
-          <div style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '32px', maxWidth: '600px' }}>
-            <h3 style={{ margin: '0 0 16px', fontSize: '1.2rem', fontWeight: 800 }}>Account & Notification Settings</h3>
+          <div className="dashboard-card" style={{ maxWidth: '640px', padding: '32px' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>Account & Platform Settings</h3>
+            <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '24px' }}>Manage notification preferences and security for your business account.</p>
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', background: '#f8fafc', borderRadius: '8px' }}>
                 <div>
-                  <div style={{ fontWeight: 600 }}>Email Booking Alerts</div>
-                  <div style={{ fontSize: '0.8rem', color: '#64748b' }}>Receive instant emails for new booking requests</div>
+                  <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f172a' }}>Email Notifications for New Bookings</div>
+                  <div style={{ fontSize: '0.8rem', color: '#64748b' }}>Receive instant alerts when clients request your services</div>
                 </div>
-                <input type="checkbox" defaultChecked style={{ width: '18px', height: '18px', accentColor: '#0F8F7A' }} />
+                <input type="checkbox" defaultChecked style={{ transform: 'scale(1.2)' }} />
               </div>
+
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', background: '#f8fafc', borderRadius: '8px' }}>
                 <div>
-                  <div style={{ fontWeight: 600 }}>Two-Factor Security</div>
-                  <div style={{ fontSize: '0.8rem', color: '#64748b' }}>Protect account with OTP login verification</div>
+                  <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f172a' }}>SMS Alert Notifications</div>
+                  <div style={{ fontSize: '0.8rem', color: '#64748b' }}>Get urgent booking reminder messages on your phone</div>
                 </div>
-                <input type="checkbox" defaultChecked style={{ width: '18px', height: '18px', accentColor: '#0F8F7A' }} />
+                <input type="checkbox" defaultChecked style={{ transform: 'scale(1.2)' }} />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', background: '#f8fafc', borderRadius: '8px' }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f172a' }}>Public Discovery Listing</div>
+                  <div style={{ fontSize: '0.8rem', color: '#64748b' }}>Allow customers to find your spaces and services on the main explore feed</div>
+                </div>
+                <input type="checkbox" defaultChecked style={{ transform: 'scale(1.2)' }} />
               </div>
             </div>
           </div>
@@ -1117,172 +1245,168 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
       </main>
 
-      {/* MODAL: Add Event Space (Step 9) */}
+      {/* MODAL: ADD SPACE */}
       {showAddSpaceModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ background: '#fff', borderRadius: '20px', width: '100%', maxWidth: '580px', maxHeight: '90vh', overflowY: 'auto', padding: '32px', position: 'relative' }}>
-            <button onClick={() => setShowAddSpaceModal(false)} style={{ position: 'absolute', top: '24px', right: '24px', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
-              <XCircle size={24} />
-            </button>
-
-            <h3 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', margin: '0 0 6px' }}>Add New Event Space</h3>
-            <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '20px' }}>Define capacity, pricing, and details for your venue.</p>
+          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '580px', maxHeight: '90vh', overflowY: 'auto', padding: '32px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div>
+                <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', margin: '0 0 4px' }}>Add New Event Space</h2>
+                <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>List an event hall, garden, or conference space.</p>
+              </div>
+              <button onClick={() => setShowAddSpaceModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+                <X size={20} />
+              </button>
+            </div>
 
             {spaceErrorNotice && (
-              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px' }}>
-                <AlertCircle size={20} color="#dc2626" style={{ flexShrink: 0 }} />
-                <span style={{ fontSize: '0.85rem', color: '#991b1b', fontWeight: 600, lineHeight: 1.4 }}>{spaceErrorNotice}</span>
+              <div style={{ background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: '8px', padding: '12px 16px', color: '#991b1b', fontSize: '0.85rem', marginBottom: '16px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <AlertCircle size={18} />
+                <span>{spaceErrorNotice}</span>
               </div>
             )}
 
             <form onSubmit={handleAddSpaceSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Space Name / Title *</label>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Space Title / Venue Name *</label>
                 <input 
-                  required 
                   type="text" 
-                  placeholder="e.g. Garden Hall & Banquet Lawn" 
+                  required
+                  placeholder="e.g. Serena Grand Ballroom"
                   value={newSpace.title} 
                   onChange={e => setNewSpace({...newSpace, title: e.target.value})}
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Category *</label>
                   <select 
                     value={newSpace.category} 
                     onChange={e => setNewSpace({...newSpace, category: e.target.value as any})}
-                    style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                   >
-                    <option value="WEDDING">Wedding Gardens & Halls</option>
-                    <option value="CONFERENCE">Conference & Corporate</option>
-                    <option value="BIRTHDAY">Birthday & Private Party</option>
-                    <option value="OUTDOOR">Outdoor & Picnic Grounds</option>
-                    <option value="PARTY">Nightlife & Celebration</option>
-                    <option value="EXHIBITION">Exhibition & Trade Halls</option>
+                    <option value="WEDDING">Wedding Hall</option>
+                    <option value="CONFERENCE">Conference Room</option>
+                    <option value="PARTY">Party Venue</option>
+                    <option value="BANQUET">Banquet Hall</option>
+                    <option value="OUTDOOR">Outdoor / Garden</option>
                   </select>
                 </div>
-
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Max Capacity (Guests) *</label>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Guest Capacity *</label>
                   <input 
-                    required 
                     type="number" 
-                    placeholder="e.g. 300" 
+                    required
+                    min="1"
+                    placeholder="e.g. 300"
                     value={newSpace.capacity} 
                     onChange={e => setNewSpace({...newSpace, capacity: Number(e.target.value)})}
-                    style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                   />
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Price Per Day (KES) *</label>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Location (City) *</label>
                   <input 
-                    required 
-                    type="number" 
-                    placeholder="e.g. 75000" 
-                    value={newSpace.price_per_day} 
-                    onChange={e => setNewSpace({...newSpace, price_per_day: Number(e.target.value)})}
-                    style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Location / City *</label>
-                  <input 
-                    required 
                     type="text" 
-                    placeholder="e.g. Nairobi, Westlands" 
+                    required
+                    placeholder="e.g. Nairobi"
                     value={newSpace.location} 
                     onChange={e => setNewSpace({...newSpace, location: e.target.value})}
-                    style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                   />
                 </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Daily Rate (KES) *</label>
+                  <input 
+                    type="number" 
+                    required
+                    min="1"
+                    placeholder="e.g. 75000"
+                    value={newSpace.price_per_day} 
+                    onChange={e => setNewSpace({...newSpace, price_per_day: Number(e.target.value)})}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Amenities (comma-separated)</label>
+                <input 
+                  type="text" 
+                  placeholder="Parking, Sound System, Restrooms, Security, Wi-Fi"
+                  value={newSpace.amenities} 
+                  onChange={e => setNewSpace({...newSpace, amenities: e.target.value})}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Image URL</label>
+                <input 
+                  type="url" 
+                  placeholder="https://images.unsplash.com/..."
+                  value={newSpace.image_url} 
+                  onChange={e => setNewSpace({...newSpace, image_url: e.target.value})}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                />
               </div>
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Description *</label>
                 <textarea 
-                  required 
                   rows={3} 
-                  placeholder="Describe the venue ambiance, lighting, sound, parking, and catering accommodations..."
+                  required
+                  placeholder="Describe your space, layout, lighting, and suitable event types..."
                   value={newSpace.description} 
                   onChange={e => setNewSpace({...newSpace, description: e.target.value})}
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                 />
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Amenities (Comma separated)</label>
-                <input 
-                  type="text" 
-                  placeholder="Parking, Sound System, Restrooms, Security, Projector"
-                  value={newSpace.amenities} 
-                  onChange={e => setNewSpace({...newSpace, amenities: e.target.value})}
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
-                />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
+                <button 
+                  type="button" 
+                  onClick={() => setShowAddSpaceModal(false)}
+                  style={{ padding: '10px 18px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={submitting}
+                  style={{ padding: '10px 22px', background: '#0d8a73', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 700, cursor: submitting ? 'not-allowed' : 'pointer' }}
+                >
+                  {submitting ? 'Saving Space...' : 'Create Event Space'}
+                </button>
               </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Space Image URL (Optional)</label>
-                <input 
-                  type="url" 
-                  placeholder="Paste direct image link or Google Images link..."
-                  value={newSpace.image_url} 
-                  onChange={e => setNewSpace({...newSpace, image_url: cleanImageUrl(e.target.value)})}
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
-                />
-                {newSpace.image_url ? (
-                  <div style={{ marginTop: '10px', padding: '10px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0F8F7A', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <ImageIcon size={14} /> Live Image Preview:
-                    </div>
-                    <div style={{ height: '140px', borderRadius: '8px', overflow: 'hidden', background: '#e2e8f0' }}>
-                      <img 
-                        src={newSpace.image_url} 
-                        alt="Preview" 
-                        onError={(e) => handleImageError(e, DEFAULT_SPACE_IMAGE)}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: '#64748b' }}>
-                    ✨ Direct photo links or Google Images search links are automatically cleaned and converted.
-                  </p>
-                )}
-              </div>
-
-              <button 
-                type="submit" 
-                disabled={submitting}
-                style={{ background: '#0F8F7A', color: '#fff', border: 'none', padding: '14px', borderRadius: '10px', fontWeight: 700, fontSize: '1rem', cursor: submitting ? 'not-allowed' : 'pointer', marginTop: '10px' }}
-              >
-                {submitting ? 'Saving Space...' : 'Save & Publish Space'}
-              </button>
             </form>
           </div>
         </div>
       )}
 
-      {/* MODAL: Add Service (Step 8) */}
+      {/* MODAL: ADD SERVICE */}
       {showAddServiceModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ background: '#fff', borderRadius: '20px', width: '100%', maxWidth: '540px', maxHeight: '90vh', overflowY: 'auto', padding: '32px', position: 'relative' }}>
-            <button onClick={() => setShowAddServiceModal(false)} style={{ position: 'absolute', top: '24px', right: '24px', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
-              <XCircle size={24} />
-            </button>
-
-            <h3 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', margin: '0 0 6px' }}>Add New Service</h3>
-            <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '20px' }}>Offer professional event services to customers.</p>
+          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '580px', maxHeight: '90vh', overflowY: 'auto', padding: '32px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div>
+                <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', margin: '0 0 4px' }}>Add Professional Service</h2>
+                <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>Offer catering, photography, DJ sound, or event decor.</p>
+              </div>
+              <button onClick={() => setShowAddServiceModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+                <X size={20} />
+              </button>
+            </div>
 
             {serviceErrorNotice && (
-              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px' }}>
-                <AlertCircle size={20} color="#dc2626" style={{ flexShrink: 0 }} />
-                <span style={{ fontSize: '0.85rem', color: '#991b1b', fontWeight: 600, lineHeight: 1.4 }}>{serviceErrorNotice}</span>
+              <div style={{ background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: '8px', padding: '12px 16px', color: '#991b1b', fontSize: '0.85rem', marginBottom: '16px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <AlertCircle size={18} />
+                <span>{serviceErrorNotice}</span>
               </div>
             )}
 
@@ -1290,42 +1414,40 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Service Name *</label>
                 <input 
-                  required 
                   type="text" 
-                  placeholder="e.g. Wedding Photography & Cinematic Video" 
+                  required
+                  placeholder="e.g. Executive Wedding Photography Package"
                   value={newService.title} 
                   onChange={e => setNewService({...newService, title: e.target.value})}
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Category *</label>
                   <select 
                     value={newService.category} 
                     onChange={e => setNewService({...newService, category: e.target.value})}
-                    style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                   >
                     <option value="PHOTOGRAPHY">Photography & Video</option>
-                    <option value="CATERING">Catering & Bar Service</option>
-                    <option value="DECORATION">Event Decoration & Styling</option>
-                    <option value="ENTERTAINMENT">DJ & Entertainment</option>
-                    <option value="PLANNING">Event Planning & Coordination</option>
-                    <option value="SOUND">Sound & Lighting</option>
+                    <option value="CATERING">Catering & Bar</option>
+                    <option value="DECORATION">Decoration & Floral</option>
+                    <option value="ENTERTAINMENT">DJ & Live Music</option>
+                    <option value="PLANNING">Full Event Planning</option>
                   </select>
                 </div>
-
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Pricing Basis</label>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Pricing Model *</label>
                   <select 
                     value={newService.pricing_type} 
                     onChange={e => setNewService({...newService, pricing_type: e.target.value})}
-                    style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                   >
-                    <option value="Per Event">Per Event Package</option>
+                    <option value="Per Event">Per Event / Flat Package</option>
                     <option value="Per Hour">Per Hour</option>
-                    <option value="Per Guest">Per Guest / Plate</option>
+                    <option value="Per Person">Per Person / Guest</option>
                   </select>
                 </div>
               </div>
@@ -1333,174 +1455,60 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Starting Price (KES) *</label>
                 <input 
-                  required 
                   type="number" 
-                  placeholder="e.g. 35000" 
+                  required
+                  min="1"
+                  placeholder="e.g. 25000"
                   value={newService.price_per_day} 
                   onChange={e => setNewService({...newService, price_per_day: Number(e.target.value)})}
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                 />
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Service Details & Deliverables *</label>
-                <textarea 
-                  required 
-                  rows={3} 
-                  placeholder="List what is included in this service package (e.g. 8 hours coverage, edited photos, drone footage)..."
-                  value={newService.description} 
-                  onChange={e => setNewService({...newService, description: e.target.value})}
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Service Photo URL (Optional)</label>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Service Cover Image URL</label>
                 <input 
                   type="url" 
-                  placeholder="Paste direct image link or Google Images link..."
+                  placeholder="https://images.unsplash.com/..."
                   value={newService.image_url} 
-                  onChange={e => setNewService({...newService, image_url: cleanImageUrl(e.target.value)})}
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                  onChange={e => setNewService({...newService, image_url: e.target.value})}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                 />
-                {newService.image_url ? (
-                  <div style={{ marginTop: '10px', padding: '10px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#14213D', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <ImageIcon size={14} /> Live Image Preview:
-                    </div>
-                    <div style={{ height: '140px', borderRadius: '8px', overflow: 'hidden', background: '#e2e8f0' }}>
-                      <img 
-                        src={newService.image_url} 
-                        alt="Preview" 
-                        onError={(e) => handleImageError(e, DEFAULT_SERVICE_IMAGE)}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: '#64748b' }}>
-                    ✨ Direct photo links or Google Images search links are automatically cleaned and converted.
-                  </p>
-                )}
               </div>
 
-              <button 
-                type="submit" 
-                disabled={submitting}
-                style={{ background: '#14213D', color: '#fff', border: 'none', padding: '14px', borderRadius: '10px', fontWeight: 700, fontSize: '1rem', cursor: submitting ? 'not-allowed' : 'pointer', marginTop: '10px' }}
-              >
-                {submitting ? 'Saving Service...' : 'Save & Publish Service'}
-              </button>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Package Details & Inclusions *</label>
+                <textarea 
+                  rows={3} 
+                  required
+                  placeholder="What is included in this package? (e.g. 8 hours coverage, 2 photographers, edited digital album...)"
+                  value={newService.description} 
+                  onChange={e => setNewService({...newService, description: e.target.value})}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
+                <button 
+                  type="button" 
+                  onClick={() => setShowAddServiceModal(false)}
+                  style={{ padding: '10px 18px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={submitting}
+                  style={{ padding: '10px 22px', background: '#0d8a73', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 700, cursor: submitting ? 'not-allowed' : 'pointer' }}
+                >
+                  {submitting ? 'Saving Service...' : 'Create Service Package'}
+                </button>
+              </div>
             </form>
           </div>
         </div>
       )}
 
-    </div>
-  );
-};
-
-// Reusable Navigation Link
-const NavItem: React.FC<{
-  icon: React.ReactNode;
-  label: string;
-  badge?: number;
-  badgeColor?: string;
-  active: boolean;
-  onClick: () => void;
-}> = ({ icon, label, badge, badgeColor = '#0F8F7A', active, onClick }) => {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-        width: '100%',
-        padding: '12px 14px',
-        borderRadius: '10px',
-        border: 'none',
-        background: active ? '#e6f7f3' : 'none',
-        color: active ? '#0F8F7A' : '#475569',
-        fontWeight: active ? 700 : 600,
-        fontSize: '0.92rem',
-        cursor: 'pointer',
-        textAlign: 'left',
-        transition: 'all 0.15s ease',
-      }}
-      onMouseEnter={e => {
-        if (!active) {
-          e.currentTarget.style.background = '#f8fafc';
-          e.currentTarget.style.color = '#0f172a';
-        }
-      }}
-      onMouseLeave={e => {
-        if (!active) {
-          e.currentTarget.style.background = 'none';
-          e.currentTarget.style.color = '#475569';
-        }
-      }}
-    >
-      <span style={{ color: active ? '#0F8F7A' : '#64748b' }}>{icon}</span>
-      <span style={{ flexGrow: 1 }}>{label}</span>
-      {badge !== undefined && (
-        <span
-          style={{
-            fontSize: '0.75rem',
-            fontWeight: 700,
-            color: '#fff',
-            background: badgeColor,
-            padding: '2px 8px',
-            borderRadius: '999px',
-          }}
-        >
-          {badge}
-        </span>
-      )}
-    </button>
-  );
-};
-
-// Reusable KPI Card
-const KpiCard: React.FC<{
-  icon: React.ReactNode;
-  bg: string;
-  title: string;
-  value: string | number;
-  subtitle: string;
-  onClick?: () => void;
-}> = ({ icon, bg, title, value, subtitle, onClick }) => {
-  return (
-    <div
-      onClick={onClick}
-      style={{
-        background: '#ffffff',
-        borderRadius: '16px',
-        border: '1px solid #e2e8f0',
-        padding: '20px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '12px',
-        cursor: onClick ? 'pointer' : 'default',
-        transition: 'all 0.2s',
-      }}
-      onMouseEnter={e => {
-        if (onClick) e.currentTarget.style.transform = 'translateY(-2px)';
-      }}
-      onMouseLeave={e => {
-        if (onClick) e.currentTarget.style.transform = 'translateY(0)';
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#64748b' }}>{title}</span>
-        <div style={{ width: '40px', height: '40px', background: bg, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {icon}
-        </div>
-      </div>
-      <div>
-        <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>{value}</div>
-        <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '6px' }}>{subtitle}</div>
-      </div>
     </div>
   );
 };
