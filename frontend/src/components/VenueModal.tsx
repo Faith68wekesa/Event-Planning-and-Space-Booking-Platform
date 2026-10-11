@@ -1,7 +1,8 @@
 import React from 'react';
 import type { Venue } from '../types';
-import { X, ShieldCheck, MapPin, Users, Star, CheckCircle2, ArrowRight, MessageCircle } from 'lucide-react';
+import { X, ShieldCheck, MapPin, Users, Star, CheckCircle2, ArrowRight, MessageCircle, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { handleImageError, DEFAULT_SPACE_IMAGE } from '../utils/imageUtils';
 
 interface VenueModalProps {
   venue: Venue;
@@ -37,7 +38,8 @@ export const VenueModal: React.FC<VenueModalProps> = ({ venue, onClose, onBook }
 
         <div style={{ height: '300px', borderRadius: '16px', overflow: 'hidden', position: 'relative', marginBottom: '24px' }}>
           <img
-            src={venue.image_url}
+            src={venue.image_url || DEFAULT_SPACE_IMAGE}
+            onError={(e) => handleImageError(e, DEFAULT_SPACE_IMAGE)}
             alt={venue.title}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />
@@ -66,9 +68,9 @@ export const VenueModal: React.FC<VenueModalProps> = ({ venue, onClose, onBook }
           </div>
 
           <div style={{ textAlign: 'right' }}>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Rental Rate</span>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{Number(venue.capacity) === 0 ? 'Service Rate' : 'Rental Rate'}</span>
             <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#059669' }}>
-              KES {venue.price_per_day.toLocaleString()} <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 400 }}>/ day</span>
+              KES {venue.price_per_day.toLocaleString()} <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 400 }}>{Number(venue.capacity) === 0 ? '/ event' : '/ day'}</span>
             </div>
           </div>
         </div>
@@ -83,9 +85,17 @@ export const VenueModal: React.FC<VenueModalProps> = ({ venue, onClose, onBook }
           flexWrap: 'wrap'
         }}>
           <div style={{ flex: 1, minWidth: '130px' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Max Capacity</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>{Number(venue.capacity) === 0 ? 'Offering' : 'Max Capacity'}</span>
             <span style={{ fontWeight: 700, fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
-              <Users size={16} color="#059669" /> {venue.capacity} Guests
+              {Number(venue.capacity) === 0 ? (
+                <>
+                  <Sparkles size={16} color="#059669" /> Service Package
+                </>
+              ) : (
+                <>
+                  <Users size={16} color="#059669" /> {venue.capacity} Guests
+                </>
+              )}
             </span>
           </div>
 
@@ -97,15 +107,17 @@ export const VenueModal: React.FC<VenueModalProps> = ({ venue, onClose, onBook }
           </div>
 
           <div style={{ flex: 1, minWidth: '130px' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Hourly Option</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>{Number(venue.capacity) === 0 ? 'Provider' : 'Hourly Option'}</span>
             <span style={{ fontWeight: 700, fontSize: '1.05rem', marginTop: '2px' }}>
-              {venue.price_per_hour ? `KES ${venue.price_per_hour.toLocaleString()} / hr` : 'Full Day Only'}
+              {Number(venue.capacity) === 0 
+                ? (venue.vendor_name || venue.owner_name || 'Verified Provider') 
+                : (venue.price_per_hour ? `KES ${venue.price_per_hour.toLocaleString()} / hr` : 'Full Day Only')}
             </span>
           </div>
         </div>
 
         <div style={{ marginBottom: '24px' }}>
-          <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '8px' }}>About this Venue</h3>
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '8px' }}>{Number(venue.capacity) === 0 ? 'About this Service' : 'About this Venue'}</h3>
           <p style={{ color: 'var(--text-muted)', lineHeight: 1.6 }}>{venue.description}</p>
         </div>
 

@@ -66,7 +66,7 @@ export const VendorModal: React.FC<VendorModalProps> = ({ vendor, onClose, onBoo
           <div style={{ textAlign: 'right' }}>
             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Starting Package</span>
             <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#059669' }}>
-              KES {vendor.starting_price.toLocaleString()}
+              KES {Number(vendor.starting_price || 0).toLocaleString()}
             </div>
           </div>
         </div>

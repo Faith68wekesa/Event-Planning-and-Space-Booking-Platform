@@ -11,9 +11,11 @@ import {
   MapPin,
   Trash2,
   ShieldCheck,
-  User as UserIcon
+  User as UserIcon,
+  Image as ImageIcon
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { cleanImageUrl, handleImageError, DEFAULT_SPACE_IMAGE } from '../utils/imageUtils';
 
 interface VenueOwnerDashboardProps {
   currentOwner: VenueOwner;
@@ -164,7 +166,7 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
         price_per_hour: Number(newVenue.price_per_hour),
         description: newVenue.description,
         amenities: amenitiesList,
-        image_url: newVenue.image_url,
+        image_url: cleanImageUrl(newVenue.image_url) || DEFAULT_SPACE_IMAGE,
       });
 
       setShowAddModal(false);
@@ -518,7 +520,8 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
                   >
                     <div style={{ height: '180px', position: 'relative', overflow: 'hidden' }}>
                       <img
-                        src={venue.image_url || 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=800&q=80'}
+                        src={venue.image_url || DEFAULT_SPACE_IMAGE}
+                        onError={(e) => handleImageError(e, DEFAULT_SPACE_IMAGE)}
                         alt={venue.title}
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />
@@ -1047,12 +1050,30 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
                   Photo URL
                 </label>
                 <input
-                  required
                   value={newVenue.image_url}
-                  onChange={(e) => setNewVenue({ ...newVenue, image_url: e.target.value })}
+                  onChange={(e) => setNewVenue({ ...newVenue, image_url: cleanImageUrl(e.target.value) })}
                   style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }}
-                  placeholder="https://..."
+                  placeholder="Paste direct photo link or Google Images link..."
                 />
+                {newVenue.image_url ? (
+                  <div style={{ marginTop: '10px', padding: '10px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0F8F7A', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <ImageIcon size={14} /> Live Image Preview:
+                    </div>
+                    <div style={{ height: '140px', borderRadius: '8px', overflow: 'hidden', background: '#e2e8f0' }}>
+                      <img 
+                        src={newVenue.image_url} 
+                        alt="Preview" 
+                        onError={(e) => handleImageError(e, DEFAULT_SPACE_IMAGE)}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: '#64748b' }}>
+                    ✨ Direct photo links or Google Images links are automatically cleaned and previewed.
+                  </p>
+                )}
               </div>
 
               <div>

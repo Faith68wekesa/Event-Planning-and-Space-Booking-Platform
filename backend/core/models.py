@@ -4,6 +4,7 @@ from django.contrib.auth.models import AbstractUser
 class User(AbstractUser):
     ROLE_CHOICES = [
         ('CUSTOMER', 'Customer'),
+        ('PROVIDER', 'Business Provider'),
         ('VENDOR', 'Vendor / Service Provider'),
         ('VENUE_OWNER', 'Venue Owner'),
         ('ADMIN', 'Administrator'),
@@ -12,6 +13,10 @@ class User(AbstractUser):
     is_customer = models.BooleanField(default=True)
     is_vendor = models.BooleanField(default=False)
     is_venue_owner = models.BooleanField(default=False)
+
+    @property
+    def is_provider(self):
+        return self.role == 'PROVIDER' or (self.is_vendor and self.is_venue_owner)
     phone_number = models.CharField(max_length=20, blank=True, null=True)
     avatar_url = models.URLField(max_length=500, blank=True, null=True)
     bio = models.TextField(blank=True, null=True)
@@ -70,6 +75,13 @@ class VendorProfile(models.Model):
     review_count = models.IntegerField(default=12)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    def save(self, *args, **kwargs):
+        if self.logo_url:
+            self.logo_url = Venue.clean_image_url(self.logo_url)
+        if self.portfolio_images and isinstance(self.portfolio_images, list):
+            self.portfolio_images = [Venue.clean_image_url(img) for img in self.portfolio_images if img]
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.business_name} - {self.vendor_type}"
 
@@ -82,11 +94,17 @@ class Venue(models.Model):
         ('OUTDOOR', 'Outdoor & Picnic Grounds'),
         ('PARTY', 'Nightlife & Celebration Spaces'),
         ('EXHIBITION', 'Exhibition & Trade Halls'),
+        ('PHOTOGRAPHY', 'Photography & Videography'),
+        ('CATERING', 'Catering & Bar Service'),
+        ('DECORATION', 'Event Decoration & Styling'),
+        ('ENTERTAINMENT', 'DJ & Entertainment'),
+        ('PLANNING', 'Event Planning & Coordination'),
+        ('SOUND', 'Sound & Lighting Equipment'),
     ]
     vendor = models.ForeignKey(VendorProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='venues')
     owner = models.ForeignKey(VenueOwnerProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='venues')
     title = models.CharField(max_length=200)
-    description = models.TextField()
+    description = models.TextField(blank=True, default='')
     category = models.CharField(max_length=30, choices=CATEGORY_CHOICES)
     location = models.CharField(max_length=100)
     address = models.CharField(max_length=255, blank=True, null=True)
@@ -100,6 +118,54 @@ class Venue(models.Model):
     rating = models.FloatField(default=4.9)
     review_count = models.IntegerField(default=24)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if self.image_url:
+            self.image_url = self.clean_image_url(self.image_url)
+        super().save(*args, **kwargs)
+        if self.vendor:
+            from django.db.models import Min
+            min_p = Venue.objects.filter(vendor=self.vendor, price_per_day__gt=0).aggregate(min_p=Min('price_per_day'))['min_p']
+            if min_p is not None and (self.vendor.starting_price <= 0 or self.vendor.starting_price != min_p):
+                self.vendor.starting_price = min_p
+                self.vendor.save(update_fields=['starting_price'])
+
+    def delete(self, *args, **kwargs):
+        vendor = self.vendor
+        res = super().delete(*args, **kwargs)
+        if vendor:
+            from django.db.models import Min
+            min_p = Venue.objects.filter(vendor=vendor, price_per_day__gt=0).aggregate(min_p=Min('price_per_day'))['min_p']
+            vendor.starting_price = min_p if min_p is not None else 0.00
+            vendor.save(update_fields=['starting_price'])
+        return res
+
+    @staticmethod
+    def clean_image_url(url):
+        if not url or not isinstance(url, str):
+            return url
+        url = url.strip().strip('"\'')
+        if 'google.com/imgres' in url or '/imgres?' in url:
+            from urllib.parse import urlparse, parse_qs, unquote
+            try:
+                parsed = urlparse(url)
+                qs = parse_qs(parsed.query)
+                if 'imgurl' in qs and qs['imgurl']:
+                    return unquote(qs['imgurl'][0])
+            except Exception:
+                pass
+            import re
+            m = re.search(r'[?&]imgurl=([^&]+)', url)
+            if m:
+                from urllib.parse import unquote
+                return unquote(m.group(1))
+        if 'bing.com/images' in url and 'mediaurl=' in url:
+            import re
+            m = re.search(r'[?&]mediaurl=([^&]+)', url)
+            if m:
+                from urllib.parse import unquote
+                return unquote(m.group(1))
+        return url
 
     def __str__(self):
         return f"{self.title} ({self.location})"
