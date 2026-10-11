@@ -163,9 +163,20 @@ export const ApiService = {
     }
   },
 
-  async getBookings(customerId?: number): Promise<Booking[]> {
+  async getBookings(params?: number | { customer?: number; vendor?: number; owner?: number; user?: number; status?: string }): Promise<Booking[]> {
     try {
-      const url = customerId ? `${API_BASE}/bookings/?customer=${customerId}` : `${API_BASE}/bookings/`;
+      let url = `${API_BASE}/bookings/`;
+      if (typeof params === 'number') {
+        url = `${API_BASE}/bookings/?customer=${params}`;
+      } else if (params) {
+        const sp = new URLSearchParams();
+        if (params.customer) sp.append('customer', params.customer.toString());
+        if (params.vendor) sp.append('vendor', params.vendor.toString());
+        if (params.owner) sp.append('owner', params.owner.toString());
+        if (params.user) sp.append('user', params.user.toString());
+        if (params.status) sp.append('status', params.status);
+        url = `${API_BASE}/bookings/?${sp.toString()}`;
+      }
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();

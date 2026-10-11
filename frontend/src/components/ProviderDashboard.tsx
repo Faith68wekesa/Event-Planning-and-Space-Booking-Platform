@@ -17,13 +17,15 @@ import {
   Star,
   Settings,
   LogOut,
-  Sparkles,
-  DollarSign,
   ChevronRight,
   Eye,
   AlertCircle,
   Users,
-  ClipboardList
+  ChevronDown,
+  MessageSquare,
+  Check,
+  Layers,
+  Send
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cleanImageUrl, handleImageError, DEFAULT_SPACE_IMAGE, DEFAULT_SERVICE_IMAGE } from '../utils/imageUtils';
@@ -43,13 +45,18 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   onLogout,
   onExplore,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'spaces' | 'services' | 'bookings' | 'calendar' | 'reviews' | 'profile' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'spaces' | 'services' | 'bookings' | 'calendar' | 'reviews' | 'messages' | 'profile' | 'settings'>('overview');
+  
+  // Inspiration UI Navigation and Filter States
+  const [myListingsExpanded, setMyListingsExpanded] = useState(true);
+  const [showAddListingDropdown, setShowAddListingDropdown] = useState(false);
+  const [listingsCategoryFilter, setListingsCategoryFilter] = useState<string>('ALL');
   
   // Data states
   const [spaces, setSpaces] = useState<Venue[]>([]);
   const [services, setServices] = useState<Venue[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
 
   // Business profile form
   const businessName = currentVenueOwner?.business_name || currentVendor?.business_name || 'My Business';
@@ -104,6 +111,8 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   const [serviceFilter, setServiceFilter] = useState<'ALL' | 'APPROVED' | 'PENDING'>('ALL');
   const [bookingFilter, setBookingFilter] = useState<'ALL' | 'SPACES' | 'SERVICES'>('ALL');
   const [bookingStatusFilter, setBookingStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'CANCELLED'>('ALL');
+  const [selectedBookingChatId, setSelectedBookingChatId] = useState<string | number | null>(null);
+  const [messageInput, setMessageInput] = useState('');
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -123,15 +132,34 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
       let fetchedBookings: Booking[] = [];
 
       if (ownerId) {
-        const ownerBookings = await ApiService.getVenueOwnerBookings(ownerId);
-        fetchedBookings = [...fetchedBookings, ...ownerBookings];
+        try {
+          const ownerBookings = await ApiService.getVenueOwnerBookings(ownerId);
+          fetchedBookings = [...fetchedBookings, ...ownerBookings];
+        } catch (e) {
+          console.error("Failed to load owner bookings", e);
+        }
       }
       if (vendorId) {
-        const vendorBookings = await ApiService.getVendorBookings(vendorId);
-        const existingIds = new Set(fetchedBookings.map(b => b.id));
-        vendorBookings.forEach(b => {
-          if (!existingIds.has(b.id)) fetchedBookings.push(b);
-        });
+        try {
+          const vendorBookings = await ApiService.getVendorBookings(vendorId);
+          const existingIds = new Set(fetchedBookings.map(b => b.id));
+          vendorBookings.forEach(b => {
+            if (!existingIds.has(b.id)) fetchedBookings.push(b);
+          });
+        } catch (e) {
+          console.error("Failed to load vendor bookings", e);
+        }
+      }
+      if (userId) {
+        try {
+          const userBookings = await ApiService.getBookings({ user: userId });
+          const existingIds = new Set(fetchedBookings.map(b => b.id));
+          userBookings.forEach(b => {
+            if (!existingIds.has(b.id)) fetchedBookings.push(b);
+          });
+        } catch (e) {
+          console.error("Failed to load user bookings", e);
+        }
       }
 
       const providerVenues = await ApiService.getVenues({
@@ -149,6 +177,24 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
       };
 
       const myOwnListings = providerVenues.filter(isMyListing);
+
+      // If user has listings, ensure any bookings for those listing IDs are also captured
+      if (myOwnListings.length > 0) {
+        try {
+          const myVenueIds = new Set(myOwnListings.map(v => v.id));
+          const allSystemBookings = await ApiService.getBookings();
+          const existingIds = new Set(fetchedBookings.map(b => b.id));
+          allSystemBookings.forEach(b => {
+            const venueId = typeof b.venue === 'object' ? (b.venue as any)?.id : b.venue;
+            if (venueId && myVenueIds.has(venueId) && !existingIds.has(b.id)) {
+              fetchedBookings.push(b);
+              existingIds.add(b.id);
+            }
+          });
+        } catch (e) {
+          console.error("Failed to load venue bookings", e);
+        }
+      }
 
       const mySpaces = myOwnListings.filter(v => (v.capacity ?? 0) > 0);
       const myServices = myOwnListings.filter(v => (v.capacity ?? 0) === 0);
@@ -185,7 +231,20 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   // Add Space Submit
   const handleAddSpaceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentVenueOwner?.id && !currentVendor?.id) {
+    let ownerId = currentVenueOwner?.id;
+    let vendorId = currentVendor?.id;
+    if (!ownerId && !vendorId && currentUser?.id) {
+      try {
+        const resp = await ApiService.requestRole(currentUser.id, 'PROVIDER');
+        if (resp) {
+          ownerId = resp.venue_owner_profile?.id;
+          vendorId = resp.vendor_profile?.id;
+        }
+      } catch (err) {
+        console.error("Auto-provisioning failed", err);
+      }
+    }
+    if (!ownerId && !vendorId) {
       toast.error("Profile not found.");
       return;
     }
@@ -198,8 +257,8 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
         .filter(Boolean);
 
       await ApiService.addVenue({
-        owner: currentVenueOwner?.id,
-        vendor: currentVendor?.id,
+        owner: ownerId,
+        vendor: vendorId,
         title: newSpace.title,
         category: newSpace.category,
         location: newSpace.location,
@@ -240,7 +299,20 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   // Add Service Submit
   const handleAddServiceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentVendor?.id && !currentVenueOwner?.id) {
+    let vendorId = currentVendor?.id;
+    let ownerId = currentVenueOwner?.id;
+    if (!vendorId && !ownerId && currentUser?.id) {
+      try {
+        const resp = await ApiService.requestRole(currentUser.id, 'PROVIDER');
+        if (resp) {
+          vendorId = resp.vendor_profile?.id;
+          ownerId = resp.venue_owner_profile?.id;
+        }
+      } catch (err) {
+        console.error("Auto-provisioning failed", err);
+      }
+    }
+    if (!vendorId && !ownerId) {
       toast.error("Profile not found.");
       return;
     }
@@ -248,8 +320,8 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
     setServiceErrorNotice(null);
     try {
       await ApiService.addVenue({
-        vendor: currentVendor?.id,
-        owner: currentVenueOwner?.id,
+        vendor: vendorId,
+        owner: ownerId,
         title: newService.title,
         category: newService.category as any,
         location: location || 'Nairobi',
@@ -328,8 +400,6 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
     .filter(b => b.status === 'COMPLETED' || b.status === 'APPROVED')
     .reduce((sum, b) => sum + Number(b.total_price || 0), 0);
 
-  const hasNoListings = spaces.length === 0 && services.length === 0;
-
   // Filtered views
   const filteredSpaces = spaces.filter(s => {
     if (spaceFilter === 'APPROVED') return s.is_verified;
@@ -353,42 +423,37 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
   const getPageTitle = () => {
     switch (activeTab) {
-      case 'overview': return 'Business Overview';
-      case 'spaces': return 'My Event Spaces';
+      case 'overview': return 'Vendor Overview';
+      case 'spaces': return 'My Event Venues';
       case 'services': return 'My Services & Packages';
       case 'bookings': return 'Booking Requests';
       case 'calendar': return 'Event Calendar';
+      case 'messages': return 'Client Messages';
       case 'reviews': return 'Client Reviews';
-      case 'profile': return 'Business Profile';
+      case 'profile': return 'Vendor Profile';
       case 'settings': return 'Account Settings';
-      default: return 'Business Dashboard';
+      default: return 'Vendor Dashboard';
     }
   };
 
   const getPageSubtitle = () => {
     switch (activeTab) {
-      case 'overview': return 'Manage your event spaces, service packages, bookings, and revenue in one unified portal.';
+      case 'overview': return 'Manage your venues and services, track bookings, and grow your business.';
       case 'spaces': return 'List, showcase, and manage your physical event venues and banquet halls.';
       case 'services': return 'Configure your professional service packages, rates, and coverage.';
       case 'bookings': return 'Review incoming customer booking inquiries and confirm schedules.';
       case 'calendar': return 'Track upcoming approved events and venue reservations.';
+      case 'messages': return 'Communicate with clients regarding event bookings and custom packages.';
       case 'reviews': return 'See feedback and star ratings from clients who booked your spaces or services.';
-      case 'profile': return 'Update your public business branding, logo, contact details, and location.';
+      case 'profile': return 'Update your public vendor branding, logo, contact details, and location.';
       case 'settings': return 'Platform preferences and notification settings.';
-      default: return 'Manage your business operations.';
+      default: return 'Manage your vendor operations.';
     }
   };
 
-  const menuItems = [
-    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-    { id: 'spaces', label: 'My Spaces', icon: Building2, badge: spaces.length },
-    { id: 'services', label: 'My Services', icon: Package, badge: services.length },
-    { id: 'bookings', label: 'Booking Requests', icon: CalendarCheck, badge: pendingRequestsCount > 0 ? pendingRequestsCount : undefined, badgeColor: '#ef4444' },
-    { id: 'calendar', label: 'Calendar', icon: Calendar },
-    { id: 'reviews', label: 'Reviews', icon: Star },
-    { id: 'profile', label: 'Business Profile', icon: UserIcon },
-    { id: 'settings', label: 'Settings', icon: Settings },
-  ];
+  const greetingHour = new Date().getHours();
+  const greetingTime = greetingHour < 12 ? 'Good morning' : greetingHour < 18 ? 'Good afternoon' : 'Good evening';
+  const vendorFirstName = currentUser?.first_name || (currentUser?.username ? currentUser.username.charAt(0).toUpperCase() + currentUser.username.slice(1) : 'Susan');
 
   return (
     <div className="vendor-dashboard-layout">
@@ -404,50 +469,128 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
             </div>
             <div>
               <div style={{ fontWeight: 800, fontSize: '1.15rem', color: '#ffffff' }}>Locyfy</div>
-              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#ccfbf1' }}>Business Portal</div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#a7f3d0' }}>Vendor Portal</div>
             </div>
           </div>
         </div>
 
         {/* Business Badge */}
-        <div style={{ padding: '12px 16px', background: 'rgba(0, 0, 0, 0.12)', margin: '14px 16px', borderRadius: '10px' }}>
+        <div style={{ padding: '12px 16px', background: 'rgba(0, 0, 0, 0.16)', margin: '14px 14px 6px', borderRadius: '10px' }}>
           <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#ffffff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {businessName}
           </div>
           <div style={{ fontSize: '0.75rem', color: '#34d399', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '3px' }}>
-            <ShieldCheck size={13} /> Verified Business
+            <ShieldCheck size={13} /> Verified Vendor
           </div>
         </div>
 
         {/* Nav List */}
         <nav className="vendor-sidebar-nav" style={{ paddingTop: '8px' }}>
-          {menuItems.map(item => (
+          {/* Overview */}
+          <button
+            className={`vendor-sidebar-item ${activeTab === 'overview' ? 'active' : ''}`}
+            onClick={() => setActiveTab('overview')}
+          >
+            <LayoutDashboard size={18} /> Overview
+          </button>
+
+          {/* My Listings Parent */}
+          <div>
             <button
-              key={item.id}
-              className={`vendor-sidebar-item ${activeTab === item.id ? 'active' : ''}`}
-              onClick={() => setActiveTab(item.id as any)}
+              className={`vendor-sidebar-item ${(activeTab === 'spaces' || activeTab === 'services') ? 'active' : ''}`}
+              onClick={() => setMyListingsExpanded(prev => !prev)}
+              style={{ justifyContent: 'space-between' }}
             >
-              <item.icon size={18} /> {item.label}
-              {item.badge !== undefined && (
-                <span style={{
-                  marginLeft: 'auto',
-                  background: item.badgeColor || '#34d399',
-                  color: item.badgeColor ? '#ffffff' : '#042f2a',
-                  fontSize: '0.72rem',
-                  padding: '2px 8px',
-                  borderRadius: '999px',
-                  fontWeight: 800
-                }}>
-                  {item.badge}
-                </span>
-              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <Layers size={18} /> My Listings
+              </div>
+              {myListingsExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
             </button>
-          ))}
+
+            {myListingsExpanded && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '2px', marginBottom: '4px' }}>
+                <button
+                  className={`vendor-sidebar-subitem ${activeTab === 'spaces' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('spaces')}
+                >
+                  <Building2 size={16} /> Venues
+                  <span style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.15)', color: '#ffffff', fontSize: '0.72rem', padding: '1px 7px', borderRadius: '999px', fontWeight: 700 }}>
+                    {spaces.length}
+                  </span>
+                </button>
+                <button
+                  className={`vendor-sidebar-subitem ${activeTab === 'services' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('services')}
+                >
+                  <Package size={16} /> Services
+                  <span style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.15)', color: '#ffffff', fontSize: '0.72rem', padding: '1px 7px', borderRadius: '999px', fontWeight: 700 }}>
+                    {services.length}
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Booking Requests */}
+          <button
+            className={`vendor-sidebar-item ${activeTab === 'bookings' ? 'active' : ''}`}
+            onClick={() => setActiveTab('bookings')}
+          >
+            <CalendarCheck size={18} /> Booking Requests
+            {pendingRequestsCount > 0 && (
+              <span className="vendor-nav-badge-red">
+                {pendingRequestsCount}
+              </span>
+            )}
+          </button>
+
+          {/* Calendar */}
+          <button
+            className={`vendor-sidebar-item ${activeTab === 'calendar' ? 'active' : ''}`}
+            onClick={() => setActiveTab('calendar')}
+          >
+            <Calendar size={18} /> Calendar
+          </button>
+
+          {/* Messages */}
+          <button
+            className={`vendor-sidebar-item ${activeTab === 'messages' ? 'active' : ''}`}
+            onClick={() => setActiveTab('messages')}
+          >
+            <MessageSquare size={18} /> Messages
+            {bookings.length > 0 && (
+              <span className="vendor-nav-badge-red">{bookings.filter(b => b.status === 'PENDING').length || bookings.length}</span>
+            )}
+          </button>
+
+          {/* Reviews */}
+          <button
+            className={`vendor-sidebar-item ${activeTab === 'reviews' ? 'active' : ''}`}
+            onClick={() => setActiveTab('reviews')}
+          >
+            <Star size={18} /> Reviews
+          </button>
+
+          {/* Profile */}
+          <button
+            className={`vendor-sidebar-item ${activeTab === 'profile' ? 'active' : ''}`}
+            onClick={() => setActiveTab('profile')}
+          >
+            <UserIcon size={18} /> Vendor Profile
+          </button>
+
+          {/* Settings */}
+          <button
+            className={`vendor-sidebar-item ${activeTab === 'settings' ? 'active' : ''}`}
+            onClick={() => setActiveTab('settings')}
+          >
+            <Settings size={18} /> Settings
+          </button>
 
           <div style={{ flexGrow: 1 }} />
 
           {/* Footer Actions inside Sidebar */}
-          <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)', padding: '16px 16px 0', marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)', padding: '16px 12px 0', marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {onExplore && (
               <button 
                 onClick={onExplore}
@@ -471,314 +614,370 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
       {/* 2. Main Content Area */}
       <main className="vendor-main-content">
         
-        {/* Top Header Row */}
-        <div className="vendor-topbar">
-          <div>
-            <h1>{getPageTitle()}</h1>
-            <p style={{ color: '#64748b', fontSize: '0.9rem', margin: '4px 0 0 0' }}>{getPageSubtitle()}</p>
-          </div>
+        {/* Top Header Row for non-overview tabs */}
+        {activeTab !== 'overview' && (
+          <div className="vendor-topbar">
+            <div>
+              <h1>{getPageTitle()}</h1>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', margin: '4px 0 0 0' }}>{getPageSubtitle()}</p>
+            </div>
 
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            {activeTab === 'overview' && (
-              <>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              {activeTab === 'spaces' && (
                 <button
                   onClick={() => setShowAddSpaceModal(true)}
                   className="btn-primary-light"
                 >
-                  <Plus size={16} /> Add Space
+                  <Plus size={16} /> Add Venue
                 </button>
+              )}
+              {activeTab === 'services' && (
                 <button
                   onClick={() => setShowAddServiceModal(true)}
-                  className="btn-secondary-light"
+                  className="btn-primary-light"
                 >
                   <Plus size={16} /> Add Service
                 </button>
-              </>
-            )}
-            {activeTab === 'spaces' && (
-              <button
-                onClick={() => setShowAddSpaceModal(true)}
-                className="btn-primary-light"
-              >
-                <Plus size={16} /> Add Space
-              </button>
-            )}
-            {activeTab === 'services' && (
-              <button
-                onClick={() => setShowAddServiceModal(true)}
-                className="btn-primary-light"
-              >
-                <Plus size={16} /> Add Service
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* 3. Empty State Banner (If Provider has no listings) */}
-        {hasNoListings && activeTab === 'overview' && !loading && (
-          <div className="dashboard-card" style={{ padding: '48px 32px', textAlign: 'center', marginBottom: '32px' }}>
-            <div style={{ width: '64px', height: '64px', background: '#ccfbf1', borderRadius: '16px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#0d8a73', marginBottom: '20px' }}>
-              <Sparkles size={32} />
-            </div>
-            <h2 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0f172a', margin: '0 0 10px' }}>
-              Welcome to Your Unified Business Portal!
-            </h2>
-            <p style={{ color: '#64748b', fontSize: '0.95rem', maxWidth: '560px', margin: '0 auto 32px', lineHeight: 1.6 }}>
-              You don't have any active listings yet. On Locyfy, you can list physical event spaces, offer professional services, or both. Choose an option below to publish your first offering:
-            </p>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px', maxWidth: '640px', margin: '0 auto' }}>
-              <div 
-                style={{ background: '#f8fafc', border: '2px dashed #0d8a73', borderRadius: '14px', padding: '24px', textAlign: 'left', cursor: 'pointer' }}
-                onClick={() => setShowAddSpaceModal(true)}
-              >
-                <div style={{ width: '44px', height: '44px', background: '#ccfbf1', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0d8a73', marginBottom: '14px' }}>
-                  <Building2 size={22} />
-                </div>
-                <h3 style={{ margin: '0 0 6px', fontSize: '1.15rem', fontWeight: 700, color: '#0f172a' }}>Add an Event Space</h3>
-                <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: '#64748b', lineHeight: 1.5 }}>
-                  List wedding halls, banquet spaces, or conference grounds with guest capacity and daily rates.
-                </p>
-                <button className="btn-primary-light" style={{ background: '#0d8a73', color: '#fff', fontSize: '0.82rem', padding: '6px 14px' }}>
-                  <Plus size={14} /> Add Space Now
-                </button>
-              </div>
-
-              <div 
-                style={{ background: '#f8fafc', border: '2px dashed #0d8a73', borderRadius: '14px', padding: '24px', textAlign: 'left', cursor: 'pointer' }}
-                onClick={() => setShowAddServiceModal(true)}
-              >
-                <div style={{ width: '44px', height: '44px', background: '#ccfbf1', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0d8a73', marginBottom: '14px' }}>
-                  <Package size={22} />
-                </div>
-                <h3 style={{ margin: '0 0 6px', fontSize: '1.15rem', fontWeight: 700, color: '#0f172a' }}>Add a Service</h3>
-                <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: '#64748b', lineHeight: 1.5 }}>
-                  Offer professional catering, photography, DJ sound, decor, or event coordination packages.
-                </p>
-                <button className="btn-primary-light" style={{ background: '#0d8a73', color: '#fff', fontSize: '0.82rem', padding: '6px 14px' }}>
-                  <Plus size={14} /> Add Service Now
-                </button>
-              </div>
+              )}
             </div>
           </div>
         )}
 
-        {/* 4. Tab: OVERVIEW */}
+        {/* 4. Tab: OVERVIEW (Inspiration Layout) */}
         {activeTab === 'overview' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
             
-            {/* Top 4 Metric Cards in Vendor Style */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '20px' }}>
+            {/* Hero Greeting Banner matching inspiration */}
+            <div className="vendor-hero-banner">
+              <div className="vendor-hero-left">
+                <h1 className="vendor-hero-title">
+                  {greetingTime}, {vendorFirstName} 👋
+                </h1>
+                <p className="vendor-hero-subtitle">
+                  Manage your venues and services, track bookings, and grow your business.
+                </p>
+              </div>
+
+              <div className="vendor-hero-right">
+                <div className="vendor-hero-image-bg" />
+                <button 
+                  className="btn-add-listing-hero"
+                  onClick={() => setShowAddListingDropdown(prev => !prev)}
+                >
+                  <Plus size={18} /> Add New Listing
+                </button>
+
+                {/* Dropdown to add Venue or Service */}
+                {showAddListingDropdown && (
+                  <div className="listing-dropdown-menu">
+                    <button
+                      className="listing-dropdown-item"
+                      onClick={() => {
+                        setShowAddListingDropdown(false);
+                        setShowAddSpaceModal(true);
+                      }}
+                    >
+                      <Building2 size={18} color="#0d8a73" />
+                      <span>Add Venue / Space</span>
+                    </button>
+                    <button
+                      className="listing-dropdown-item"
+                      onClick={() => {
+                        setShowAddListingDropdown(false);
+                        setShowAddServiceModal(true);
+                      }}
+                    >
+                      <Package size={18} color="#0d8a73" />
+                      <span>Add Service Package</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 4 KPI Stat Cards with Real Data */}
+            <div className="inspo-stat-grid">
               
-              {/* Card 1: Active Spaces */}
-              <div className="dashboard-card stat-card" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('spaces')}>
-                <div style={{ background: '#e0f2fe', color: '#0284c7', padding: '12px', borderRadius: '12px', width: 'fit-content', marginBottom: '16px' }}>
+              {/* Card 1: Total Listings */}
+              <div className="inspo-stat-card" onClick={() => setActiveTab('spaces')}>
+                <div className="inspo-stat-icon-wrap mint">
                   <Building2 size={24} />
                 </div>
-                <div className="stat-card-title">Active Spaces</div>
-                <div className="stat-card-value">{spaces.length}</div>
-                <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '6px' }}>
-                  {spaces.length === 0 ? 'No spaces added yet' : `${activeSpacesCount} verified & public`}
+                <div className="inspo-stat-info">
+                  <span className="inspo-stat-label">Total Listings</span>
+                  <span className="inspo-stat-value">{spaces.length + services.length}</span>
+                  <div className="inspo-stat-delta">
+                    <span className="delta-label">{spaces.length} venues · {services.length} services</span>
+                  </div>
                 </div>
               </div>
 
-              {/* Card 2: Active Services */}
-              <div className="dashboard-card stat-card" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('services')}>
-                <div style={{ background: '#ccfbf1', color: '#0d8a73', padding: '12px', borderRadius: '12px', width: 'fit-content', marginBottom: '16px' }}>
-                  <Package size={24} />
+              {/* Card 2: Pending Requests */}
+              <div className="inspo-stat-card" onClick={() => setActiveTab('bookings')}>
+                <div className="inspo-stat-icon-wrap amber">
+                  <Calendar size={24} />
                 </div>
-                <div className="stat-card-title">Active Services</div>
-                <div className="stat-card-value">{services.length}</div>
-                <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '6px' }}>
-                  {services.length === 0 ? 'No services added yet' : `${activeServicesCount} verified & public`}
-                </div>
-              </div>
-
-              {/* Card 3: Booking Requests */}
-              <div className="dashboard-card stat-card" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('bookings')}>
-                <div style={{ background: '#fef3c7', color: '#d97706', padding: '12px', borderRadius: '12px', width: 'fit-content', marginBottom: '16px' }}>
-                  <ClipboardList size={24} />
-                </div>
-                <div className="stat-card-title">Booking Requests</div>
-                <div className="stat-card-value">{pendingRequestsCount}</div>
-                <div style={{ fontSize: '0.85rem', color: pendingRequestsCount > 0 ? '#d97706' : '#64748b', marginTop: '6px', fontWeight: pendingRequestsCount > 0 ? 600 : 400 }}>
-                  {pendingRequestsCount === 0 ? 'All caught up' : `${pendingRequestsCount} awaiting response`}
+                <div className="inspo-stat-info">
+                  <span className="inspo-stat-label">Pending Requests</span>
+                  <span className="inspo-stat-value">{pendingRequestsCount}</span>
+                  <div className="inspo-stat-delta">
+                    <span className={pendingRequestsCount > 0 ? "delta-up" : "delta-label"} style={pendingRequestsCount > 0 ? { color: '#d97706' } : {}}>
+                      {pendingRequestsCount === 0 ? 'No pending requests' : `${pendingRequestsCount} awaiting review`}
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              {/* Card 4: Total Revenue */}
-              <div className="dashboard-card stat-card">
-                <div style={{ background: '#dcfce7', color: '#16a34a', padding: '12px', borderRadius: '12px', width: 'fit-content', marginBottom: '16px' }}>
-                  <DollarSign size={24} />
+              {/* Card 3: Confirmed Bookings */}
+              <div className="inspo-stat-card" onClick={() => setActiveTab('bookings')}>
+                <div className="inspo-stat-icon-wrap blue">
+                  <CalendarCheck size={24} />
                 </div>
-                <div className="stat-card-title">Total Revenue</div>
-                <div className="stat-card-value">KES {totalRevenue.toLocaleString()}</div>
-                <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '6px' }}>
-                  From approved & completed events
+                <div className="inspo-stat-info">
+                  <span className="inspo-stat-label">Confirmed Bookings</span>
+                  <span className="inspo-stat-value">
+                    {bookings.filter(b => b.status === 'APPROVED' || b.status === 'COMPLETED').length}
+                  </span>
+                  <div className="inspo-stat-delta">
+                    <span className="delta-label">
+                      {bookings.filter(b => b.status === 'APPROVED' || b.status === 'COMPLETED').length === 0 ? 'No confirmed bookings' : 'Active and scheduled'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 4: Total Earnings */}
+              <div className="inspo-stat-card">
+                <div className="inspo-stat-icon-wrap purple">
+                  <MessageSquare size={24} />
+                </div>
+                <div className="inspo-stat-info">
+                  <span className="inspo-stat-label">Total Earnings</span>
+                  <span className="inspo-stat-value">
+                    KES {totalRevenue.toLocaleString()}
+                  </span>
+                  <div className="inspo-stat-delta">
+                    <span className="delta-label">
+                      {totalRevenue === 0 ? 'From completed events' : `From ${bookings.filter(b => b.status === 'APPROVED' || b.status === 'COMPLETED').length} events`}
+                    </span>
+                  </div>
                 </div>
               </div>
 
             </div>
 
-            {/* Quick Context Summary Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+            {/* Split Lower Layout: Your Listings (Left) + Booking Requests (Right) */}
+            <div className="inspo-overview-grid">
               
-              {/* Left: Spaces Preview */}
-              <div className="dashboard-card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#0f172a' }}>My Spaces ({spaces.length})</h3>
-                  <button onClick={() => setActiveTab('spaces')} style={{ background: 'none', border: 'none', color: '#0d8a73', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    View All <ChevronRight size={16} />
-                  </button>
-                </div>
-
-                {spaces.length === 0 ? (
-                  <div style={{ padding: '24px', textAlign: 'center', color: '#64748b', background: '#f8fafc', borderRadius: '10px', fontSize: '0.9rem' }}>
-                    No spaces listed yet. Click <strong>+ Add Space</strong> in the topbar to list your first venue.
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {spaces.slice(0, 3).map(s => (
-                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: '#f8fafc', borderRadius: '10px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <img 
-                            src={cleanImageUrl(s.image_url) || DEFAULT_SPACE_IMAGE} 
-                            alt={s.title} 
-                            onError={(e) => handleImageError(e, DEFAULT_SPACE_IMAGE)}
-                            style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover' }} 
-                          />
-                          <div>
-                            <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#0f172a' }}>{s.title}</div>
-                            <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Capacity: {s.capacity} · KES {Number(s.price_per_day).toLocaleString()}/day</div>
-                          </div>
-                        </div>
-                        <span className={`status-badge ${s.is_verified ? 'approved' : 'pending'}`}>
-                          {s.is_verified ? 'Verified' : 'Pending'}
-                        </span>
-                      </div>
+              {/* Left Column: Your Listings */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
+                  <h2 style={{ fontSize: '1.3rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                    Your Listings
+                  </h2>
+                  
+                  {/* Category Pills */}
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {['ALL', 'VENUES', 'DECORATION', 'PHOTOGRAPHY', 'CATERING', 'MUSIC & DJ'].map(cat => (
+                      <button
+                        key={cat}
+                        className={`filter-pill ${listingsCategoryFilter === cat ? 'active' : ''}`}
+                        onClick={() => setListingsCategoryFilter(cat)}
+                        style={{ padding: '6px 14px', fontSize: '0.82rem' }}
+                      >
+                        {cat === 'ALL' ? 'All' : cat === 'VENUES' ? 'Venues' : cat === 'MUSIC & DJ' ? 'Music & DJ' : cat.charAt(0) + cat.slice(1).toLowerCase()}
+                      </button>
                     ))}
                   </div>
-                )}
-              </div>
-
-              {/* Right: Services Preview */}
-              <div className="dashboard-card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#0f172a' }}>My Services ({services.length})</h3>
-                  <button onClick={() => setActiveTab('services')} style={{ background: 'none', border: 'none', color: '#0d8a73', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    View All <ChevronRight size={16} />
-                  </button>
                 </div>
 
-                {services.length === 0 ? (
-                  <div style={{ padding: '24px', textAlign: 'center', color: '#64748b', background: '#f8fafc', borderRadius: '10px', fontSize: '0.9rem' }}>
-                    No services offered yet. Click <strong>+ Add Service</strong> in the topbar to publish a service package.
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {services.slice(0, 3).map(s => (
-                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: '#f8fafc', borderRadius: '10px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <img 
-                            src={cleanImageUrl(s.image_url) || DEFAULT_SERVICE_IMAGE} 
-                            alt={s.title} 
-                            onError={(e) => handleImageError(e, DEFAULT_SERVICE_IMAGE)}
-                            style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover' }} 
-                          />
-                          <div>
-                            <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#0f172a' }}>{s.title}</div>
-                            <div style={{ fontSize: '0.78rem', color: '#64748b' }}>From KES {Number(s.price_per_day).toLocaleString()}</div>
+                {/* Listings Display Grid */}
+                {(() => {
+                  const allItems = [
+                    ...spaces.map(s => ({ ...s, itemKind: 'VENUE' as const })),
+                    ...services.map(s => ({ ...s, itemKind: 'SERVICE' as const }))
+                  ];
+                  
+                  const filtered = allItems.filter(item => {
+                    if (listingsCategoryFilter === 'ALL') return true;
+                    if (listingsCategoryFilter === 'VENUES') return item.itemKind === 'VENUE';
+                    if (listingsCategoryFilter === 'DECORATION') return item.category?.toUpperCase().includes('DECOR');
+                    if (listingsCategoryFilter === 'PHOTOGRAPHY') return item.category?.toUpperCase().includes('PHOTO');
+                    if (listingsCategoryFilter === 'CATERING') return item.category?.toUpperCase().includes('CATER');
+                    if (listingsCategoryFilter === 'MUSIC & DJ') return item.category?.toUpperCase().includes('DJ') || item.category?.toUpperCase().includes('MUSIC');
+                    return true;
+                  });
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="dashboard-card" style={{ padding: '36px 24px', textAlign: 'center', background: '#ffffff' }}>
+                        <div style={{ width: '48px', height: '48px', background: '#ccfbf1', borderRadius: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#0d8a73', marginBottom: '12px' }}>
+                          <Building2 size={24} />
+                        </div>
+                        <h4 style={{ margin: '0 0 6px', fontSize: '1.05rem', fontWeight: 700, color: '#0f172a' }}>No listings found in this category</h4>
+                        <p style={{ margin: '0 0 18px', fontSize: '0.86rem', color: '#64748b' }}>
+                          Click the button below to add your first listing in this category.
+                        </p>
+                        <button
+                          className="btn-primary-light"
+                          onClick={() => {
+                            if (listingsCategoryFilter === 'VENUES') setShowAddSpaceModal(true);
+                            else setShowAddServiceModal(true);
+                          }}
+                        >
+                          <Plus size={16} /> Add Listing Now
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '16px' }}>
+                      {filtered.slice(0, 6).map(item => (
+                        <div key={`${item.itemKind}-${item.id}`} className="listing-card" style={{ background: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
+                          <div style={{ position: 'relative', height: '150px', background: '#f1f5f9' }}>
+                            <img
+                              src={cleanImageUrl(item.image_url) || (item.itemKind === 'VENUE' ? DEFAULT_SPACE_IMAGE : DEFAULT_SERVICE_IMAGE)}
+                              alt={item.title}
+                              onError={(e) => handleImageError(e, item.itemKind === 'VENUE' ? DEFAULT_SPACE_IMAGE : DEFAULT_SERVICE_IMAGE)}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
+                            <span 
+                              style={{ 
+                                position: 'absolute', 
+                                top: '10px', 
+                                left: '10px', 
+                                background: item.itemKind === 'VENUE' ? '#064e3b' : '#0284c7', 
+                                color: '#ffffff', 
+                                fontSize: '0.72rem', 
+                                fontWeight: 700, 
+                                padding: '3px 8px', 
+                                borderRadius: '6px',
+                                textTransform: 'uppercase'
+                              }}
+                            >
+                              {item.itemKind === 'VENUE' ? 'Venue' : item.category || 'Service'}
+                            </span>
+                            <span 
+                              className={`status-badge ${item.is_verified ? 'approved' : 'pending'}`}
+                              style={{ position: 'absolute', top: '10px', right: '10px' }}
+                            >
+                              {item.is_verified ? 'Verified' : 'Pending'}
+                            </span>
+                          </div>
+
+                          <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <div style={{ fontWeight: 700, fontSize: '0.98rem', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {item.title}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                              <span style={{ fontWeight: 800, color: '#0d8a73' }}>
+                                KES {Number(item.price_per_day).toLocaleString()}
+                                {item.itemKind === 'VENUE' ? '/day' : ''}
+                              </span>
+                              {item.itemKind === 'VENUE' && item.capacity && (
+                                <span style={{ color: '#64748b', fontSize: '0.78rem' }}>
+                                  Cap: {item.capacity}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
-                        <span className={`status-badge ${s.is_verified ? 'approved' : 'pending'}`}>
-                          {s.is_verified ? 'Verified' : 'Pending'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-            </div>
-
-            {/* Recent Booking Inquiries Table in Vendor Table Style */}
-            <div className="dashboard-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <div>
-                  <h3 style={{ margin: '0 0 4px', fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>Recent Booking Inquiries</h3>
-                  <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>Customer booking inquiries for your listed spaces and services.</p>
-                </div>
-                <button onClick={() => setActiveTab('bookings')} className="btn-secondary-light">
-                  View All Requests <ChevronRight size={16} />
-                </button>
-              </div>
-
-              {bookings.length === 0 ? (
-                <div style={{ padding: '36px', textAlign: 'center', color: '#64748b', background: '#f8fafc', borderRadius: '12px' }}>
-                  No incoming booking inquiries yet.
-                </div>
-              ) : (
-                <div style={{ overflowX: 'auto' }}>
-                  <table className="vendor-table">
-                    <thead>
-                      <tr>
-                        <th>Event & Client</th>
-                        <th>Type</th>
-                        <th>Date</th>
-                        <th>Guests</th>
-                        <th>Quote Amount</th>
-                        <th>Status</th>
-                        <th>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bookings.slice(0, 5).map(b => (
-                        <tr key={b.id}>
-                          <td>
-                            <div style={{ fontWeight: 700, color: '#0f172a' }}>{b.event_title}</div>
-                            <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{b.customer_name}</div>
-                          </td>
-                          <td>
-                            <span style={{ fontSize: '0.78rem', fontWeight: 600, padding: '2px 8px', borderRadius: '6px', background: '#f1f5f9', color: '#475569' }}>
-                              {b.event_type}
-                            </span>
-                          </td>
-                          <td>{b.event_date}</td>
-                          <td>{b.guest_count}</td>
-                          <td style={{ fontWeight: 700, color: '#0d8a73' }}>
-                            KES {Number(b.total_price).toLocaleString()}
-                          </td>
-                          <td>
-                            <span className={`status-badge ${b.status.toLowerCase()}`}>
-                              {b.status}
-                            </span>
-                          </td>
-                          <td>
-                            {b.status === 'PENDING' ? (
-                              <div style={{ display: 'flex', gap: '6px' }}>
-                                <button
-                                  onClick={() => handleUpdateBookingStatus(b.id, 'APPROVED')}
-                                  style={{ padding: '6px 12px', background: '#0d8a73', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}
-                                >
-                                  Accept
-                                </button>
-                                <button
-                                  onClick={() => handleUpdateBookingStatus(b.id, 'REJECTED')}
-                                  style={{ padding: '6px 12px', background: '#fee2e2', color: '#991b1b', border: 'none', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}
-                                >
-                                  Decline
-                                </button>
-                              </div>
-                            ) : (
-                              <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Processed</span>
-                            )}
-                          </td>
-                        </tr>
                       ))}
-                    </tbody>
-                  </table>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Right Column: Booking Requests */}
+              <div className="dashboard-card" style={{ padding: '20px 22px', height: 'fit-content' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>
+                      Booking Requests
+                    </h3>
+                    {pendingRequestsCount > 0 && (
+                      <span className="vendor-nav-badge-red" style={{ margin: 0 }}>
+                        {pendingRequestsCount}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setActiveTab('bookings')}
+                    style={{ background: 'none', border: 'none', color: '#0d8a73', fontWeight: 700, fontSize: '0.84rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}
+                  >
+                    View All <ChevronRight size={15} />
+                  </button>
                 </div>
-              )}
+
+                {/* Booking List */}
+                {bookings.length === 0 ? (
+                  <div style={{ padding: '36px 16px', textAlign: 'center', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
+                    <div style={{ width: '44px', height: '44px', background: '#ccfbf1', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#0d8a73', marginBottom: '10px' }}>
+                      <CalendarCheck size={20} />
+                    </div>
+                    <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f172a', marginBottom: '4px' }}>No booking requests yet</div>
+                    <div style={{ fontSize: '0.82rem', color: '#64748b', lineHeight: 1.5, maxWidth: '240px', margin: '0 auto' }}>
+                      When clients book your venues or services, real requests will appear here instantly.
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {bookings.slice(0, 4).map((req: any) => (
+                      <div 
+                        key={req.id} 
+                        style={{ 
+                          padding: '12px', 
+                          background: '#f8fafc', 
+                          borderRadius: '12px', 
+                          border: '1px solid #f1f5f9',
+                          display: 'flex', 
+                          flexDirection: 'column', 
+                          gap: '8px' 
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{ width: '34px', height: '34px', borderRadius: '50%', background: '#ccfbf1', color: '#0d8a73', fontWeight: 800, fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              {(req.customer_name || 'C').charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a' }}>{req.customer_name || 'Client'}</div>
+                              <div style={{ fontSize: '0.76rem', color: '#64748b' }}>{req.event_title || req.event_type || 'Event Request'}</div>
+                            </div>
+                          </div>
+                          <span className={`status-badge ${(req.status || 'pending').toLowerCase()}`}>
+                            {req.status}
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '4px', borderTop: '1px dashed #e2e8f0', fontSize: '0.78rem' }}>
+                          <span style={{ color: '#64748b' }}>📅 {req.event_date || 'Date TBD'}</span>
+                          <span style={{ fontWeight: 800, color: '#0d8a73' }}>KES {Number(req.total_price || 0).toLocaleString()}</span>
+                        </div>
+
+                        {req.status === 'PENDING' && (
+                          <div style={{ display: 'flex', gap: '8px', marginTop: '2px' }}>
+                            <button
+                              onClick={() => handleUpdateBookingStatus(req.id, 'APPROVED')}
+                              style={{ flex: 1, padding: '6px', background: '#0d8a73', color: '#ffffff', border: 'none', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                            >
+                              <Check size={13} /> Approve
+                            </button>
+                            <button
+                              onClick={() => handleUpdateBookingStatus(req.id, 'REJECTED')}
+                              style={{ flex: 1, padding: '6px', background: '#fee2e2', color: '#991b1b', border: 'none', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                            >
+                              <X size={13} /> Decline
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
             </div>
 
           </div>
@@ -1122,11 +1321,151 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
           </div>
         )}
 
-        {/* 10. Tab: BUSINESS PROFILE */}
+        {/* 9. Tab: MESSAGES */}
+        {activeTab === 'messages' && (
+          bookings.length === 0 ? (
+            <div className="dashboard-card" style={{ padding: '60px 20px', textAlign: 'center' }}>
+              <div style={{ width: '56px', height: '56px', background: '#ccfbf1', borderRadius: '14px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#0d8a73', marginBottom: '14px' }}>
+                <MessageSquare size={26} />
+              </div>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', marginBottom: '6px' }}>No Messages Yet</h3>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', maxWidth: '380px', margin: '0 auto 20px' }}>
+                When clients submit booking requests or inquiries for your listings, you can communicate and coordinate event details with them directly here.
+              </p>
+              <button onClick={() => setActiveTab('spaces')} className="btn-primary-light" style={{ padding: '10px 20px', borderRadius: '10px' }}>
+                Manage Listings
+              </button>
+            </div>
+          ) : (() => {
+            const currentChatBooking = bookings.find(b => b.id === selectedBookingChatId) || bookings[0];
+            const clientName = currentChatBooking?.customer_name || 'Client';
+            const clientInitial = clientName.charAt(0).toUpperCase();
+
+            return (
+              <div className="dashboard-card" style={{ padding: 0, overflow: 'hidden', minHeight: '520px', display: 'flex' }}>
+                {/* Conversation List */}
+                <div style={{ width: '320px', borderRight: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ padding: '20px 18px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>Messages</h3>
+                    {pendingRequestsCount > 0 && (
+                      <span className="vendor-nav-badge-red" style={{ margin: 0 }}>{pendingRequestsCount} new</span>
+                    )}
+                  </div>
+                  <div style={{ overflowY: 'auto', flex: 1 }}>
+                    {bookings.map(b => {
+                      const isSelected = (currentChatBooking?.id === b.id);
+                      return (
+                        <div
+                          key={b.id}
+                          onClick={() => setSelectedBookingChatId(b.id)}
+                          style={{
+                            padding: '14px 18px',
+                            borderBottom: '1px solid #f1f5f9',
+                            background: isSelected ? '#ffffff' : 'transparent',
+                            cursor: 'pointer',
+                            borderLeft: isSelected ? '4px solid #0d8a73' : '4px solid transparent',
+                            transition: 'background 0.2s'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '4px' }}>
+                            <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f172a' }}>
+                              {b.customer_name || 'Client'}
+                            </span>
+                            <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>{b.event_date || ''}</span>
+                          </div>
+                          <div style={{ fontSize: '0.76rem', color: '#0d8a73', fontWeight: 600, marginBottom: '2px' }}>
+                            {b.event_title || b.event_type}
+                          </div>
+                          <div style={{ fontSize: '0.82rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {b.notes ? `"${b.notes}"` : `Booking request · KES ${Number(b.total_price || 0).toLocaleString()}`}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Chat Conversation View */}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#ffffff' }}>
+                  <div style={{ padding: '16px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#ccfbf1', color: '#0d8a73', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {clientInitial}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: '0.96rem', color: '#0f172a' }}>{clientName}</div>
+                        <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                          Inquiring about {currentChatBooking?.event_title || 'Booking'} · Date: {currentChatBooking?.event_date || 'TBD'}
+                        </div>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => setActiveTab('bookings')}
+                      className="btn-primary-light" 
+                      style={{ fontSize: '0.82rem', padding: '6px 14px' }}
+                    >
+                      View Booking
+                    </button>
+                  </div>
+
+                  {/* Message Bubbles */}
+                  <div style={{ flex: 1, padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div style={{ alignSelf: 'flex-start', maxWidth: '75%', background: '#f1f5f9', padding: '12px 16px', borderRadius: '14px 14px 14px 2px', fontSize: '0.9rem', color: '#1e293b', lineHeight: 1.5 }}>
+                      {currentChatBooking?.notes 
+                        ? currentChatBooking.notes 
+                        : `Hello! I have placed a booking request for "${currentChatBooking?.event_title}" on ${currentChatBooking?.event_date} for ${currentChatBooking?.guest_count || 1} guest(s). Looking forward to your response.`}
+                      <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '4px', textAlign: 'right' }}>
+                        {currentChatBooking?.event_date || 'Recent'}
+                      </div>
+                    </div>
+
+                    <div style={{ alignSelf: 'flex-end', maxWidth: '75%', background: '#0d8a73', color: '#ffffff', padding: '12px 16px', borderRadius: '14px 14px 2px 14px', fontSize: '0.9rem', lineHeight: 1.5 }}>
+                      Status: {currentChatBooking?.status}. You can coordinate event details, quotes, or schedule with {clientName} here.
+                      <div style={{ fontSize: '0.72rem', color: '#a7f3d0', marginTop: '4px', textAlign: 'right' }}>Active Booking</div>
+                    </div>
+                  </div>
+
+                  {/* Reply Box */}
+                  <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      placeholder={`Type your reply to ${clientName}...`}
+                      value={messageInput}
+                      onChange={e => setMessageInput(e.target.value)}
+                      style={{ flex: 1, padding: '12px 16px', borderRadius: '9999px', border: '1.5px solid #cbd5e1', fontSize: '0.9rem', outline: 'none' }}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && messageInput.trim()) {
+                          toast.success(`Message sent to ${clientName}!`);
+                          setMessageInput('');
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={() => {
+                        if (messageInput.trim()) {
+                          toast.success(`Message sent to ${clientName}!`);
+                          setMessageInput('');
+                        } else {
+                          toast.error("Please enter a message.");
+                        }
+                      }}
+                      className="btn-primary-light"
+                      style={{ borderRadius: '9999px', padding: '12px 20px' }}
+                    >
+                      <Send size={16} /> Send
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()
+        )}
+
+        {/* 10. Tab: VENDOR PROFILE */}
         {activeTab === 'profile' && (
           <div className="dashboard-card" style={{ maxWidth: '720px', padding: '32px' }}>
-            <h3 style={{ margin: '0 0 6px', fontSize: '1.3rem', fontWeight: 800, color: '#0f172a' }}>Business Profile & Branding</h3>
-            <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '24px' }}>Update public business credentials, branding logo, and contact info.</p>
+            <h3 style={{ margin: '0 0 6px', fontSize: '1.3rem', fontWeight: 800, color: '#0f172a' }}>Vendor Profile & Branding</h3>
+            <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '24px' }}>Update public vendor credentials, branding logo, and contact info.</p>
 
             {/* Profile Avatar Upload */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '28px', paddingBottom: '24px', borderBottom: '1px solid #e2e8f0' }}>
@@ -1139,7 +1478,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
               </div>
               <div>
                 <label style={{ background: '#f1f5f9', color: '#0f172a', border: '1px solid #cbd5e1', padding: '8px 16px', borderRadius: '8px', fontWeight: 600, cursor: isUploading ? 'not-allowed' : 'pointer', fontSize: '0.85rem', display: 'inline-block' }}>
-                  {isUploading ? 'Uploading...' : 'Change Business Logo'}
+                  {isUploading ? 'Uploading...' : 'Change Vendor Logo'}
                   <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleProfilePictureUpload} disabled={isUploading} />
                 </label>
                 <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '6px' }}>JPG, PNG or GIF up to 5MB</div>
@@ -1148,7 +1487,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
             <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Business Name</label>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Vendor / Business Name</label>
                 <input 
                   type="text" 
                   value={profileFormData.business_name} 
@@ -1189,7 +1528,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Business Description & Overview</label>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Vendor Description & Overview</label>
                 <textarea 
                   rows={4} 
                   value={profileFormData.description} 
@@ -1203,7 +1542,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                 className="btn-primary-light"
                 style={{ background: '#0d8a73', color: '#fff', padding: '12px 20px', borderRadius: '8px', fontWeight: 700, width: 'fit-content' }}
               >
-                Save Business Profile
+                Save Vendor Profile
               </button>
             </form>
           </div>
