@@ -185,7 +185,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, color: '#0F8F7A', marginBottom: '8px' }}>
               <ShieldCheck size={18} /> Verified Provider Guarantee
             </div>
-            <p style={{ fontSize: '0.85rem', color: '#14213D', margin: '0 0 12px 0', lineHeight: 1.5 }}>
+            <p style={{ fontSize: '0.85rem', color: '#334155', margin: '0 0 12px 0', lineHeight: 1.5 }}>
               Your request is sent securely. No payment is required at this stage. The {venue ? 'venue' : 'service provider'} will review your request and confirm availability before any payment is discussed.
             </p>
           </div>

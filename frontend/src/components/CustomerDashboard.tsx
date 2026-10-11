@@ -51,14 +51,16 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
   return (
     <div style={{ maxWidth: '1000px', margin: '32px auto', padding: '0 20px' }}>
       <div style={{ marginBottom: '24px' }}>
-        <h1 style={{ fontSize: '1.2rem', color: '#0F8F7A', fontWeight: 800, marginBottom: '8px' }}>Event Planning and SpaceBooking</h1>
-        <h2 style={{ fontSize: '1.75rem', fontWeight: 800, margin: '0 0 8px 0' }}>Customer Dashboard</h2>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: '#0d8a73', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+          Locyfy Platform
+        </div>
+        <h2 style={{ fontSize: '1.85rem', fontWeight: 800, color: '#0f172a', margin: '0 0 8px 0' }}>Customer Dashboard</h2>
         <p style={{ color: 'var(--text-muted)' }}>
           Manage your bookings and view your profile details.
         </p>
       </div>
 
-      <div style={{ display: 'flex', gap: '12px', borderBottom: '2px solid rgba(0,0,0,0.1)', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', gap: '12px', borderBottom: '2px solid #e2e8f0', marginBottom: '24px' }}>
         <button
           onClick={() => setActiveTab('bookings')}
           style={{
@@ -95,7 +97,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
             </div>
             <div>
               <label 
-                style={{ padding: '8px 16px', background: '#0F8F7A', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: isUploading ? 'not-allowed' : 'pointer', display: 'inline-block', opacity: isUploading ? 0.7 : 1 }} 
+                style={{ padding: '8px 16px', background: '#0d8a73', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: isUploading ? 'not-allowed' : 'pointer', display: 'inline-block', opacity: isUploading ? 0.7 : 1, transition: 'background 0.15s ease' }} 
               >
                 {isUploading ? 'Uploading...' : 'Upload Profile Picture'}
                 <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleProfilePictureUpload} disabled={isUploading} />
@@ -151,7 +153,8 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                       display: 'grid',
                       gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
                       gap: '12px',
-                      background: 'rgba(255, 255, 255, 0.04)',
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
                       padding: '12px 16px',
                       borderRadius: '10px',
                       fontSize: '0.85rem'
@@ -181,7 +184,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                     )}
 
                     {b.status === 'PENDING' && (
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '8px', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '12px', borderTop: '1px solid #e2e8f0' }}>
                         <button
                           className="btn-secondary"
                           onClick={() => onCancelBooking(b.id)}
