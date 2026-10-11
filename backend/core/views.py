@@ -175,10 +175,12 @@ class BookingViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        customer_id = self.request.query_params.get('customer')
-        vendor_id = self.request.query_params.get('vendor')
-        owner_id = self.request.query_params.get('owner')
-        status_param = self.request.query_params.get('status')
+        params = getattr(self.request, 'query_params', getattr(self.request, 'GET', {}))
+        customer_id = params.get('customer') or params.get('customer_id')
+        vendor_id = params.get('vendor') or params.get('vendor_id')
+        owner_id = params.get('owner') or params.get('owner_id')
+        user_id = params.get('user') or params.get('user_id')
+        status_param = params.get('status')
 
         if customer_id:
             queryset = queryset.filter(customer_id=customer_id)
@@ -186,6 +188,12 @@ class BookingViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(Q(vendor_id=vendor_id) | Q(venue__vendor_id=vendor_id))
         if owner_id:
             queryset = queryset.filter(venue__owner_id=owner_id)
+        if user_id:
+            queryset = queryset.filter(
+                Q(venue__owner__user_id=user_id) | 
+                Q(venue__vendor__user_id=user_id) | 
+                Q(vendor__user_id=user_id)
+            )
         if status_param:
             queryset = queryset.filter(status=status_param)
 
@@ -548,7 +556,7 @@ def request_role(request):
             user.save()
         elif role in ['PROVIDER', 'BUSINESS']:
             user.role = 'PROVIDER'
-            user.is_customer = False
+            user.is_customer = True
             user.is_vendor = True
             user.is_venue_owner = True
             user.save()

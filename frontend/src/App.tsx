@@ -113,18 +113,19 @@ export const App: React.FC = () => {
   const handleRequestRole = async (role: 'CUSTOMER' | 'VENDOR' | 'VENUE_OWNER' | 'PROVIDER') => {
     if (!currentUser) return;
     const roleName = role === 'PROVIDER' ? 'Business Provider' : role === 'VENDOR' ? 'Vendor' : role === 'VENUE_OWNER' ? 'Venue Owner' : 'Customer';
-    const toastId = toast.loading(`Adding ${roleName} role...`);
+    const toastId = toast.loading(`Activating ${roleName} mode...`);
     try {
       const data = await ApiService.requestRole(currentUser.id, role);
       if (data && data.user) {
-        toast.success(`Role added successfully!`, { id: toastId });
+        toast.success(role === 'PROVIDER' ? 'Welcome to your Vendor Dashboard!' : `${roleName} mode activated!`, { id: toastId });
         setCurrentUser(data.user);
         if (data.vendor_profile) setCurrentVendor(data.vendor_profile);
         if (data.venue_owner_profile) setCurrentVenueOwner(data.venue_owner_profile);
         
+        setActiveRole(role === 'CUSTOMER' ? 'CUSTOMER' : 'PROVIDER');
         setActiveTab(role === 'CUSTOMER' ? 'my-bookings' : 'provider-dashboard');
       } else {
-        toast.error("Failed to add role.", { id: toastId });
+        toast.error("Failed to activate role.", { id: toastId });
       }
     } catch (err) {
       toast.error("An error occurred.", { id: toastId });

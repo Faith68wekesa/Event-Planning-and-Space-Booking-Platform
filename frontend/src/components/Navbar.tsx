@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { UserRole } from '../types';
-import { ShieldCheck, Briefcase, Building2, Search, User, ChevronDown, LogOut, X, ChevronRight, Calendar } from 'lucide-react';
+import { ShieldCheck, Building2, Search, User, ChevronDown, LogOut, X, ChevronRight, Calendar } from 'lucide-react';
 
 interface NavbarProps {
   activeTab: string;
@@ -155,19 +155,63 @@ export const Navbar: React.FC<NavbarProps> = ({
 
                   <button 
                     onClick={() => { setShowAccountMenu(false); setActiveTab('my-bookings'); setActiveRole('CUSTOMER'); }}
-                    style={{ width: '100%', textAlign: 'left', padding: '12px 16px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', fontSize: '0.9rem', color: '#1e293b' }}
+                    style={{ 
+                      width: '100%', 
+                      textAlign: 'left', 
+                      padding: '12px 16px', 
+                      background: activeRole === 'CUSTOMER' && activeTab === 'my-bookings' ? '#f0fdfa' : 'none', 
+                      border: 'none', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '12px', 
+                      cursor: 'pointer', 
+                      fontSize: '0.9rem', 
+                      color: activeRole === 'CUSTOMER' && activeTab === 'my-bookings' ? '#0d8a73' : '#1e293b',
+                      fontWeight: activeRole === 'CUSTOMER' && activeTab === 'my-bookings' ? 700 : 500,
+                    }}
                   >
-                    <Calendar size={18} color="#0F8F7A" /> Customer Dashboard
+                    <Calendar size={18} color="#0d8a73" /> Customer Dashboard
                   </button>
 
-                  {(activeRole === 'PROVIDER' || currentUser?.is_provider || currentUser?.is_vendor || currentUser?.is_venue_owner) && (
-                    <button 
-                      onClick={() => { setShowAccountMenu(false); setActiveTab('provider-dashboard'); setActiveRole('PROVIDER'); }}
-                      style={{ width: '100%', textAlign: 'left', padding: '12px 16px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', fontSize: '0.9rem', color: '#0F8F7A', fontWeight: 600 }}
-                    >
-                      <Building2 size={18} color="#0F8F7A" /> Business Dashboard
-                    </button>
-                  )}
+                  <button 
+                    onClick={() => { 
+                      setShowAccountMenu(false); 
+                      const isAlreadyProvider = Boolean(
+                        currentUser?.is_provider || 
+                        currentUser?.is_vendor || 
+                        currentUser?.is_venue_owner || 
+                        currentUser?.role === 'PROVIDER'
+                      );
+                      if (isAlreadyProvider) {
+                        setActiveRole('PROVIDER');
+                        setActiveTab('provider-dashboard');
+                      } else {
+                        // First-time customer activating vendor dashboard
+                        if (onRequestRole) {
+                          onRequestRole('PROVIDER');
+                        } else {
+                          setActiveRole('PROVIDER');
+                          setActiveTab('provider-dashboard');
+                        }
+                      }
+                    }}
+                    style={{ 
+                      width: '100%', 
+                      textAlign: 'left', 
+                      padding: '12px 16px', 
+                      background: activeRole === 'PROVIDER' && activeTab === 'provider-dashboard' ? '#f0fdfa' : 'none', 
+                      border: 'none', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '12px', 
+                      cursor: 'pointer', 
+                      fontSize: '0.9rem', 
+                      color: activeRole === 'PROVIDER' && activeTab === 'provider-dashboard' ? '#0d8a73' : '#1e293b', 
+                      fontWeight: activeRole === 'PROVIDER' && activeTab === 'provider-dashboard' ? 700 : 500
+                    }}
+                  >
+                    <Building2 size={18} color="#0d8a73" /> Vendor Dashboard
+                  </button>
 
                   <div style={{ borderTop: '1px solid #e2e8f0', margin: '4px 0' }}></div>
                   
@@ -243,76 +287,37 @@ export const Navbar: React.FC<NavbarProps> = ({
                     </div>
                   )}
 
-                  {currentUser?.is_vendor && (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', marginBottom: '24px' }}>
+                  {(currentUser?.is_provider || currentUser?.is_vendor || currentUser?.is_venue_owner || currentUser?.role === 'PROVIDER') && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', marginBottom: '16px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#9333ea', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Briefcase size={20} color="#fff" /></div>
+                        <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#0d8a73', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Building2 size={20} color="#fff" /></div>
                         <div>
-                          <div style={{ fontWeight: 700, color: '#0f172a' }}>Vendor</div>
-                          <div style={{ fontSize: '0.8rem', color: '#64748b' }}>You offer event services.</div>
+                          <div style={{ fontWeight: 700, color: '#0f172a' }}>Business Provider</div>
+                          <div style={{ fontSize: '0.8rem', color: '#64748b' }}>You can list physical spaces and offer services.</div>
                         </div>
                       </div>
-                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#9333ea', background: '#faf5ff', padding: '4px 8px', borderRadius: '4px' }}>Active</div>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0d8a73', background: '#f0fdfa', padding: '4px 8px', borderRadius: '4px' }}>Active</div>
                     </div>
                   )}
 
-                  {currentUser?.is_venue_owner && (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', marginBottom: '24px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Building2 size={20} color="#fff" /></div>
-                        <div>
-                          <div style={{ fontWeight: 700, color: '#0f172a' }}>Venue Owner</div>
-                          <div style={{ fontSize: '0.8rem', color: '#64748b' }}>You list event spaces.</div>
-                        </div>
-                      </div>
-                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#3b82f6', background: '#eff6ff', padding: '4px 8px', borderRadius: '4px' }}>Active</div>
-                    </div>
-                  )}
-
-                  {(!currentUser?.is_customer || !currentUser?.is_vendor || !currentUser?.is_venue_owner) && (
+                  {!(currentUser?.is_provider || currentUser?.is_vendor || currentUser?.is_venue_owner || currentUser?.role === 'PROVIDER') && (
                     <>
-                      <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>Request Another Role</h3>
-                      <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 12px' }}>Want to offer services, list a venue, or book one?</p>
+                      <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>Expand Your Capabilities</h3>
+                      <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 12px' }}>Want to list physical event spaces or offer professional services?</p>
                       
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        {!currentUser?.is_customer && (
-                          <button 
-                            onClick={() => { onRequestRole?.('CUSTOMER'); setShowProfileModal(false); }}
-                            style={{ width: '100%', textAlign: 'left', padding: '16px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                              <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#f0fdfa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><User size={20} color="#0F8F7A" /></div>
-                              <div style={{ fontWeight: 600, color: '#0f172a' }}>Become a Customer</div>
-                            </div>
-                            <ChevronRight size={20} color="#94a3b8" />
-                          </button>
-                        )}
-                        {!currentUser?.is_vendor && (
-                          <button 
-                            onClick={() => { onRequestRole?.('VENDOR'); setShowProfileModal(false); }}
-                            style={{ width: '100%', textAlign: 'left', padding: '16px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                              <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#faf5ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Briefcase size={20} color="#9333ea" /></div>
-                              <div style={{ fontWeight: 600, color: '#0f172a' }}>Become a Vendor</div>
-                            </div>
-                            <ChevronRight size={20} color="#94a3b8" />
-                          </button>
-                        )}
-                        
-                        {!currentUser?.is_venue_owner && (
-                          <button 
-                            onClick={() => { onRequestRole?.('VENUE_OWNER'); setShowProfileModal(false); }}
-                            style={{ width: '100%', textAlign: 'left', padding: '16px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                              <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Building2 size={20} color="#3b82f6" /></div>
-                              <div style={{ fontWeight: 600, color: '#0f172a' }}>Become a Venue Owner</div>
-                            </div>
-                            <ChevronRight size={20} color="#94a3b8" />
-                          </button>
-                        )}
-                      </div>
+                      <button 
+                        onClick={() => { onRequestRole?.('PROVIDER'); setShowProfileModal(false); }}
+                        style={{ width: '100%', textAlign: 'left', padding: '16px', background: '#fff', border: '1px solid #0d8a73', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', transition: 'all 0.15s ease' }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#ccfbf1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Building2 size={20} color="#0d8a73" /></div>
+                          <div>
+                            <div style={{ fontWeight: 700, color: '#0d8a73' }}>Activate Business Provider Account</div>
+                            <div style={{ fontSize: '0.78rem', color: '#64748b' }}>List event venues, banquet halls, or offer catering/photography services</div>
+                          </div>
+                        </div>
+                        <ChevronRight size={20} color="#0d8a73" />
+                      </button>
                     </>
                   )}
                 </div>
@@ -351,8 +356,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                       <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Active Roles</div>
                       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                         <span style={{ padding: '4px 12px', borderRadius: '999px', background: '#dcfce7', color: '#16a34a', fontSize: '0.8rem', fontWeight: 700 }}>Customer</span>
-                        {currentUser?.is_vendor && <span style={{ padding: '4px 12px', borderRadius: '999px', background: '#f3e8ff', color: '#9333ea', fontSize: '0.8rem', fontWeight: 700 }}>Vendor</span>}
-                        {currentUser?.is_venue_owner && <span style={{ padding: '4px 12px', borderRadius: '999px', background: '#dbeafe', color: '#2563eb', fontSize: '0.8rem', fontWeight: 700 }}>Venue Owner</span>}
+                        {(currentUser?.is_provider || currentUser?.is_vendor || currentUser?.is_venue_owner || currentUser?.role === 'PROVIDER') && (
+                          <span style={{ padding: '4px 12px', borderRadius: '999px', background: '#ccfbf1', color: '#0d8a73', fontSize: '0.8rem', fontWeight: 700 }}>Business Provider</span>
+                        )}
                       </div>
                     </div>
                   </div>
