@@ -115,7 +115,7 @@ class VenueOwnerProfileViewSet(viewsets.ModelViewSet):
 
 
 class VenueViewSet(viewsets.ModelViewSet):
-    queryset = Venue.objects.all().order_by('-rating')
+    queryset = Venue.objects.all().order_by('-created_at')
     serializer_class = VenueSerializer
 
     def get_queryset(self):
@@ -127,6 +127,8 @@ class VenueViewSet(viewsets.ModelViewSet):
         min_capacity = self.request.query_params.get('min_capacity')
         verified = self.request.query_params.get('verified')
         owner_id = self.request.query_params.get('owner')
+        vendor_id = self.request.query_params.get('vendor')
+        user_id = self.request.query_params.get('user')
 
         if search:
             queryset = queryset.filter(
@@ -138,8 +140,12 @@ class VenueViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(category=category)
         if location and location != 'ALL':
             queryset = queryset.filter(location__icontains=location)
+        if user_id:
+            queryset = queryset.filter(Q(owner__user_id=user_id) | Q(vendor__user_id=user_id))
         if owner_id:
             queryset = queryset.filter(owner_id=owner_id)
+        if vendor_id:
+            queryset = queryset.filter(vendor_id=vendor_id)
         if max_price:
             try:
                 queryset = queryset.filter(price_per_day__lte=float(max_price))
@@ -460,7 +466,7 @@ def register_user(request):
     if not email:
         return Response({'error': 'Email address is required'}, status=status.HTTP_400_BAD_REQUEST)
     if User.objects.filter(email__iexact=email).exists():
-        return Response({'error': 'An account with this email address already exists'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'An account with this email address already exists. Please log in.'}, status=status.HTTP_400_BAD_REQUEST)
     if User.objects.filter(username__iexact=username).exists():
         return Response({'error': 'This username is already taken'}, status=status.HTTP_400_BAD_REQUEST)
         
@@ -502,19 +508,21 @@ def login_user(request):
     user = authenticate(username=user_obj.username, password=password)
     
     if user is not None:
+        is_provider = user.role == 'PROVIDER' or (user.is_vendor and user.is_venue_owner)
         response_data = {
             'user': UserSerializer(user).data,
             'roles': {
                 'is_customer': user.is_customer,
                 'is_vendor': user.is_vendor,
-                'is_venue_owner': user.is_venue_owner
+                'is_venue_owner': user.is_venue_owner,
+                'is_provider': is_provider
             }
         }
         
-        if user.is_vendor and hasattr(user, 'vendor_profile'):
+        if hasattr(user, 'vendor_profile'):
             response_data['vendor_profile'] = VendorProfileSerializer(user.vendor_profile).data
             
-        if user.is_venue_owner and hasattr(user, 'venue_owner_profile'):
+        if hasattr(user, 'venue_owner_profile'):
             response_data['venue_owner_profile'] = VenueOwnerProfileSerializer(user.venue_owner_profile).data
             
         return Response(response_data, status=status.HTTP_200_OK)
@@ -535,13 +543,40 @@ def request_role(request):
         user = User.objects.get(id=user_id)
         
         if role == 'CUSTOMER':
+            user.role = 'CUSTOMER'
             user.is_customer = True
             user.save()
+        elif role in ['PROVIDER', 'BUSINESS']:
+            user.role = 'PROVIDER'
+            user.is_customer = False
+            user.is_vendor = True
+            user.is_venue_owner = True
+            user.save()
+            business_title = f"{user.first_name}'s Business" if user.first_name else f"{user.username}'s Business"
+            VendorProfile.objects.get_or_create(
+                user=user,
+                defaults={
+                    'business_name': business_title,
+                    'vendor_type': 'Event Services',
+                    'location': 'Nairobi',
+                    'contact_email': user.email,
+                    'contact_phone': user.phone_number or ''
+                }
+            )
+            VenueOwnerProfile.objects.get_or_create(
+                user=user,
+                defaults={
+                    'business_name': business_title,
+                    'contact_email': user.email,
+                    'contact_phone': user.phone_number or '',
+                    'business_type': 'Event Spaces'
+                }
+            )
         elif role == 'VENDOR':
+            user.role = 'VENDOR'
             if not user.is_vendor:
                 user.is_vendor = True
                 user.save()
-                # Create empty profile
                 VendorProfile.objects.get_or_create(
                     user=user,
                     defaults={
@@ -553,10 +588,10 @@ def request_role(request):
                     }
                 )
         elif role == 'VENUE_OWNER':
+            user.role = 'VENUE_OWNER'
             if not user.is_venue_owner:
                 user.is_venue_owner = True
                 user.save()
-                # Create empty profile
                 VenueOwnerProfile.objects.get_or_create(
                     user=user,
                     defaults={
@@ -570,19 +605,21 @@ def request_role(request):
             return Response({'error': 'Invalid role'}, status=status.HTTP_400_BAD_REQUEST)
             
         # Refetch to get updated profiles
+        is_provider = user.role == 'PROVIDER' or (user.is_vendor and user.is_venue_owner)
         response_data = {
             'user': UserSerializer(user).data,
             'roles': {
                 'is_customer': user.is_customer,
                 'is_vendor': user.is_vendor,
-                'is_venue_owner': user.is_venue_owner
+                'is_venue_owner': user.is_venue_owner,
+                'is_provider': is_provider
             }
         }
         
-        if user.is_vendor and hasattr(user, 'vendor_profile'):
+        if hasattr(user, 'vendor_profile'):
             response_data['vendor_profile'] = VendorProfileSerializer(user.vendor_profile).data
             
-        if user.is_venue_owner and hasattr(user, 'venue_owner_profile'):
+        if hasattr(user, 'venue_owner_profile'):
             response_data['venue_owner_profile'] = VenueOwnerProfileSerializer(user.venue_owner_profile).data
             
         return Response(response_data, status=status.HTTP_200_OK)

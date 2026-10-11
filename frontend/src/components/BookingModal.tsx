@@ -19,7 +19,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const defaultPrice = venue ? venue.price_per_day : (vendor ? vendor.starting_price : 0);
+  const defaultPrice = venue ? Number(venue.price_per_day || 0) : (vendor ? Number(vendor.starting_price || 0) : 0);
   const targetTitle = venue ? venue.title : (vendor ? vendor.business_name : 'Event Service');
   const targetLocation = venue ? venue.location : 'Nairobi Central';
   const targetRating = venue ? venue.rating : (vendor ? vendor.rating : 4.9);

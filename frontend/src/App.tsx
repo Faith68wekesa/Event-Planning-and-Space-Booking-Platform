@@ -14,6 +14,7 @@ import { CustomerDashboard } from './components/CustomerDashboard.tsx';
 import { VendorDashboard } from './components/VendorDashboard.tsx';
 import { VenueOwnerDashboard } from './components/VenueOwnerDashboard.tsx';
 import { AdminDashboard } from './components/AdminDashboard.tsx';
+import { ProviderDashboard } from './components/ProviderDashboard.tsx';
 import { AuthModal } from './components/AuthModal.tsx';
 import type { User as UserType } from './types';
 import { Toaster, toast } from 'react-hot-toast';
@@ -83,7 +84,7 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, [filters]);
+  }, [filters, activeTab]);
 
   const handleBookSuccess = (newBooking: Booking) => {
     setBookings((prev) => [newBooking, ...prev]);
@@ -165,6 +166,8 @@ export const App: React.FC = () => {
                 filters={filters}
                 onExploreVenues={() => setActiveTab('venues')}
                 onExploreVendors={() => setActiveTab('vendors')}
+                onSelectVenue={(venue) => setSelectedVenue(venue)}
+                onBookVenue={(venue) => handleInterceptBook(venue, 'venue')}
               />
             ) : (
               <>
@@ -224,6 +227,26 @@ export const App: React.FC = () => {
                     bookings={bookings}
                     currentUser={currentUser}
                     onCancelBooking={handleCancelBooking}
+                  />
+                )}
+
+                {activeTab === 'provider-dashboard' && (
+                  <ProviderDashboard
+                    currentUser={currentUser}
+                    currentVendor={currentVendor}
+                    currentVenueOwner={currentVenueOwner}
+                    onLogout={() => {
+                      setCurrentUser(null);
+                      setCurrentVendor(null);
+                      setCurrentVenueOwner(null);
+                      setActiveRole('CUSTOMER');
+                      setActiveTab('landing');
+                    }}
+                    onExplore={() => {
+                      loadData();
+                      setActiveRole('CUSTOMER');
+                      setActiveTab('venues');
+                    }}
                   />
                 )}
 
@@ -312,10 +335,10 @@ export const App: React.FC = () => {
                 </div>
 
                 <div>
-                  <h4 style={{ fontWeight: 700, marginBottom: '16px', letterSpacing: '0.05em', textTransform: 'uppercase', fontSize: '0.8rem' }}>For Vendors</h4>
+                  <h4 style={{ fontWeight: 700, marginBottom: '16px', letterSpacing: '0.05em', textTransform: 'uppercase', fontSize: '0.8rem' }}>For Providers</h4>
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => setShowAuthModal(true)}>Become a Vendor</li>
-                    <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => setShowAuthModal(true)}>List Venue</li>
+                    <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => { setAuthMode('register'); setShowAuthModal(true); }}>Become a Business Provider</li>
+                    <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => { setAuthMode('register'); setShowAuthModal(true); }}>List Spaces & Services</li>
                   </ul>
                 </div>
 
@@ -335,7 +358,7 @@ export const App: React.FC = () => {
                   <span style={{ cursor: 'pointer' }}>Terms of Service</span>
                 </div>
                 <div>
-                  &copy; {new Date().getFullYear()} Event Planning and SpaceBooking. All rights reserved.
+                  &copy; {new Date().getFullYear()} Locyfy. All rights reserved.
                 </div>
               </div>
             </div>
@@ -357,16 +380,15 @@ export const App: React.FC = () => {
             if (data.venue_owner_profile) setCurrentVenueOwner(data.venue_owner_profile);
             
             // Set primary active role based on selection or roles available
-            if (data.roles?.is_vendor) {
-              setActiveRole('VENDOR');
-              setActiveTab('vendor-dashboard');
-            } else if (data.roles?.is_venue_owner) {
-              setActiveRole('VENUE_OWNER');
-              setActiveTab('venue-owner-dashboard');
+            if (data.roles?.is_provider || data.user?.role === 'PROVIDER' || (data.roles?.is_vendor && data.roles?.is_venue_owner)) {
+              setActiveRole('PROVIDER');
+              setActiveTab('provider-dashboard');
+            } else if (data.roles?.is_vendor || data.roles?.is_venue_owner) {
+              setActiveRole('PROVIDER');
+              setActiveTab('provider-dashboard');
             } else {
               setActiveRole('CUSTOMER');
-              // If there's a booking target, we might want to trigger the modal open here
-              // For now, we just stay on landing
+              setActiveTab('landing');
             }
           }}
         />

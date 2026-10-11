@@ -2,9 +2,11 @@ from rest_framework import serializers
 from .models import User, VendorProfile, VenueOwnerProfile, Venue, Booking, Review
 
 class UserSerializer(serializers.ModelSerializer):
+    is_provider = serializers.BooleanField(read_only=True)
+
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'role', 'phone_number', 'avatar_url', 'bio', 'is_customer', 'is_vendor', 'is_venue_owner']
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'role', 'phone_number', 'avatar_url', 'bio', 'is_customer', 'is_vendor', 'is_venue_owner', 'is_provider']
 
 
 class VenueOwnerProfileSerializer(serializers.ModelSerializer):
@@ -23,6 +25,25 @@ class VenueOwnerProfileSerializer(serializers.ModelSerializer):
 class VendorProfileSerializer(serializers.ModelSerializer):
     user_details = UserSerializer(source='user', read_only=True)
     vendor_type_display = serializers.CharField(source='vendor_type', read_only=True)
+    starting_price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        try:
+            sp = float(data.get('starting_price') or 0)
+        except (ValueError, TypeError):
+            sp = 0.0
+
+        if sp <= 0:
+            from django.db.models import Min
+            min_p = instance.venues.filter(price_per_day__gt=0).aggregate(min_p=Min('price_per_day'))['min_p']
+            if min_p is not None:
+                data['starting_price'] = float(min_p)
+            else:
+                data['starting_price'] = sp
+        else:
+            data['starting_price'] = sp
+        return data
 
     class Meta:
         model = VendorProfile
@@ -40,6 +61,15 @@ class VenueSerializer(serializers.ModelSerializer):
     vendor_name = serializers.ReadOnlyField(source='vendor.business_name')
     owner_name = serializers.ReadOnlyField(source='owner.business_name')
     category_display = serializers.CharField(source='get_category_display', read_only=True)
+
+    def to_internal_value(self, data):
+        if hasattr(data, 'copy'):
+            data = data.copy()
+        elif isinstance(data, dict):
+            data = dict(data)
+        if isinstance(data, dict) and 'image_url' in data and data['image_url']:
+            data['image_url'] = Venue.clean_image_url(data['image_url'])
+        return super().to_internal_value(data)
 
     class Meta:
         model = Venue

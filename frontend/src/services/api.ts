@@ -2,8 +2,29 @@ import type { Venue, Vendor, VenueOwner, Booking, PlatformStats, FilterState, Bo
 
 const API_BASE = 'http://localhost:8000/api';
 
+export function formatApiError(resData: any, fallback: string): string {
+  if (!resData) return fallback;
+  if (typeof resData === 'string') return resData;
+  if (resData.error) return resData.error;
+  if (resData.detail) return resData.detail;
+  if (resData.message) return resData.message;
+  if (typeof resData === 'object') {
+    const messages: string[] = [];
+    for (const [key, val] of Object.entries(resData)) {
+      const fieldName = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+      if (Array.isArray(val)) {
+        messages.push(`${fieldName}: ${val.join(', ')}`);
+      } else if (typeof val === 'string') {
+        messages.push(`${fieldName}: ${val}`);
+      }
+    }
+    if (messages.length > 0) return messages.join('; ');
+  }
+  return fallback;
+}
+
 export const ApiService = {
-  async getVenues(filters: Partial<FilterState> = {}): Promise<Venue[]> {
+  async getVenues(filters: Partial<FilterState> & { owner?: number; vendor?: number; user?: number } = {}): Promise<Venue[]> {
     try {
       const params = new URLSearchParams();
       if (filters.search) params.append('search', filters.search);
@@ -12,6 +33,9 @@ export const ApiService = {
       if (filters.max_price) params.append('max_price', filters.max_price.toString());
       if (filters.min_capacity) params.append('min_capacity', filters.min_capacity.toString());
       if (filters.verified_only) params.append('verified', 'true');
+      if (filters.owner) params.append('owner', filters.owner.toString());
+      if (filters.vendor) params.append('vendor', filters.vendor.toString());
+      if (filters.user) params.append('user', filters.user.toString());
 
       const res = await fetch(`${API_BASE}/venues/?${params.toString()}`);
       if (res.ok) {
@@ -43,58 +67,58 @@ export const ApiService = {
     return [];
   },
 
-  async registerUser(data: any): Promise<any | null> {
+  async registerUser(data: any): Promise<any> {
     try {
       const res = await fetch(`${API_BASE}/auth/register/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
+      const resData = await res.json();
       if (res.ok) {
-        return await res.json();
+        return resData;
       }
-      const errorData = await res.json();
-      console.error('Registration failed:', errorData);
-    } catch (e) {
+      return { error: resData.error || resData.detail || 'Registration failed' };
+    } catch (e: any) {
       console.error('Failed to register:', e);
+      return { error: e.message || 'Network error during registration' };
     }
-    return null;
   },
 
-  async loginUser(credentials: any): Promise<any | null> {
+  async loginUser(credentials: any): Promise<any> {
     try {
       const res = await fetch(`${API_BASE}/auth/login/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(credentials),
       });
+      const resData = await res.json();
       if (res.ok) {
-        return await res.json();
+        return resData;
       }
-      const errorData = await res.json();
-      console.error('Login failed:', errorData);
-    } catch (e) {
+      return { error: resData.error || resData.detail || 'Invalid credentials' };
+    } catch (e: any) {
       console.error('Failed to login:', e);
+      return { error: e.message || 'Network error during login' };
     }
-    return null;
   },
 
-  async requestRole(userId: number, role: 'CUSTOMER' | 'VENDOR' | 'VENUE_OWNER'): Promise<any | null> {
+  async requestRole(userId: number, role: 'CUSTOMER' | 'PROVIDER' | 'VENDOR' | 'VENUE_OWNER'): Promise<any> {
     try {
       const res = await fetch(`${API_BASE}/auth/request-role/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: userId, role }),
       });
+      const resData = await res.json();
       if (res.ok) {
-        return await res.json();
+        return resData;
       }
-      const errorData = await res.json();
-      console.error('Failed to request role:', errorData);
-    } catch (e) {
+      return { error: resData.error || resData.detail || 'Failed to select role' };
+    } catch (e: any) {
       console.error('Failed to request role:', e);
+      return { error: e.message || 'Network error during role selection' };
     }
-    return null;
   },
 
   async sendOTP(email: string): Promise<boolean> {
@@ -299,9 +323,17 @@ export const ApiService = {
         body: JSON.stringify(venueData),
       });
       if (res.ok) return await res.json();
-      throw new Error(await res.text());
-    } catch (e) {
-      console.error("Failed to add venue", e);
+      
+      let errorData: any;
+      try {
+        errorData = await res.json();
+      } catch {
+        errorData = await res.text();
+      }
+      const message = formatApiError(errorData, "Failed to create listing.");
+      throw new Error(message);
+    } catch (e: any) {
+      console.error("Failed to add venue:", e);
       throw e;
     }
   },

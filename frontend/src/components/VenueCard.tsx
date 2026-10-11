@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Venue } from '../types';
 import { ShieldCheck, MapPin, Users, Star, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { handleImageError, DEFAULT_SPACE_IMAGE } from '../utils/imageUtils';
 
 interface VenueCardProps {
   venue: Venue;
@@ -22,7 +23,8 @@ export const VenueCard: React.FC<VenueCardProps> = ({ venue, onSelect, onBook })
     }}>
       <div style={{ position: 'relative', height: '220px', overflow: 'hidden' }}>
         <img
-          src={venue.image_url}
+          src={venue.image_url || DEFAULT_SPACE_IMAGE}
+          onError={(e) => handleImageError(e, DEFAULT_SPACE_IMAGE)}
           alt={venue.title}
           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
         />

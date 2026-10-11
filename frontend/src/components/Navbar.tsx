@@ -140,6 +140,15 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <User size={18} color="#0F8F7A" /> My Profile
                   </button>
 
+                  {(activeRole === 'PROVIDER' || currentUser?.is_provider || currentUser?.is_vendor || currentUser?.is_venue_owner) && (
+                    <button 
+                      onClick={() => { setShowAccountMenu(false); setActiveTab('provider-dashboard'); }}
+                      style={{ width: '100%', textAlign: 'left', padding: '12px 16px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', fontSize: '0.9rem', color: '#0F8F7A', fontWeight: 600 }}
+                    >
+                      <Building2 size={18} color="#0F8F7A" /> Business Dashboard
+                    </button>
+                  )}
+
                   <button 
                     onClick={() => { setShowAccountMenu(false); setShowSwitchModal(true); }}
                     style={{ width: '100%', textAlign: 'left', padding: '12px 16px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', fontSize: '0.9rem', color: '#1e293b' }}

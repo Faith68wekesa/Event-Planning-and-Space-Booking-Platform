@@ -1,4 +1,4 @@
-export type UserRole = 'CUSTOMER' | 'VENDOR' | 'VENUE_OWNER' | 'ADMIN';
+export type UserRole = 'CUSTOMER' | 'PROVIDER' | 'VENDOR' | 'VENUE_OWNER' | 'ADMIN';
 
 export interface User {
   id: number;
@@ -10,6 +10,7 @@ export interface User {
   is_customer?: boolean;
   is_vendor?: boolean;
   is_venue_owner?: boolean;
+  is_provider?: boolean;
   phone_number?: string;
   avatar_url?: string;
   bio?: string;
@@ -21,6 +22,7 @@ export interface AuthResponse {
     is_customer: boolean;
     is_vendor: boolean;
     is_venue_owner: boolean;
+    is_provider?: boolean;
   };
   vendor_profile?: Vendor;
   venue_owner_profile?: VenueOwner;
@@ -109,7 +111,13 @@ export type VenueCategory =
   | 'BIRTHDAY' 
   | 'OUTDOOR' 
   | 'PARTY' 
-  | 'EXHIBITION';
+  | 'EXHIBITION'
+  | 'PHOTOGRAPHY'
+  | 'CATERING'
+  | 'DECORATION'
+  | 'ENTERTAINMENT'
+  | 'PLANNING'
+  | 'SOUND';
 
 export interface Venue {
   id: number;

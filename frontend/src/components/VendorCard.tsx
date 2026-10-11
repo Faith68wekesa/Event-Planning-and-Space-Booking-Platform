@@ -130,7 +130,7 @@ export const VendorCard: React.FC<VendorCardProps> = ({ vendor, onSelect, onBook
           <div>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Starting Fee</span>
             <span style={{ fontSize: '1.2rem', fontWeight: 800, color: '#059669' }}>
-              KES {vendor.starting_price.toLocaleString()}
+              KES {Number(vendor.starting_price || 0).toLocaleString()}
             </span>
           </div>
 
