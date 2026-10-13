@@ -62,8 +62,8 @@ def seed():
         starting_price=Decimal('20000.00'),
         contact_email='hello@sarahjdecor.com',
         is_verified=True,
-        rating=4.8,
-        review_count=85
+        rating=0.0,
+        review_count=0
     )
 
     u3 = User.objects.create_user(username='mikes_catering', email='mike@example.com', password='password123', role='VENDOR', first_name='Mike', last_name='Smith')
@@ -76,84 +76,152 @@ def seed():
         starting_price=Decimal('10000.00'),
         contact_email='info@mikescatering.com',
         is_verified=True,
-        rating=4.7,
-        review_count=90
+        rating=0.0,
+        review_count=0
+    )
+
+    # Vendor for BrightLens Photography (matching screenshot)
+    u_photo = User.objects.create_user(username='brightlens', email='info@brightlens.co.ke', password='password123', role='VENDOR', first_name='BrightLens', last_name='Photography')
+    v_photo = VendorProfile.objects.create(
+        user=u_photo,
+        business_name='BrightLens Photography',
+        vendor_type='PHOTOGRAPHY',
+        description='Creative and professional event photography, drone videography, and album design.',
+        location='Nairobi, Kenya',
+        starting_price=Decimal('45000.00'),
+        contact_email='info@brightlens.co.ke',
+        is_verified=True,
+        rating=0.0,
+        review_count=0
+    )
+
+    # Vendor for Tasty Bites Catering (matching screenshot)
+    u_tasty = User.objects.create_user(username='tastybites', email='orders@tastybites.co.ke', password='password123', role='VENDOR', first_name='Tasty', last_name='Bites')
+    v_tasty = VendorProfile.objects.create(
+        user=u_tasty,
+        business_name='Tasty Bites Catering',
+        vendor_type='CATERER',
+        description='Gourmet African and international buffet catering for weddings, corporate, and private parties.',
+        location='Nairobi, Kenya',
+        starting_price=Decimal('120000.00'),
+        contact_email='orders@tastybites.co.ke',
+        is_verified=True,
+        rating=0.0,
+        review_count=0
     )
 
     print("Created vendors.")
 
-    # Create mock venues
+    # Create mock venues (matching screenshot)
     venue1 = Venue.objects.create(
         owner=vo1,
         vendor=v1,
-        title='Karen Oasis Gardens',
-        description='Beautiful outdoor gardens for weddings and events.',
+        title='The Grand Garden',
+        description='Iconic landscaped garden venue featuring paved pathways, romantic gazebo, and lush greenery.',
         category='OUTDOOR',
-        location='Karen, Nairobi',
-        address='123 Karen Rd',
+        location='Nairobi, Kenya',
+        address='123 Karen Rd, Nairobi',
         capacity=500,
         price_per_day=Decimal('85000.00'),
-        amenities=['Parking', 'Security', 'Restrooms', 'Power Backup'],
+        amenities=['Parking', 'Security', 'Restrooms', 'Power Backup', 'Gazebo'],
         image_url='https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=800&q=80',
         is_verified=True,
         is_available=True,
-        rating=4.8,
-        review_count=124
+        rating=0.0,
+        review_count=0
     )
 
     venue2 = Venue.objects.create(
         owner=vo1,
         vendor=v1,
-        title='Rift Valley Heights',
-        description='Luxurious conference center with a view.',
+        title='Skyline Hotel',
+        description='Panoramic rooftop hotel banquet hall with cityscape skyline views, audio equipment, and air conditioning.',
         category='CONFERENCE',
-        location='Westlands, Nairobi',
-        address='456 Westlands Ave',
+        location='Nairobi, Kenya',
+        address='456 Westlands Ave, Nairobi',
         capacity=300,
         price_per_day=Decimal('120000.00'),
         price_per_hour=Decimal('15000.00'),
-        amenities=['WiFi', 'Projector', 'Air Conditioning', 'Catering Area'],
-        image_url='https://images.unsplash.com/photo-1517457373958-b7bdd4587205?auto=format&fit=crop&w=800&q=80',
+        amenities=['WiFi', 'Projector', 'Air Conditioning', 'Catering Area', 'Sound System'],
+        image_url='https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80',
         is_verified=True,
         is_available=True,
-        rating=4.9,
-        review_count=89
+        rating=0.0,
+        review_count=0
     )
 
     venue3 = Venue.objects.create(
         vendor=v2,
-        title='City Center Hall',
-        description='Spacious hall in the heart of the city.',
-        category='EXHIBITION',
-        location='Nairobi CBD',
-        address='789 City Center Way',
-        capacity=1000,
-        price_per_day=Decimal('200000.00'),
-        amenities=['Parking', 'Security', 'Air Conditioning', 'Elevators'],
-        image_url='https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=800&q=80',
-        is_verified=False,
+        title='Riverside Gardens',
+        description='Serene riverfront event venue shaded by tropical palms with ample manicured lawns.',
+        category='OUTDOOR',
+        location='Nairobi, Kenya',
+        address='789 Riverside Drive, Nairobi',
+        capacity=400,
+        price_per_day=Decimal('75000.00'),
+        amenities=['Parking', 'Security', 'Air Conditioning', 'River View'],
+        image_url='https://images.unsplash.com/photo-1545232979-fbf68fe9b1af?auto=format&fit=crop&w=800&q=80',
+        is_verified=True,
         is_available=True,
-        rating=4.5,
-        review_count=45
+        rating=0.0,
+        review_count=0
     )
 
     print("Created venues.")
 
-    # Create a mock customer
+    # Create mock customers (Faith Wanjiru matching screenshot)
+    faith_user = User.objects.create_user(
+        username='faith',
+        email='faith@example.com',
+        password='password123',
+        role='CUSTOMER',
+        first_name='Faith',
+        last_name='Wanjiru'
+    )
+    faith_user.avatar_url = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
+    faith_user.phone_number = '+254 712 345 678'
+    faith_user.save()
+
     c1 = User.objects.create_user(username='john_doe', email='john@example.com', password='password123', role='CUSTOMER', first_name='John', last_name='Doe')
 
-    # Create mock bookings
+    # Create mock bookings for Faith Wanjiru (matching screenshot)
     Booking.objects.create(
-        customer=c1,
+        customer=faith_user,
         venue=venue1,
-        event_title='Wedding Reception',
-        event_type='Wedding',
-        event_date=(datetime.now() + timedelta(days=14)).date(),
-        guest_count=400,
+        event_title='The Grand Garden (Venue)',
+        event_type='Wedding Reception',
+        event_date=(datetime.now() + timedelta(days=16)).date(),
+        guest_count=200,
         total_price=Decimal('85000.00'),
-        status='APPROVED'
+        status='APPROVED',
+        notes='Outdoor wedding garden reception for 200 guests with gazebo setup.'
     )
 
+    Booking.objects.create(
+        customer=faith_user,
+        vendor=v_photo,
+        event_title='BrightLens Photography (Vendor)',
+        event_type='Photography & Drone',
+        event_date=(datetime.now() + timedelta(days=30)).date(),
+        guest_count=200,
+        total_price=Decimal('45000.00'),
+        status='PENDING',
+        notes='Full day event coverage, Drone shots, 2 photographers.'
+    )
+
+    Booking.objects.create(
+        customer=faith_user,
+        vendor=v_tasty,
+        event_title='Tasty Bites Catering (Vendor)',
+        event_type='Catering Service',
+        event_date=(datetime.now() + timedelta(days=44)).date(),
+        guest_count=200,
+        total_price=Decimal('120000.00'),
+        status='APPROVED',
+        notes='3-Course African buffet dinner, dessert bar, cutlery & 6 waitstaff.'
+    )
+
+    # Create mock bookings for John Doe
     Booking.objects.create(
         customer=c1,
         venue=venue2,
@@ -163,17 +231,6 @@ def seed():
         guest_count=200,
         total_price=Decimal('120000.00'),
         status='PENDING'
-    )
-
-    Booking.objects.create(
-        customer=c1,
-        vendor=v3,
-        event_title='Company End of Year Party',
-        event_type='Corporate',
-        event_date=(datetime.now() + timedelta(days=45)).date(),
-        guest_count=150,
-        total_price=Decimal('45000.00'),
-        status='APPROVED'
     )
 
     print("Created bookings.")

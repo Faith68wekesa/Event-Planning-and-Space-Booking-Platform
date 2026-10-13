@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { Booking, Venue, BookingStatus, Vendor, VenueOwner, VenueCategory, User } from '../types';
+import type { Booking, Venue, BookingStatus, Vendor, VenueOwner, VenueCategory, User, Message } from '../types';
 import { ApiService } from '../services/api';
 import './vendor-dashboard.css';
 import {
@@ -8,7 +8,6 @@ import {
   X,
   MapPin,
   Trash2,
-  ShieldCheck,
   User as UserIcon,
   LayoutDashboard,
   Package,
@@ -25,7 +24,8 @@ import {
   MessageSquare,
   Check,
   Layers,
-  Send
+  Send,
+  ShieldCheck
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cleanImageUrl, handleImageError, DEFAULT_SPACE_IMAGE, DEFAULT_SERVICE_IMAGE } from '../utils/imageUtils';
@@ -113,6 +113,21 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   const [bookingStatusFilter, setBookingStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'CANCELLED'>('ALL');
   const [selectedBookingChatId, setSelectedBookingChatId] = useState<string | number | null>(null);
   const [messageInput, setMessageInput] = useState('');
+  const [realChatMessages, setRealChatMessages] = useState<Message[]>([]);
+  const [loadingChatMessages, setLoadingChatMessages] = useState(false);
+  const [sendingChatMessage, setSendingChatMessage] = useState(false);
+
+  const fetchChatMessages = useCallback(async (bookingId: number) => {
+    try {
+      setLoadingChatMessages(true);
+      const msgs = await ApiService.getMessages({ booking: bookingId });
+      setRealChatMessages(msgs);
+    } catch (e) {
+      console.error("Failed to load chat messages", e);
+    } finally {
+      setLoadingChatMessages(false);
+    }
+  }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -212,6 +227,19 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (activeTab === 'messages' && bookings.length > 0) {
+      const activeId = selectedBookingChatId || bookings[0]?.id;
+      if (activeId) {
+        fetchChatMessages(Number(activeId));
+        const interval = setInterval(() => {
+          fetchChatMessages(Number(activeId));
+        }, 4000);
+        return () => clearInterval(interval);
+      }
+    }
+  }, [activeTab, selectedBookingChatId, bookings, fetchChatMessages]);
 
   const handleProfilePictureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0 && currentUser?.id) {
@@ -474,15 +502,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
           </div>
         </div>
 
-        {/* Business Badge */}
-        <div style={{ padding: '12px 16px', background: 'rgba(0, 0, 0, 0.16)', margin: '14px 14px 6px', borderRadius: '10px' }}>
-          <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#ffffff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {businessName}
-          </div>
-          <div style={{ fontSize: '0.75rem', color: '#34d399', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '3px' }}>
-            <ShieldCheck size={13} /> Verified Vendor
-          </div>
-        </div>
+
 
         {/* Nav List */}
         <nav className="vendor-sidebar-nav" style={{ paddingTop: '8px' }}>
@@ -1263,6 +1283,17 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                           </button>
                         </div>
                       )}
+
+                      {b.status === 'APPROVED' && (
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            onClick={() => handleUpdateBookingStatus(b.id, 'COMPLETED')}
+                            style={{ background: '#059669', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}
+                          >
+                            Mark Completed
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1341,6 +1372,33 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
             const clientName = currentChatBooking?.customer_name || 'Client';
             const clientInitial = clientName.charAt(0).toUpperCase();
 
+            const handleSendReply = async () => {
+              if (!messageInput.trim() || !currentChatBooking || !currentUser?.id) return;
+              const text = messageInput.trim();
+              setMessageInput('');
+              setSendingChatMessage(true);
+              try {
+                const sent = await ApiService.sendMessage({
+                  sender: currentUser.id,
+                  recipient: currentChatBooking.customer,
+                  booking: currentChatBooking.id,
+                  venue: currentChatBooking.venue,
+                  vendor: currentChatBooking.vendor,
+                  content: text,
+                });
+                if (sent) {
+                  setRealChatMessages(prev => [...prev, sent]);
+                  toast.success(`Message sent to ${clientName}!`);
+                } else {
+                  toast.error('Failed to send message.');
+                }
+              } catch (e) {
+                toast.error('Error sending message.');
+              } finally {
+                setSendingChatMessage(false);
+              }
+            };
+
             return (
               <div className="dashboard-card" style={{ padding: 0, overflow: 'hidden', minHeight: '520px', display: 'flex' }}>
                 {/* Conversation List */}
@@ -1357,7 +1415,10 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                       return (
                         <div
                           key={b.id}
-                          onClick={() => setSelectedBookingChatId(b.id)}
+                          onClick={() => {
+                            setSelectedBookingChatId(b.id);
+                            fetchChatMessages(b.id);
+                          }}
                           style={{
                             padding: '14px 18px',
                             borderBottom: '1px solid #f1f5f9',
@@ -1408,21 +1469,69 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                     </button>
                   </div>
 
+                  {/* Official In-Platform Policy Banner */}
+                  <div style={{ background: '#f0fdf4', borderBottom: '1px solid #bbf7d0', padding: '8px 24px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.76rem', color: '#166534', fontWeight: 600 }}>
+                    <ShieldCheck size={14} color="#16a34a" /> In-Platform Official Communication: All inquiries & chats must stay strictly inside Locyfy. Off-platform communications are prohibited.
+                  </div>
+
                   {/* Message Bubbles */}
-                  <div style={{ flex: 1, padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ flex: 1, padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    {/* Initial Booking Note */}
                     <div style={{ alignSelf: 'flex-start', maxWidth: '75%', background: '#f1f5f9', padding: '12px 16px', borderRadius: '14px 14px 14px 2px', fontSize: '0.9rem', color: '#1e293b', lineHeight: 1.5 }}>
+                      <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#0d8a73', marginBottom: '4px' }}>
+                        {clientName} (Booking Details)
+                      </div>
                       {currentChatBooking?.notes 
                         ? currentChatBooking.notes 
-                        : `Hello! I have placed a booking request for "${currentChatBooking?.event_title}" on ${currentChatBooking?.event_date} for ${currentChatBooking?.guest_count || 1} guest(s). Looking forward to your response.`}
+                        : `Booking request for "${currentChatBooking?.event_title}" on ${currentChatBooking?.event_date} for ${currentChatBooking?.guest_count || 1} guest(s).`}
                       <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '4px', textAlign: 'right' }}>
                         {currentChatBooking?.event_date || 'Recent'}
                       </div>
                     </div>
 
-                    <div style={{ alignSelf: 'flex-end', maxWidth: '75%', background: '#0d8a73', color: '#ffffff', padding: '12px 16px', borderRadius: '14px 14px 2px 14px', fontSize: '0.9rem', lineHeight: 1.5 }}>
-                      Status: {currentChatBooking?.status}. You can coordinate event details, quotes, or schedule with {clientName} here.
-                      <div style={{ fontSize: '0.72rem', color: '#a7f3d0', marginTop: '4px', textAlign: 'right' }}>Active Booking</div>
-                    </div>
+                    {loadingChatMessages && realChatMessages.length === 0 ? (
+                      <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem', padding: '12px' }}>
+                        Loading conversation history...
+                      </div>
+                    ) : null}
+
+                    {/* Stored Real Messages */}
+                    {realChatMessages.map(msg => {
+                      const isMe = currentUser?.id && msg.sender === currentUser.id;
+                      return (
+                        <div
+                          key={msg.id}
+                          style={{
+                            alignSelf: isMe ? 'flex-end' : 'flex-start',
+                            maxWidth: '75%',
+                            background: isMe ? '#0d8a73' : '#f1f5f9',
+                            color: isMe ? '#ffffff' : '#1e293b',
+                            padding: '12px 16px',
+                            borderRadius: isMe ? '14px 14px 2px 14px' : '14px 14px 14px 2px',
+                            fontSize: '0.9rem',
+                            lineHeight: 1.5,
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                          }}
+                        >
+                          {!isMe && (
+                            <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#0d8a73', marginBottom: '4px' }}>
+                              {msg.sender_name || clientName}
+                            </div>
+                          )}
+                          <div style={{ wordBreak: 'break-word' }}>{msg.content}</div>
+                          <div
+                            style={{
+                              fontSize: '0.72rem',
+                              color: isMe ? '#a7f3d0' : '#94a3b8',
+                              marginTop: '4px',
+                              textAlign: 'right'
+                            }}
+                          >
+                            {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
 
                   {/* Reply Box */}
@@ -1434,25 +1543,18 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                       onChange={e => setMessageInput(e.target.value)}
                       style={{ flex: 1, padding: '12px 16px', borderRadius: '9999px', border: '1.5px solid #cbd5e1', fontSize: '0.9rem', outline: 'none' }}
                       onKeyDown={e => {
-                        if (e.key === 'Enter' && messageInput.trim()) {
-                          toast.success(`Message sent to ${clientName}!`);
-                          setMessageInput('');
+                        if (e.key === 'Enter' && messageInput.trim() && !sendingChatMessage) {
+                          handleSendReply();
                         }
                       }}
                     />
                     <button
-                      onClick={() => {
-                        if (messageInput.trim()) {
-                          toast.success(`Message sent to ${clientName}!`);
-                          setMessageInput('');
-                        } else {
-                          toast.error("Please enter a message.");
-                        }
-                      }}
+                      onClick={handleSendReply}
+                      disabled={sendingChatMessage || !messageInput.trim()}
                       className="btn-primary-light"
-                      style={{ borderRadius: '9999px', padding: '12px 20px' }}
+                      style={{ borderRadius: '9999px', padding: '12px 20px', opacity: sendingChatMessage ? 0.7 : 1 }}
                     >
-                      <Send size={16} /> Send
+                      <Send size={16} /> {sendingChatMessage ? 'Sending...' : 'Send'}
                     </button>
                   </div>
                 </div>

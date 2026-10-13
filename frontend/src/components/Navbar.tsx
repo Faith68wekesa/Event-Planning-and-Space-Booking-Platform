@@ -173,6 +173,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <Calendar size={18} color="#0d8a73" /> Customer Dashboard
                   </button>
 
+
+
                   <button 
                     onClick={() => { 
                       setShowAccountMenu(false); 

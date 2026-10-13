@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.core.validators import MinValueValidator, MaxValueValidator
 
 class User(AbstractUser):
     ROLE_CHOICES = [
@@ -199,12 +200,38 @@ class Booking(models.Model):
 
 
 class Review(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reviews')
+    booking = models.OneToOneField(Booking, on_delete=models.CASCADE, null=True, blank=True, related_name='review')
     venue = models.ForeignKey(Venue, on_delete=models.CASCADE, null=True, blank=True, related_name='reviews')
     vendor = models.ForeignKey(VendorProfile, on_delete=models.CASCADE, null=True, blank=True, related_name='reviews')
-    rating = models.IntegerField(default=5)
-    comment = models.TextField()
+    rating = models.IntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)]
+    )
+    comment = models.TextField(blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'booking'], name='unique_user_booking_review')
+        ]
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.venue:
+            self.venue.update_rating_stats()
+        if self.vendor:
+            self.vendor.update_rating_stats()
+
+    def delete(self, *args, **kwargs):
+        venue = self.venue
+        vendor = self.vendor
+        super().delete(*args, **kwargs)
+        if venue:
+            venue.update_rating_stats()
+        if vendor:
+            vendor.update_rating_stats()
 
     def __str__(self):
         return f"Review ({self.rating}/5) by {self.user.username}"
@@ -217,3 +244,82 @@ class EmailOTP(models.Model):
 
     def __str__(self):
         return f"{self.email} - {self.otp_code}"
+
+
+class Message(models.Model):
+    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_messages')
+    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='received_messages')
+    booking = models.ForeignKey(Booking, on_delete=models.SET_NULL, null=True, blank=True, related_name='messages')
+    venue = models.ForeignKey(Venue, on_delete=models.SET_NULL, null=True, blank=True, related_name='messages')
+    vendor = models.ForeignKey(VendorProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='messages')
+    content = models.TextField()
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"Msg from {self.sender.username} to {self.recipient.username} ({self.created_at})"
+
+
+class Event(models.Model):
+    STATUS_CHOICES = [
+        ('Upcoming', 'Upcoming'),
+        ('Planning', 'Planning'),
+        ('Completed', 'Completed'),
+        ('Cancelled', 'Cancelled'),
+    ]
+
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='events')
+    name = models.CharField(max_length=200)
+    event_type = models.CharField(max_length=100)
+    date = models.DateField()
+    start_time = models.TimeField(blank=True, null=True)
+    end_time = models.TimeField(blank=True, null=True)
+    location = models.CharField(max_length=255)
+    expected_guest_count = models.PositiveIntegerField(
+        default=0,
+        validators=[MinValueValidator(0)]
+    )
+    budget = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0.00,
+        validators=[MinValueValidator(0)]
+    )
+    description = models.TextField(blank=True, default='')
+    status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='Upcoming')
+    image_url = models.URLField(max_length=500, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.name} ({self.event_type}) - {self.owner.username}"
+
+
+class EventService(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='services')
+    name = models.CharField(max_length=200)
+    category = models.CharField(max_length=100, blank=True, default='Photography')
+    notes = models.TextField(blank=True, default='')
+    estimated_cost = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)]
+    )
+    is_completed = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"{self.name} - {self.event.name}"
+

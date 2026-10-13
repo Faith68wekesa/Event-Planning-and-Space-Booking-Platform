@@ -6,9 +6,16 @@ interface VendorDashboardReviewsProps {
   reviews: Review[];
 }
 
-export const VendorDashboardReviews: React.FC<VendorDashboardReviewsProps> = ({ reviews }) => {
-
+export const VendorDashboardReviews: React.FC<VendorDashboardReviewsProps> = ({ reviews = [] }) => {
   const hasReviews = reviews && reviews.length > 0;
+  const totalCount = reviews ? reviews.length : 0;
+  const averageRating = hasReviews
+    ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1)
+    : '0.0';
+  const starCounts = [5, 4, 3, 2, 1].map((s) => ({
+    stars: s,
+    count: reviews ? reviews.filter((r) => Math.round(r.rating) === s).length : 0,
+  }));
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '24px' }}>
@@ -37,19 +44,13 @@ export const VendorDashboardReviews: React.FC<VendorDashboardReviewsProps> = ({ 
           <div style={{ padding: '24px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', gap: '32px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
               <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Star size={32} fill="#fbbf24" stroke="#fbbf24" /> 4.8 <span style={{ fontSize: '1rem', color: '#64748b', fontWeight: 600 }}>/ 5</span>
+                <Star size={32} fill="#fbbf24" stroke="#fbbf24" /> {averageRating} <span style={{ fontSize: '1rem', color: '#64748b', fontWeight: 600 }}>/ 5</span>
               </div>
-              <div style={{ fontSize: '0.9rem', color: '#64748b', marginTop: '4px' }}>Based on 24 reviews</div>
+              <div style={{ fontSize: '0.9rem', color: '#64748b', marginTop: '4px' }}>Based on {totalCount} {totalCount === 1 ? 'review' : 'reviews'}</div>
             </div>
             
             <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {[
-                { stars: 5, count: 18 },
-                { stars: 4, count: 4 },
-                { stars: 3, count: 1 },
-                { stars: 2, count: 1 },
-                { stars: 1, count: 0 },
-              ].map(row => (
+              {starCounts.map(row => (
                 <div key={row.stars} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <div style={{ display: 'flex', gap: '2px', minWidth: '80px' }}>
                     {[...Array(5)].map((_, i) => (
@@ -57,7 +58,7 @@ export const VendorDashboardReviews: React.FC<VendorDashboardReviewsProps> = ({ 
                     ))}
                   </div>
                   <div style={{ flexGrow: 1, height: '6px', background: '#e2e8f0', borderRadius: '99px', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', background: '#fbbf24', width: `${(row.count / 24) * 100}%` }}></div>
+                    <div style={{ height: '100%', background: '#fbbf24', width: `${totalCount > 0 ? (row.count / totalCount) * 100 : 0}%` }}></div>
                   </div>
                   <div style={{ minWidth: '20px', fontSize: '0.85rem', color: '#64748b', fontWeight: 600 }}>{row.count}</div>
                 </div>
@@ -82,7 +83,7 @@ export const VendorDashboardReviews: React.FC<VendorDashboardReviewsProps> = ({ 
               <div key={review.id} style={{ padding: '24px', borderBottom: idx !== reviews.length - 1 ? '1px solid #e2e8f0' : 'none' }}>
                 
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.05rem' }}>{review.user_name}</div>
+                  <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.05rem' }}>{review.user_name || 'Verified Customer'}</div>
                   <div style={{ display: 'flex', gap: '2px', color: '#fbbf24' }}>
                     {[...Array(5)].map((_, i) => (
                       <Star key={i} size={14} fill={i < review.rating ? '#fbbf24' : 'transparent'} stroke={i < review.rating ? '#fbbf24' : '#cbd5e1'} />
@@ -91,7 +92,7 @@ export const VendorDashboardReviews: React.FC<VendorDashboardReviewsProps> = ({ 
                 </div>
                 
                 <div style={{ fontSize: '0.85rem', color: '#0d8a73', fontWeight: 600, marginBottom: '12px' }}>
-                  Wedding Photography
+                  {review.target_name || (review.venue ? 'Venue Service' : 'Vendor Service')}
                 </div>
                 
                 <p style={{ color: '#334155', fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '16px' }}>

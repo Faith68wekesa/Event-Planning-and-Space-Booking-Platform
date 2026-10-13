@@ -22,8 +22,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const defaultPrice = venue ? Number(venue.price_per_day || 0) : (vendor ? Number(vendor.starting_price || 0) : 0);
   const targetTitle = venue ? venue.title : (vendor ? vendor.business_name : 'Event Service');
   const targetLocation = venue ? venue.location : 'Nairobi Central';
-  const targetRating = venue ? venue.rating : (vendor ? vendor.rating : 4.9);
-  const targetReviews = venue ? venue.review_count : 52;
+  const targetRating = venue ? Number(venue.rating || 0) : (vendor ? Number(vendor.rating || 0) : 0);
+  const targetReviews = venue ? Number(venue.review_count || 0) : (vendor ? Number(vendor.review_count || 0) : 0);
   const imageUrl = venue?.image_url || vendor?.logo_url || vendor?.portfolio_images?.[0] || 'https://images.unsplash.com/photo-1555244162-803834f70033?auto=format&fit=crop&q=80&w=300&h=200';
 
   const [eventTitle, setEventTitle] = useState('');
@@ -160,7 +160,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   <MapPin size={14} /> {targetLocation}
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <Star size={14} color="#f59e0b" fill="#f59e0b" /> {targetRating} ({targetReviews} reviews)
+                  {targetReviews > 0 ? (
+                    <>
+                      <Star size={14} color="#f59e0b" fill="#f59e0b" /> {targetRating.toFixed(1)} ({targetReviews} reviews)
+                    </>
+                  ) : (
+                    <span style={{ color: '#64748b' }}>No reviews yet</span>
+                  )}
                 </span>
               </div>
 

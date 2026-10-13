@@ -1,4 +1,4 @@
-import type { Venue, Vendor, VenueOwner, Booking, PlatformStats, FilterState, BookingStatus } from '../types';
+import type { Venue, Vendor, VenueOwner, Booking, PlatformStats, FilterState, BookingStatus, Review, Message, ConversationThread, EventItem, EventServiceItem } from '../types';
 
 const API_BASE = 'http://localhost:8000/api';
 
@@ -452,5 +452,242 @@ export const ApiService = {
       console.error('Error uploading profile picture:', e);
     }
     return null;
+  },
+
+  async getReviews(params?: { venue?: number; vendor?: number; user?: number; booking?: number }): Promise<Review[]> {
+    try {
+      const sp = new URLSearchParams();
+      if (params?.venue) sp.append('venue', params.venue.toString());
+      if (params?.vendor) sp.append('vendor', params.vendor.toString());
+      if (params?.user) sp.append('user', params.user.toString());
+      if (params?.booking) sp.append('booking', params.booking.toString());
+      const res = await fetch(`${API_BASE}/reviews/?${sp.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        return Array.isArray(data) ? data : data.results || [];
+      }
+    } catch (e) {
+      console.error('Failed to fetch reviews:', e);
+    }
+    return [];
+  },
+
+  async submitReview(reviewData: { booking: number; rating: number; comment?: string; user?: number; venue?: number; vendor?: number }): Promise<{ success: boolean; data?: Review; error?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/reviews/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reviewData),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        return { success: true, data };
+      }
+      return { success: false, error: data.error || 'Failed to submit review' };
+    } catch (e: any) {
+      console.error('Error submitting review:', e);
+      return { success: false, error: e.message || 'Network error' };
+    }
+  },
+
+  async getReviewSummary(params?: { venue?: number; vendor?: number }): Promise<{ average_rating: number; review_count: number; rating_breakdown: Record<string, number> } | null> {
+    try {
+      const sp = new URLSearchParams();
+      if (params?.venue) sp.append('venue', params.venue.toString());
+      if (params?.vendor) sp.append('vendor', params.vendor.toString());
+      const res = await fetch(`${API_BASE}/reviews/summary/?${sp.toString()}`);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.error('Failed to fetch review summary:', e);
+    }
+    return null;
+  },
+
+  async getConversations(userId: number): Promise<ConversationThread[]> {
+    try {
+      const res = await fetch(`${API_BASE}/messages/conversations/?user=${userId}`);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.error('Failed to fetch conversations:', e);
+    }
+    return [];
+  },
+
+  async getMessages(params: { user?: number; partner?: number; booking?: number; venue?: number; vendor?: number }): Promise<Message[]> {
+    try {
+      const sp = new URLSearchParams();
+      if (params.user) sp.append('user', params.user.toString());
+      if (params.partner) sp.append('partner', params.partner.toString());
+      if (params.booking) sp.append('booking', params.booking.toString());
+      if (params.venue) sp.append('venue', params.venue.toString());
+      if (params.vendor) sp.append('vendor', params.vendor.toString());
+      const res = await fetch(`${API_BASE}/messages/?${sp.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        return Array.isArray(data) ? data : data.results || [];
+      }
+    } catch (e) {
+      console.error('Failed to fetch messages:', e);
+    }
+    return [];
+  },
+
+  async sendMessage(msgData: { sender: number; recipient?: number; content: string; booking?: number; venue?: number; vendor?: number }): Promise<Message | null> {
+    try {
+      const res = await fetch(`${API_BASE}/messages/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(msgData),
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.error('Failed to send message:', e);
+    }
+    return null;
+  },
+
+  async markThreadRead(userId: number, partnerId: number): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/messages/mark_read/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user: userId, partner: partnerId }),
+      });
+      return res.ok;
+    } catch (e) {
+      console.error('Failed to mark thread read:', e);
+    }
+    return false;
+  },
+
+  async getEvents(userId?: number): Promise<EventItem[]> {
+    try {
+      const url = userId ? `${API_BASE}/events/?user=${userId}` : `${API_BASE}/events/`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        return Array.isArray(data) ? data : data.results || [];
+      }
+    } catch (e) {
+      console.error('Failed to fetch events:', e);
+    }
+    return [];
+  },
+
+  async createEvent(eventData: Partial<EventItem> & { owner?: number }): Promise<{ success: boolean; data?: EventItem; error?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/events/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(eventData),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        return { success: true, data };
+      }
+      return { success: false, error: formatApiError(data, 'Failed to create event.') };
+    } catch (e: any) {
+      console.error('Failed to create event:', e);
+      return { success: false, error: e?.message || 'Network error creating event.' };
+    }
+  },
+
+  async updateEvent(id: number, eventData: Partial<EventItem>): Promise<{ success: boolean; data?: EventItem; error?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/events/${id}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(eventData),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        return { success: true, data };
+      }
+      return { success: false, error: formatApiError(data, 'Failed to update event.') };
+    } catch (e: any) {
+      console.error('Failed to update event:', e);
+      return { success: false, error: e?.message || 'Network error updating event.' };
+    }
+  },
+
+  async deleteEvent(id: number): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/events/${id}/`, {
+        method: 'DELETE',
+      });
+      return res.ok || res.status === 204;
+    } catch (e) {
+      console.error('Failed to delete event:', e);
+      return false;
+    }
+  },
+
+  async getEventServices(eventId: number): Promise<EventServiceItem[]> {
+    try {
+      const res = await fetch(`${API_BASE}/event-services/?event=${eventId}`);
+      if (res.ok) {
+        const data = await res.json();
+        return Array.isArray(data) ? data : data.results || [];
+      }
+    } catch (e) {
+      console.error('Failed to fetch event services:', e);
+    }
+    return [];
+  },
+
+  async createEventService(serviceData: Partial<EventServiceItem> & { event: number }): Promise<{ success: boolean; data?: EventServiceItem; error?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/event-services/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(serviceData),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        return { success: true, data };
+      }
+      return { success: false, error: formatApiError(data, 'Failed to add event service.') };
+    } catch (e: any) {
+      console.error('Failed to add event service:', e);
+      return { success: false, error: e?.message || 'Network error adding event service.' };
+    }
+  },
+
+  async updateEventService(id: number | string, serviceData: Partial<EventServiceItem>): Promise<{ success: boolean; data?: EventServiceItem; error?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/event-services/${id}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(serviceData),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        return { success: true, data };
+      }
+      return { success: false, error: formatApiError(data, 'Failed to update event service.') };
+    } catch (e: any) {
+      console.error('Failed to update event service:', e);
+      return { success: false, error: e?.message || 'Network error updating event service.' };
+    }
+  },
+
+  async deleteEventService(id: number | string): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/event-services/${id}/`, {
+        method: 'DELETE',
+      });
+      return res.ok || res.status === 204;
+    } catch (e) {
+      console.error('Failed to delete event service:', e);
+      return false;
+    }
   }
 };
+
+

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { Booking, Venue, BookingStatus, VenueOwner, VenueCategory } from '../types';
+import type { Booking, Venue, BookingStatus, VenueOwner, VenueCategory, Message } from '../types';
 import { ApiService } from '../services/api';
 import {
   Building2,
@@ -12,7 +12,9 @@ import {
   Trash2,
   ShieldCheck,
   User as UserIcon,
-  Image as ImageIcon
+  Image as ImageIcon,
+  MessageSquare,
+  Send
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cleanImageUrl, handleImageError, DEFAULT_SPACE_IMAGE } from '../utils/imageUtils';
@@ -26,8 +28,25 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
   currentOwner,
   onLogout,
 }) => {
-  const [activeTab, setActiveTab] = useState<'venues' | 'bookings' | 'profile'>('venues');
+  const [activeTab, setActiveTab] = useState<'venues' | 'bookings' | 'messages' | 'profile'>('venues');
   const [isUploading, setIsUploading] = useState(false);
+  const [selectedBookingChatId, setSelectedBookingChatId] = useState<number | null>(null);
+  const [chatMessages, setChatMessages] = useState<Message[]>([]);
+  const [loadingChat, setLoadingChat] = useState(false);
+  const [messageDraft, setMessageDraft] = useState('');
+  const [sendingDraft, setSendingDraft] = useState(false);
+
+  const fetchChatMessages = useCallback(async (bookingId: number) => {
+    try {
+      setLoadingChat(true);
+      const msgs = await ApiService.getMessages({ booking: bookingId });
+      setChatMessages(msgs);
+    } catch (e) {
+      console.error("Failed to load chat messages", e);
+    } finally {
+      setLoadingChat(false);
+    }
+  }, []);
 
   const handleProfilePictureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0 && currentOwner.user_details) {
@@ -130,10 +149,26 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
     fetchDashboardData();
   }, [fetchDashboardData]);
 
+  useEffect(() => {
+    if (activeTab === 'messages' && bookings.length > 0) {
+      const activeId = selectedBookingChatId || bookings[0]?.id;
+      if (activeId) {
+        fetchChatMessages(Number(activeId));
+        const interval = setInterval(() => {
+          fetchChatMessages(Number(activeId));
+        }, 4000);
+        return () => clearInterval(interval);
+      }
+    }
+  }, [activeTab, selectedBookingChatId, bookings, fetchChatMessages]);
+
   const handleUpdateBookingStatus = async (id: number, status: BookingStatus) => {
     const success = await ApiService.updateBookingStatus(id, status);
     if (success) {
+      toast.success(`Booking ${status.toLowerCase()}!`);
       fetchDashboardData();
+    } else {
+      toast.error('Failed to update booking status.');
     }
   };
 
@@ -443,6 +478,25 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
             }}
           >
             <CalendarDays size={18} /> Booking Requests ({bookings.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('messages')}
+            style={{
+              padding: '12px 24px',
+              fontWeight: 700,
+              fontSize: '1rem',
+              color: activeTab === 'messages' ? '#0d8a73' : '#64748b',
+              borderBottom: activeTab === 'messages' ? '3px solid #0d8a73' : '3px solid transparent',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginBottom: '-2px',
+            }}
+          >
+            <MessageSquare size={18} /> Messages
           </button>
           <button
             onClick={() => setActiveTab('profile')}
@@ -774,6 +828,28 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
                           </button>
                         </>
                       )}
+                      <button
+                        onClick={() => {
+                          setSelectedBookingChatId(booking.id);
+                          setActiveTab('messages');
+                          fetchChatMessages(booking.id);
+                        }}
+                        style={{
+                          background: '#f0fdf4',
+                          color: '#0d8a73',
+                          border: '1px solid rgba(13, 138, 115, 0.3)',
+                          padding: '10px 16px',
+                          borderRadius: '8px',
+                          fontWeight: 700,
+                          fontSize: '0.88rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}
+                      >
+                        <MessageSquare size={16} /> Chat Client
+                      </button>
                       {booking.status === 'APPROVED' && (
                         <button
                           onClick={() => handleUpdateBookingStatus(booking.id, 'COMPLETED')}
@@ -798,6 +874,244 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
             )}
           </div>
         )}
+
+        {/* Tab: Messages */}
+        {activeTab === 'messages' && (() => {
+          const currentChatBooking = bookings.find(b => b.id === selectedBookingChatId) || bookings[0];
+          const clientName = currentChatBooking?.customer_name || 'Client';
+          const clientInitial = clientName.charAt(0).toUpperCase();
+
+          const handleSendReply = async () => {
+            if (!messageDraft.trim() || !currentChatBooking || !currentOwner.user) return;
+            const content = messageDraft.trim();
+            setMessageDraft('');
+            setSendingDraft(true);
+            try {
+              const res = await ApiService.sendMessage({
+                sender: currentOwner.user,
+                recipient: currentChatBooking.customer,
+                booking: currentChatBooking.id,
+                venue: currentChatBooking.venue,
+                content,
+              });
+              if (res) {
+                setChatMessages(prev => [...prev, res]);
+                toast.success(`Message sent to ${clientName}!`);
+              } else {
+                toast.error('Failed to send message.');
+              }
+            } catch (e) {
+              toast.error('Error sending message.');
+            } finally {
+              setSendingDraft(false);
+            }
+          };
+
+          return bookings.length === 0 ? (
+            <div style={{ background: '#ffffff', padding: '60px 20px', textAlign: 'center', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
+              <MessageSquare size={48} color="#94a3b8" style={{ marginBottom: '14px' }} />
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', marginBottom: '6px' }}>No Messages Yet</h3>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', maxWidth: '420px', margin: '0 auto 20px' }}>
+                When clients book your venues or reach out with inquiries, direct chats will appear here.
+              </p>
+            </div>
+          ) : (
+            <div
+              style={{
+                background: '#ffffff',
+                borderRadius: '16px',
+                border: '1px solid #e2e8f0',
+                display: 'grid',
+                gridTemplateColumns: '320px 1fr',
+                minHeight: '560px',
+                overflow: 'hidden',
+              }}
+            >
+              {/* Left Pane: Booking Conversations */}
+              <div style={{ borderRight: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ padding: '18px 20px', borderBottom: '1px solid #e2e8f0', fontWeight: 800, color: '#0f172a' }}>
+                  Conversations ({bookings.length})
+                </div>
+                <div style={{ flex: 1, overflowY: 'auto' }}>
+                  {bookings.map((b) => {
+                    const isSelected = currentChatBooking?.id === b.id;
+                    return (
+                      <div
+                        key={b.id}
+                        onClick={() => {
+                          setSelectedBookingChatId(b.id);
+                          fetchChatMessages(b.id);
+                        }}
+                        style={{
+                          padding: '14px 18px',
+                          borderBottom: '1px solid #f1f5f9',
+                          background: isSelected ? '#ffffff' : 'transparent',
+                          cursor: 'pointer',
+                          borderLeft: isSelected ? '4px solid #0d8a73' : '4px solid transparent',
+                          transition: 'background 0.15s ease',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '3px' }}>
+                          <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f172a' }}>
+                            {b.customer_name || 'Client'}
+                          </span>
+                          <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{b.event_date}</span>
+                        </div>
+                        <div style={{ fontSize: '0.76rem', color: '#0d8a73', fontWeight: 600, marginBottom: '2px' }}>
+                          {b.event_title || b.event_type}
+                        </div>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {b.notes ? `"${b.notes}"` : `Booking request #${b.id}`}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Right Pane: Active Chat */}
+              <div style={{ display: 'flex', flexDirection: 'column', background: '#ffffff', overflow: 'hidden' }}>
+                <div style={{ padding: '16px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div
+                      style={{
+                        width: '38px',
+                        height: '38px',
+                        borderRadius: '50%',
+                        background: '#ccfbf1',
+                        color: '#0d8a73',
+                        fontWeight: 800,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      {clientInitial}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '0.96rem', color: '#0f172a' }}>{clientName}</div>
+                      <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                        Inquiring about {currentChatBooking?.event_title || 'Space'} · Date: {currentChatBooking?.event_date}
+                      </div>
+                    </div>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: '0.75rem',
+                      background: '#ecfdf5',
+                      color: '#065f46',
+                      padding: '4px 10px',
+                      borderRadius: '9999px',
+                      fontWeight: 600,
+                    }}
+                  >
+                    Status: {currentChatBooking?.status}
+                  </span>
+                </div>
+
+                {/* Official In-Platform Policy Banner */}
+                <div style={{ background: '#f0fdf4', borderBottom: '1px solid #bbf7d0', padding: '8px 24px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.76rem', color: '#166534', fontWeight: 600 }}>
+                  <ShieldCheck size={14} color="#16a34a" /> In-Platform Official Communication: All inquiries, booking terms & chats must stay strictly inside Locyfy. Off-platform communications are prohibited.
+                </div>
+
+                {/* Messages Bubbles */}
+                <div style={{ flex: 1, padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px', background: '#fafafa' }}>
+                  {/* Initial Inquiry Note */}
+                  <div style={{ alignSelf: 'flex-start', maxWidth: '75%', background: '#ffffff', padding: '12px 16px', borderRadius: '14px 14px 14px 2px', fontSize: '0.9rem', color: '#1e293b', border: '1px solid #e2e8f0', lineHeight: 1.5 }}>
+                    <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#0d8a73', marginBottom: '4px' }}>
+                      {clientName} (Booking Inquiry)
+                    </div>
+                    {currentChatBooking?.notes 
+                      ? currentChatBooking.notes 
+                      : `Booking request for "${currentChatBooking?.event_title}" on ${currentChatBooking?.event_date} for ${currentChatBooking?.guest_count || 1} guest(s).`}
+                    <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '4px', textAlign: 'right' }}>
+                      {currentChatBooking?.event_date || 'Recent'}
+                    </div>
+                  </div>
+
+                  {loadingChat && chatMessages.length === 0 ? (
+                    <div style={{ textAlign: 'center', color: '#94a3b8', padding: '12px', fontSize: '0.85rem' }}>
+                      Loading conversation history...
+                    </div>
+                  ) : null}
+
+                  {chatMessages.map((msg) => {
+                    const isMe = currentOwner.user && msg.sender === currentOwner.user;
+                    return (
+                      <div
+                        key={msg.id}
+                        style={{
+                          alignSelf: isMe ? 'flex-end' : 'flex-start',
+                          maxWidth: '75%',
+                          background: isMe ? '#0d8a73' : '#ffffff',
+                          color: isMe ? '#ffffff' : '#1e293b',
+                          padding: '12px 16px',
+                          borderRadius: isMe ? '14px 14px 2px 14px' : '14px 14px 14px 2px',
+                          fontSize: '0.9rem',
+                          lineHeight: 1.5,
+                          border: isMe ? 'none' : '1px solid #e2e8f0',
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                        }}
+                      >
+                        {!isMe && (
+                          <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#0d8a73', marginBottom: '4px' }}>
+                            {msg.sender_name || clientName}
+                          </div>
+                        )}
+                        <div style={{ wordBreak: 'break-word' }}>{msg.content}</div>
+                        <div
+                          style={{
+                            fontSize: '0.72rem',
+                            color: isMe ? '#a7f3d0' : '#94a3b8',
+                            marginTop: '4px',
+                            textAlign: 'right',
+                          }}
+                        >
+                          {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Reply Input */}
+                <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    placeholder={`Reply to ${clientName}...`}
+                    value={messageDraft}
+                    onChange={(e) => setMessageDraft(e.target.value)}
+                    style={{ flex: 1, padding: '12px 16px', borderRadius: '9999px', border: '1.5px solid #cbd5e1', fontSize: '0.9rem', outline: 'none' }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && messageDraft.trim() && !sendingDraft) {
+                        handleSendReply();
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={handleSendReply}
+                    disabled={sendingDraft || !messageDraft.trim()}
+                    style={{
+                      background: '#0d8a73',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '9999px',
+                      padding: '12px 20px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      opacity: sendingDraft ? 0.7 : 1,
+                    }}
+                  >
+                    <Send size={15} /> {sendingDraft ? 'Sending...' : 'Send'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
         {/* Tab 3: Profile */}
         {activeTab === 'profile' && (
           <div style={{ background: '#fff', padding: '32px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>

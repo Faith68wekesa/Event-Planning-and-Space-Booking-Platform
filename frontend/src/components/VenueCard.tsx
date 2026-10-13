@@ -57,11 +57,17 @@ export const VenueCard: React.FC<VenueCardProps> = ({ venue, onSelect, onBook })
           display: 'flex',
           alignItems: 'center',
           gap: '4px',
-          fontSize: '0.85rem',
+          fontSize: '0.82rem',
           fontWeight: 700,
-          color: '#fbbf24'
+          color: (venue.review_count || 0) > 0 ? '#d97706' : '#64748b'
         }}>
-          <Star size={14} fill="#fbbf24" /> {venue.rating} ({venue.review_count})
+          {(venue.review_count || 0) > 0 ? (
+            <>
+              <Star size={14} fill="#fbbf24" stroke="#d97706" /> {Number(venue.rating).toFixed(1)} ({venue.review_count})
+            </>
+          ) : (
+            <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>No reviews yet</span>
+          )}
         </div>
       </div>
 

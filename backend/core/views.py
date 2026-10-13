@@ -6,10 +6,10 @@ from rest_framework.permissions import AllowAny
 from django.contrib.auth import authenticate
 from django.db import transaction
 from django.db.models import Q, Sum
-from .models import User, VendorProfile, VenueOwnerProfile, Venue, Booking, Review, EmailOTP
+from .models import User, VendorProfile, VenueOwnerProfile, Venue, Booking, Review, EmailOTP, Message, Event, EventService
 from .serializers import (
     UserSerializer, VendorProfileSerializer, VenueOwnerProfileSerializer, VenueSerializer, 
-    BookingSerializer, ReviewSerializer
+    BookingSerializer, ReviewSerializer, MessageSerializer, EventSerializer, EventServiceSerializer
 )
 from django.core.mail import send_mail
 import random
@@ -214,8 +214,355 @@ class ReviewViewSet(viewsets.ModelViewSet):
     queryset = Review.objects.all().order_by('-created_at')
     serializer_class = ReviewSerializer
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        params = self.request.query_params
+        venue_id = params.get('venue')
+        vendor_id = params.get('vendor')
+        user_id = params.get('user')
+        booking_id = params.get('booking')
+
+        # Filter strictly by the venue, vendor, or user specified
+        if venue_id:
+            queryset = queryset.filter(venue_id=venue_id)
+        if vendor_id:
+            queryset = queryset.filter(vendor_id=vendor_id)
+        if user_id:
+            queryset = queryset.filter(user_id=user_id)
+        if booking_id:
+            queryset = queryset.filter(booking_id=booking_id)
+
+        return queryset
+
+    def create(self, request, *args, **kwargs):
+        booking_id = request.data.get('booking')
+        rating = request.data.get('rating')
+        comment = request.data.get('comment', '').strip()
+
+        if not booking_id:
+            return Response({'error': 'A booking ID is required to leave a review.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            booking = Booking.objects.select_related('venue', 'vendor', 'customer').get(id=booking_id)
+        except Booking.DoesNotExist:
+            return Response({'error': 'Booking not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        user = request.user if request.user and request.user.is_authenticated else None
+        if not user:
+            client_user_id = request.data.get('user')
+            if client_user_id:
+                try:
+                    user = User.objects.get(id=client_user_id)
+                except User.DoesNotExist:
+                    pass
+        if not user:
+            user = booking.customer
+
+        if user.id != booking.customer_id and not user.is_staff:
+            return Response({'error': 'You can only review your own bookings.'}, status=status.HTTP_403_FORBIDDEN)
+
+        if Review.objects.filter(booking=booking).exists():
+            return Response({'error': 'You have already reviewed this booking.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            rating_val = int(rating)
+            if rating_val < 1 or rating_val > 5:
+                return Response({'error': 'Rating must be between 1 and 5 stars.'}, status=status.HTTP_400_BAD_REQUEST)
+        except (ValueError, TypeError):
+            return Response({'error': 'Invalid rating format.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        venue = booking.venue
+        vendor = booking.vendor
+
+        review = Review.objects.create(
+            user=user,
+            booking=booking,
+            venue=venue,
+            vendor=vendor,
+            rating=rating_val,
+            comment=comment
+        )
+
+        serializer = self.get_serializer(review)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        params = self.request.query_params
+        venue_id = params.get('venue')
+        vendor_id = params.get('vendor')
+
+        qs = Review.objects.all()
+        if venue_id:
+            qs = qs.filter(venue_id=venue_id)
+        elif vendor_id:
+            qs = qs.filter(vendor_id=vendor_id)
+
+        from django.db.models import Avg, Count
+        stats = qs.aggregate(avg=Avg('rating'), count=Count('id'))
+        breakdown = {str(i): qs.filter(rating=i).count() for i in range(1, 6)}
+
+        return Response({
+            'average_rating': round(stats['avg'], 1) if stats['avg'] is not None else 0.0,
+            'review_count': stats['count'] or 0,
+            'rating_breakdown': breakdown,
+        })
+
+
+class MessageViewSet(viewsets.ModelViewSet):
+    queryset = Message.objects.all().order_by('created_at')
+    serializer_class = MessageSerializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        params = self.request.query_params
+        user_id = params.get('user')
+        partner_id = params.get('partner')
+        booking_id = params.get('booking')
+        venue_id = params.get('venue')
+        vendor_id = params.get('vendor')
+
+        current_user_id = self.request.user.id if self.request.user and self.request.user.is_authenticated else user_id
+
+        if current_user_id and partner_id:
+            queryset = queryset.filter(
+                (Q(sender_id=current_user_id) & Q(recipient_id=partner_id)) |
+                (Q(sender_id=partner_id) & Q(recipient_id=current_user_id))
+            )
+        elif current_user_id:
+            queryset = queryset.filter(
+                Q(sender_id=current_user_id) | Q(recipient_id=current_user_id)
+            )
+
+        if booking_id:
+            queryset = queryset.filter(booking_id=booking_id)
+        if venue_id:
+            queryset = queryset.filter(venue_id=venue_id)
+        if vendor_id:
+            queryset = queryset.filter(vendor_id=vendor_id)
+
+        return queryset
+
+    def create(self, request, *args, **kwargs):
+        data = request.data.copy()
+        
+        if request.user and request.user.is_authenticated:
+            sender_id = request.user.id
+        else:
+            sender_id = data.get('sender')
+
+        recipient_id = data.get('recipient')
+        booking_id = data.get('booking')
+        venue_id = data.get('venue')
+        vendor_id = data.get('vendor')
+        content = data.get('content', '').strip()
+
+        if not sender_id:
+            return Response({'error': 'Sender is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not content:
+            return Response({'error': 'Message content cannot be empty.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        booking = Booking.objects.filter(id=booking_id).first() if booking_id else None
+        venue = Venue.objects.filter(id=venue_id).first() if venue_id else (booking.venue if booking else None)
+        vendor = VendorProfile.objects.filter(id=vendor_id).first() if vendor_id else (booking.vendor if booking else None)
+
+        if not recipient_id:
+            if venue:
+                if venue.owner and venue.owner.user_id:
+                    recipient_id = venue.owner.user_id
+                elif venue.vendor and venue.vendor.user_id:
+                    recipient_id = venue.vendor.user_id
+            elif vendor and vendor.user_id:
+                recipient_id = vendor.user_id
+            elif booking:
+                if int(sender_id) == booking.customer_id:
+                    if booking.venue and booking.venue.owner and booking.venue.owner.user_id:
+                        recipient_id = booking.venue.owner.user_id
+                    elif booking.venue and booking.venue.vendor and booking.venue.vendor.user_id:
+                        recipient_id = booking.venue.vendor.user_id
+                    elif booking.vendor and booking.vendor.user_id:
+                        recipient_id = booking.vendor.user_id
+                else:
+                    recipient_id = booking.customer_id
+
+        if not recipient_id:
+            return Response({'error': 'Recipient could not be identified.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            sender = User.objects.get(id=sender_id)
+            recipient = User.objects.get(id=recipient_id)
+        except User.DoesNotExist:
+            return Response({'error': 'Sender or Recipient user not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        msg = Message.objects.create(
+            sender=sender,
+            recipient=recipient,
+            booking=booking,
+            venue=venue,
+            vendor=vendor,
+            content=content
+        )
+
+        serializer = self.get_serializer(msg)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'])
+    def conversations(self, request):
+        user_id = request.query_params.get('user')
+        current_user_id = request.user.id if request.user and request.user.is_authenticated else user_id
+
+        if not current_user_id:
+            return Response({'error': 'User ID required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        messages = Message.objects.filter(
+            Q(sender_id=current_user_id) | Q(recipient_id=current_user_id)
+        ).select_related('sender', 'recipient', 'booking', 'venue', 'vendor').order_by('-created_at')
+
+        threads = {}
+        for msg in messages:
+            partner = msg.recipient if msg.sender_id == int(current_user_id) else msg.sender
+            partner_id = partner.id
+            if partner_id not in threads:
+                if partner.first_name:
+                    p_name = f"{partner.first_name} {partner.last_name or ''}".strip()
+                elif hasattr(partner, 'vendor_profile') and partner.vendor_profile.business_name:
+                    p_name = partner.vendor_profile.business_name
+                elif hasattr(partner, 'venue_owner_profile') and partner.venue_owner_profile.business_name:
+                    p_name = partner.venue_owner_profile.business_name
+                else:
+                    p_name = partner.username
+
+                threads[partner_id] = {
+                    'partner_id': partner_id,
+                    'partner_name': p_name,
+                    'partner_username': partner.username,
+                    'partner_avatar': getattr(partner, 'avatar_url', None),
+                    'partner_role': partner.role,
+                    'last_message': msg.content,
+                    'last_message_at': msg.created_at,
+                    'unread_count': 0,
+                    'booking_id': msg.booking_id,
+                    'event_title': msg.booking.event_title if msg.booking else None,
+                    'venue_id': msg.venue_id,
+                    'venue_title': msg.venue.title if msg.venue else None,
+                    'vendor_id': msg.vendor_id,
+                    'vendor_name': msg.vendor.business_name if msg.vendor else None,
+                }
+
+            if msg.recipient_id == int(current_user_id) and not msg.is_read:
+                threads[partner_id]['unread_count'] += 1
+
+        return Response(list(threads.values()))
+
+    @action(detail=False, methods=['post'])
+    def mark_read(self, request):
+        user_id = request.data.get('user')
+        partner_id = request.data.get('partner')
+        current_user_id = request.user.id if request.user and request.user.is_authenticated else user_id
+
+        if not current_user_id or not partner_id:
+            return Response({'error': 'user and partner are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        updated = Message.objects.filter(
+            sender_id=partner_id,
+            recipient_id=current_user_id,
+            is_read=False
+        ).update(is_read=True)
+
+        return Response({'marked_read': updated}, status=status.HTTP_200_OK)
+
+
+class EventViewSet(viewsets.ModelViewSet):
+    serializer_class = EventSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        params = getattr(self.request, 'query_params', getattr(self.request, 'GET', {}))
+        user_id = params.get('user') or params.get('user_id') or params.get('owner')
+
+        if user and user.is_authenticated:
+            return Event.objects.filter(owner=user).order_by('-created_at')
+        elif user_id:
+            return Event.objects.filter(owner_id=user_id).order_by('-created_at')
+        return Event.objects.none()
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if user and user.is_authenticated:
+            serializer.save(owner=user)
+        else:
+            owner_id = self.request.data.get('owner') or self.request.data.get('user_id')
+            if not owner_id:
+                raise serializers.ValidationError({"owner": "Owner user is required."})
+            owner = User.objects.get(id=owner_id)
+            serializer.save(owner=owner)
+
+    def check_object_permissions(self, request, obj):
+        super().check_object_permissions(request, obj)
+        user = request.user
+        if user and user.is_authenticated:
+            if obj.owner != user and not user.is_staff:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("You do not have permission to access or modify this event.")
+        else:
+            owner_id = request.data.get('owner') or request.query_params.get('user')
+            if owner_id and int(owner_id) != obj.owner_id:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("You do not have permission to access or modify this event.")
+
+
+class EventServiceViewSet(viewsets.ModelViewSet):
+    serializer_class = EventServiceSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        params = getattr(self.request, 'query_params', getattr(self.request, 'GET', {}))
+        event_id = params.get('event') or params.get('event_id')
+        user_id = params.get('user') or params.get('user_id')
+
+        qs = EventService.objects.all().select_related('event')
+        if event_id:
+            qs = qs.filter(event_id=event_id)
+
+        if user and user.is_authenticated:
+            return qs.filter(event__owner=user)
+        elif user_id:
+            return qs.filter(event__owner_id=user_id)
+        return qs
+
+    def perform_create(self, serializer):
+        event_id = self.request.data.get('event') or self.request.data.get('event_id')
+        if not event_id:
+            raise serializers.ValidationError({"event": "Event ID is required."})
+        try:
+            event = Event.objects.get(id=event_id)
+        except Event.DoesNotExist:
+            raise serializers.ValidationError({"event": "Referenced event does not exist."})
+
+        user = self.request.user
+        if user and user.is_authenticated and event.owner != user and not user.is_staff:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("You cannot add services to an event you do not own.")
+
+        serializer.save(event=event)
+
+    def check_object_permissions(self, request, obj):
+        super().check_object_permissions(request, obj)
+        user = request.user
+        if user and user.is_authenticated:
+            if obj.event.owner != user and not user.is_staff:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("You do not have permission to modify this service.")
+        else:
+            owner_id = request.data.get('owner') or request.query_params.get('user')
+            if owner_id and int(owner_id) != obj.event.owner_id:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("You do not have permission to modify this service.")
+
+
 
 @api_view(['GET'])
+
 def platform_stats(request):
     total_venues = Venue.objects.count()
     verified_venues = Venue.objects.filter(is_verified=True).count()

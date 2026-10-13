@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     UserViewSet, VendorProfileViewSet, VenueOwnerProfileViewSet, VenueViewSet, 
-    BookingViewSet, ReviewViewSet, platform_stats,
+    BookingViewSet, ReviewViewSet, MessageViewSet, EventViewSet, EventServiceViewSet, platform_stats,
     VendorDashboardView, VendorBookingsView,
     VenueOwnerDashboardView, VenueOwnerBookingsView,
     send_otp, verify_otp, reset_password,
@@ -17,6 +17,9 @@ router.register(r'venue-owners', VenueOwnerProfileViewSet, basename='venue-owner
 router.register(r'venues', VenueViewSet, basename='venue')
 router.register(r'bookings', BookingViewSet, basename='booking')
 router.register(r'reviews', ReviewViewSet, basename='review')
+router.register(r'messages', MessageViewSet, basename='message')
+router.register(r'events', EventViewSet, basename='event')
+router.register(r'event-services', EventServiceViewSet, basename='event-service')
 
 urlpatterns = [
     path('auth/register/', register_user, name='register-user'),

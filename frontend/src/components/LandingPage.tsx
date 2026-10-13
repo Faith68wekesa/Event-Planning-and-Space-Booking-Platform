@@ -15,17 +15,19 @@ import {
   Music,
   Palette
 } from 'lucide-react';
-import type { FilterState, Venue, VenueCategory } from '../types';
+import type { FilterState, Venue, Vendor, VenueCategory } from '../types';
 import { ApiService } from '../services/api';
 import { handleImageError, DEFAULT_SPACE_IMAGE, DEFAULT_SERVICE_IMAGE } from '../utils/imageUtils';
 
-interface LandingPageProps {
+export interface LandingPageProps {
   onSearch: (filters: FilterState) => void;
   filters: FilterState;
   onExploreVenues?: () => void;
   onExploreVendors?: () => void;
   onSelectVenue?: (venue: Venue) => void;
   onBookVenue?: (venue: Venue) => void;
+  onSelectVendor?: (vendor: Vendor) => void;
+  onBookVendor?: (vendor: Vendor) => void;
 }
 
 const CATEGORY_TAGS: { label: string; cat: VenueCategory; icon: React.ReactNode }[] = [
@@ -44,29 +46,26 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   onExploreVendors,
   onSelectVenue,
   onBookVenue,
+  onSelectVendor,
+  onBookVendor,
 }) => {
   const [spaces, setSpaces] = useState<Venue[]>([]);
-  const [services, setServices] = useState<Venue[]>([]);
+  const [services, setServices] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
     setLoading(true);
 
-    ApiService.getVenues()
-      .then((allListings) => {
+    Promise.all([
+      ApiService.getVenues(),
+      ApiService.getVendors(),
+    ])
+      .then(([allVenues, allVendors]) => {
         if (!isMounted) return;
 
-        // 1. Separate actual physical spaces (capacity > 0)
-        const rawSpaces = allListings.filter((item) => Number(item.capacity) > 0);
-
-        // 2. Separate actual listed services (capacity === 0 or service categories)
-        const rawServices = allListings.filter((item) => 
-          Number(item.capacity) === 0 || 
-          ['PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'].includes(item.category)
-        );
-
-        // Deduplicate listings by title to guarantee a rich showcase
+        // 1. Physical spaces (capacity > 0)
+        const rawSpaces = allVenues.filter((item) => Number(item.capacity) > 0);
         const seenSpaceTitles = new Set<string>();
         const uniqueSpaces = rawSpaces.filter((s) => {
           const key = s.title.toLowerCase().trim();
@@ -75,16 +74,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           return true;
         });
 
-        const seenServiceTitles = new Set<string>();
-        const uniqueServices = rawServices.filter((s) => {
-          const key = s.title.toLowerCase().trim();
-          if (seenServiceTitles.has(key)) return false;
-          seenServiceTitles.add(key);
-          return true;
-        });
-
         setSpaces(uniqueSpaces.slice(0, 6));
-        setServices(uniqueServices.slice(0, 6));
+        setServices(allVendors.slice(0, 6));
       })
       .catch((err) => {
         console.error("Failed to load listings for landing page:", err);
@@ -328,8 +319,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#334155', fontWeight: 600 }}>
                         <Users size={16} color="#0F8F7A" /> Up to {venue.capacity} guests
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#d97706', fontWeight: 700 }}>
-                        <Star size={14} fill="#d97706" /> {venue.rating || 4.9}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: (venue.review_count || 0) > 0 ? '#d97706' : '#64748b', fontWeight: 700 }}>
+                        {(venue.review_count || 0) > 0 ? (
+                          <>
+                            <Star size={14} fill="#fbbf24" stroke="#d97706" /> {Number(venue.rating).toFixed(1)} ({venue.review_count} {venue.review_count === 1 ? 'review' : 'reviews'})
+                          </>
+                        ) : (
+                          <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>No reviews yet</span>
+                        )}
                       </div>
                     </div>
 
@@ -433,118 +430,144 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </div>
           ) : services.length > 0 ? (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '28px' }}>
-              {services.map((service) => (
-                <div 
-                  key={service.id} 
-                  onClick={() => onSelectVenue && onSelectVenue(service)}
-                  style={{ 
-                    background: '#ffffff', 
-                    borderRadius: '16px', 
-                    overflow: 'hidden', 
-                    border: '1px solid #e2e8f0', 
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.04)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    cursor: onSelectVenue ? 'pointer' : 'default',
-                    transition: 'transform 0.2s ease, box-shadow 0.2s ease'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-4px)';
-                    e.currentTarget.style.boxShadow = '0 12px 24px rgba(0,0,0,0.08)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'none';
-                    e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.04)';
-                  }}
-                >
-                  <div style={{ height: '210px', position: 'relative', overflow: 'hidden', background: '#f1f5f9' }}>
-                    <img
-                      src={service.image_url || DEFAULT_SERVICE_IMAGE}
-                      onError={(e) => handleImageError(e, DEFAULT_SERVICE_IMAGE)}
-                      alt={service.title}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    />
-                    <div style={{ position: 'absolute', top: '12px', left: '12px', display: 'flex', gap: '6px' }}>
-                      <span style={{ background: '#0F8F7A', color: '#fff', fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '999px' }}>
-                        {service.category_display || service.category}
-                      </span>
-                    </div>
-                  </div>
+              {services.map((service) => {
+                const coverImg = service.portfolio_images && service.portfolio_images.length > 0
+                  ? service.portfolio_images[0]
+                  : DEFAULT_SERVICE_IMAGE;
 
-                  <div style={{ padding: '22px', display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
-                    <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0', lineHeight: 1.3 }}>
-                      {service.title}
-                    </h3>
-                    
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '0.88rem', marginBottom: '10px' }}>
-                      <Briefcase size={15} color="#0F8F7A" /> {service.vendor_name || service.owner_name || 'Professional Event Service'}
-                    </div>
-
-                    <p style={{ 
-                      margin: '0 0 16px', 
-                      color: '#64748b', 
-                      fontSize: '0.85rem', 
-                      lineHeight: 1.5,
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden'
-                    }}>
-                      {service.description || 'Full professional event package with guaranteed delivery and expert coordination.'}
-                    </p>
-
-                    <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
-                      <div>
-                        <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Package Rate</span>
-                        <span style={{ color: '#0F8F7A', fontWeight: 800, fontSize: '1.15rem' }}>
-                          KES {Number(service.price_per_day).toLocaleString()}
+                return (
+                  <div 
+                    key={service.id} 
+                    onClick={() => onSelectVendor && onSelectVendor(service)}
+                    style={{ 
+                      background: '#ffffff', 
+                      borderRadius: '16px', 
+                      overflow: 'hidden', 
+                      border: '1px solid #e2e8f0', 
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.04)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      cursor: onSelectVendor ? 'pointer' : 'default',
+                      transition: 'transform 0.2s ease, box-shadow 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'translateY(-4px)';
+                      e.currentTarget.style.boxShadow = '0 12px 24px rgba(0,0,0,0.08)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'none';
+                      e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.04)';
+                    }}
+                  >
+                    <div style={{ height: '210px', position: 'relative', overflow: 'hidden', background: '#f1f5f9' }}>
+                      <img
+                        src={coverImg}
+                        onError={(e) => handleImageError(e, DEFAULT_SERVICE_IMAGE)}
+                        alt={service.business_name}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                      <div style={{ position: 'absolute', top: '12px', left: '12px', display: 'flex', gap: '6px' }}>
+                        <span style={{ background: '#0F8F7A', color: '#fff', fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '999px' }}>
+                          {service.vendor_type_display || service.vendor_type}
                         </span>
+                        {service.is_verified && (
+                          <span style={{ background: '#16a34a', color: '#fff', fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '999px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <CheckCircle size={12} /> Verified
+                          </span>
+                        )}
                       </div>
+                    </div>
+
+                    <div style={{ padding: '22px', display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
+                      <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0', lineHeight: 1.3 }}>
+                        {service.business_name}
+                      </h3>
                       
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (onSelectVenue) onSelectVenue(service);
-                          }}
-                          style={{
-                            padding: '8px 14px',
-                            borderRadius: '8px',
-                            background: '#f1f5f9',
-                            border: '1px solid #e2e8f0',
-                            color: '#334155',
-                            fontSize: '0.82rem',
-                            fontWeight: 700,
-                            cursor: 'pointer'
-                          }}
-                        >
-                          View Details
-                        </button>
-                        {onBookVenue && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '0.88rem', marginBottom: '12px' }}>
+                        <MapPin size={15} color="#0F8F7A" /> {service.location}
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', borderRadius: '10px', marginBottom: '16px', fontSize: '0.85rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#334155', fontWeight: 600 }}>
+                          <Briefcase size={15} color="#0F8F7A" /> {service.vendor_type_display || service.vendor_type}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: (service.review_count || 0) > 0 ? '#d97706' : '#64748b', fontWeight: 700 }}>
+                          {(service.review_count || 0) > 0 ? (
+                            <>
+                              <Star size={14} fill="#fbbf24" stroke="#d97706" /> {Number(service.rating).toFixed(1)} ({service.review_count} {service.review_count === 1 ? 'review' : 'reviews'})
+                            </>
+                          ) : (
+                            <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>No reviews yet</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <p style={{ 
+                        margin: '0 0 16px', 
+                        color: '#64748b', 
+                        fontSize: '0.85rem', 
+                        lineHeight: 1.5,
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden'
+                      }}>
+                        {service.description || 'Full professional event service with guaranteed delivery, direct communication, and quality assurance.'}
+                      </p>
+
+                      <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
+                        <div>
+                          <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Starting Rate</span>
+                          <span style={{ color: '#0F8F7A', fontWeight: 800, fontSize: '1.15rem' }}>
+                            KES {Number(service.starting_price || 0).toLocaleString()}
+                          </span>
+                        </div>
+                        
+                        <div style={{ display: 'flex', gap: '8px' }}>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              onBookVenue(service);
+                              if (onSelectVendor) onSelectVendor(service);
                             }}
                             style={{
-                              padding: '8px 16px',
+                              padding: '8px 14px',
                               borderRadius: '8px',
-                              background: '#0d8a73',
-                              border: 'none',
-                              color: '#fff',
+                              background: '#f1f5f9',
+                              border: '1px solid #e2e8f0',
+                              color: '#334155',
                               fontSize: '0.82rem',
                               fontWeight: 700,
                               cursor: 'pointer'
                             }}
                           >
-                            Book Service
+                            Details
                           </button>
-                        )}
+                          {onBookVendor && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onBookVendor(service);
+                              }}
+                              style={{
+                                padding: '8px 16px',
+                                borderRadius: '8px',
+                                background: '#0d8a73',
+                                border: 'none',
+                                color: '#fff',
+                                fontSize: '0.82rem',
+                                fontWeight: 700,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              Book Service
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div style={{ padding: '60px', textAlign: 'center', background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', color: '#64748b' }}>
@@ -554,7 +577,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
       </section>
 
-      {/* 4. Why Choose Platform Section */}
+      {/* 5. Why Choose Platform Section */}
       <section style={{ padding: '80px 24px', background: '#ffffff' }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto', textAlign: 'center' }}>
           <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#0f172a', marginBottom: '48px' }}>

@@ -125,6 +125,7 @@ export interface Venue {
   vendor_name?: string;
   owner?: number;
   owner_name?: string;
+  owner_user_id?: number;
   title: string;
   description: string;
   category: VenueCategory;
@@ -154,6 +155,7 @@ export interface Booking {
   venue_details?: Venue;
   vendor?: number;
   vendor_details?: Vendor;
+  provider_user_id?: number;
   event_title: string;
   event_type: string;
   event_date: string;
@@ -162,18 +164,59 @@ export interface Booking {
   total_price: number;
   status: BookingStatus;
   notes?: string;
+  has_reviewed?: boolean;
+  review?: Review;
   created_at?: string;
+}
+
+export interface Message {
+  id: number;
+  sender: number;
+  sender_name: string;
+  sender_avatar?: string;
+  recipient: number;
+  recipient_name: string;
+  recipient_avatar?: string;
+  booking?: number;
+  event_title?: string;
+  venue?: number;
+  venue_title?: string;
+  vendor?: number;
+  vendor_name?: string;
+  content: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface ConversationThread {
+  partner_id: number;
+  partner_name: string;
+  partner_username: string;
+  partner_avatar?: string;
+  partner_role?: string;
+  last_message: string;
+  last_message_at: string;
+  unread_count: number;
+  booking_id?: number;
+  event_title?: string;
+  venue_id?: number;
+  venue_title?: string;
+  vendor_id?: number;
+  vendor_name?: string;
 }
 
 export interface Review {
   id: number;
   user: number;
   user_name: string;
+  booking?: number;
   venue?: number;
   vendor?: number;
+  target_name?: string;
   rating: number;
   comment: string;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface FilterState {
@@ -194,3 +237,39 @@ export interface PlatformStats {
   total_bookings: number;
   satisfied_clients: number;
 }
+
+export type EventStatus = 'Upcoming' | 'Planning' | 'Completed' | 'Cancelled';
+
+export interface EventServiceItem {
+  id: number | string;
+  event: number;
+  name: string;
+  category?: string;
+  notes?: string;
+  estimated_cost?: number | string | null;
+  is_completed: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface EventItem {
+  id: number;
+  owner?: number;
+  owner_name?: string;
+  name: string;
+  event_type: string;
+  date: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  location: string;
+  expected_guest_count: number;
+  budget: number | string;
+  description?: string;
+  status?: EventStatus;
+  image_url?: string | null;
+  services?: EventServiceItem[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+

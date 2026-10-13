@@ -253,6 +253,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess, initia
                   </button>
                 </div>
               )}
+              {errorNotice.toLowerCase().includes('no account found') && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '2px' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('register');
+                      setErrorNotice(null);
+                    }}
+                    style={{ background: '#0F8F7A', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    Register with this email →
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

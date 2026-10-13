@@ -78,7 +78,7 @@ export const App: React.FC = () => {
     } else {
       setBookings([]);
     }
-  }, [currentUser]);
+  }, [currentUser, activeTab]);
 
   useEffect(() => {
     loadData();
@@ -136,6 +136,7 @@ export const App: React.FC = () => {
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <Toaster position="top-center" reverseOrder={false} />
       <>
+        {activeTab !== 'my-bookings' && (
           <Navbar
             activeTab={activeTab}
             setActiveTab={setActiveTab}
@@ -153,6 +154,7 @@ export const App: React.FC = () => {
               setActiveTab('landing');
             }}
           />
+        )}
 
           <main style={{ flexGrow: 1 }}>
             {activeTab === 'landing' ? (
@@ -166,6 +168,8 @@ export const App: React.FC = () => {
                 onExploreVendors={() => setActiveTab('vendors')}
                 onSelectVenue={(venue) => setSelectedVenue(venue)}
                 onBookVenue={(venue) => handleInterceptBook(venue, 'venue')}
+                onSelectVendor={(vendor) => setSelectedVendor(vendor)}
+                onBookVendor={(vendor) => handleInterceptBook(vendor, 'vendor')}
               />
             ) : (
               <>
@@ -220,11 +224,20 @@ export const App: React.FC = () => {
                   </>
                 )}
 
-                {activeTab === 'my-bookings' && (
+                {(activeTab === 'my-bookings' || activeTab === 'my-events') && (
                   <CustomerDashboard
                     bookings={bookings}
                     currentUser={currentUser}
+                    initialTab={activeTab === 'my-events' ? 'events' : 'dashboard'}
                     onCancelBooking={handleCancelBooking}
+                    onNavigate={(tab) => setActiveTab(tab as any)}
+                    venues={venues}
+                    onLogout={() => {
+                      setCurrentUser(null);
+                      setActiveRole('CUSTOMER');
+                      setActiveTab('landing');
+                    }}
+                    onRequestRole={handleRequestRole}
                   />
                 )}
 
@@ -263,16 +276,26 @@ export const App: React.FC = () => {
           {selectedVenue && (
             <VenueModal
               venue={selectedVenue}
+              currentUser={currentUser}
               onClose={() => setSelectedVenue(null)}
               onBook={(v) => setBookingTargetVenue(v)}
+              onMessage={() => {
+                setSelectedVenue(null);
+                setActiveTab('my-bookings');
+              }}
             />
           )}
 
           {selectedVendor && (
             <VendorModal
               vendor={selectedVendor}
+              currentUser={currentUser}
               onClose={() => setSelectedVendor(null)}
               onBook={(v) => handleInterceptBook(v, 'vendor')}
+              onMessage={() => {
+                setSelectedVendor(null);
+                setActiveTab('my-bookings');
+              }}
             />
           )}
 

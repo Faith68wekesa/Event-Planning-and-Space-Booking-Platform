@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Vendor } from '../types';
-import { ShieldCheck, MapPin, Star, Phone, Mail, Award, ArrowRight } from 'lucide-react';
+import { ShieldCheck, MapPin, Star, Award, ArrowRight } from 'lucide-react';
 
 interface VendorCardProps {
   vendor: Vendor;
@@ -53,11 +53,17 @@ export const VendorCard: React.FC<VendorCardProps> = ({ vendor, onSelect, onBook
           display: 'flex',
           alignItems: 'center',
           gap: '4px',
-          fontSize: '0.85rem',
+          fontSize: '0.82rem',
           fontWeight: 700,
-          color: '#fbbf24'
+          color: (vendor.review_count || 0) > 0 ? '#d97706' : '#64748b'
         }}>
-          <Star size={14} fill="#fbbf24" /> {vendor.rating} ({vendor.review_count})
+          {(vendor.review_count || 0) > 0 ? (
+            <>
+              <Star size={14} fill="#fbbf24" stroke="#d97706" /> {Number(vendor.rating).toFixed(1)} ({vendor.review_count})
+            </>
+          ) : (
+            <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>No reviews yet</span>
+          )}
         </div>
       </div>
 
@@ -103,27 +109,23 @@ export const VendorCard: React.FC<VendorCardProps> = ({ vendor, onSelect, onBook
         </p>
 
         <div style={{
-          background: '#f1f5f9',
-          border: '1px solid #e2e8f0',
+          background: '#f0fdf4',
+          border: '1px solid #bbf7d0',
           borderRadius: '8px',
           padding: '8px 12px',
           fontSize: '0.8rem',
-          color: '#475569',
+          color: '#166534',
           marginBottom: '16px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '4px'
+          gap: '2px'
         }}>
-          {vendor.contact_phone && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Phone size={12} color="#059669" /> {vendor.contact_phone}
-            </div>
-          )}
-          {vendor.contact_email && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Mail size={12} color="#0d8a73" /> {vendor.contact_email}
-            </div>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}>
+            <ShieldCheck size={14} color="#16a34a" /> In-Platform Messaging
+          </div>
+          <div style={{ fontSize: '0.74rem', color: '#15803d' }}>
+            All inquiries & bookings secured on Locyfy
+          </div>
         </div>
 
         <div style={{ marginTop: 'auto', paddingTop: '12px', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

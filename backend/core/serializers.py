@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User, VendorProfile, VenueOwnerProfile, Venue, Booking, Review
+from .models import User, VendorProfile, VenueOwnerProfile, Venue, Booking, Review, Message, Event, EventService
 
 class UserSerializer(serializers.ModelSerializer):
     is_provider = serializers.BooleanField(read_only=True)
@@ -61,6 +61,14 @@ class VenueSerializer(serializers.ModelSerializer):
     vendor_name = serializers.ReadOnlyField(source='vendor.business_name')
     owner_name = serializers.ReadOnlyField(source='owner.business_name')
     category_display = serializers.CharField(source='get_category_display', read_only=True)
+    owner_user_id = serializers.SerializerMethodField()
+
+    def get_owner_user_id(self, obj):
+        if obj.owner and obj.owner.user_id:
+            return obj.owner.user_id
+        if obj.vendor and obj.vendor.user_id:
+            return obj.vendor.user_id
+        return None
 
     def to_internal_value(self, data):
         if hasattr(data, 'copy'):
@@ -74,31 +82,175 @@ class VenueSerializer(serializers.ModelSerializer):
     class Meta:
         model = Venue
         fields = [
-            'id', 'vendor', 'vendor_name', 'owner', 'owner_name', 'title', 'description', 'category', 
+            'id', 'vendor', 'vendor_name', 'owner', 'owner_name', 'owner_user_id', 'title', 'description', 'category', 
             'category_display', 'location', 'address', 'capacity', 'price_per_day', 
             'price_per_hour', 'amenities', 'image_url', 'is_verified', 'is_available', 
             'rating', 'review_count', 'created_at'
         ]
 
 
+class ReviewSerializer(serializers.ModelSerializer):
+    user_name = serializers.SerializerMethodField()
+    target_name = serializers.SerializerMethodField()
+
+    def get_user_name(self, obj):
+        if obj.user.first_name:
+            return f"{obj.user.first_name} {obj.user.last_name or ''}".strip()
+        return obj.user.username
+
+    def get_target_name(self, obj):
+        if obj.venue:
+            return obj.venue.title
+        if obj.vendor:
+            return obj.vendor.business_name
+        return "Service"
+
+    class Meta:
+        model = Review
+        fields = [
+            'id', 'user', 'user_name', 'booking', 'venue', 'vendor', 
+            'target_name', 'rating', 'comment', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'user', 'created_at', 'updated_at']
+
+    def validate_rating(self, value):
+        if value < 1 or value > 5:
+            raise serializers.ValidationError("Rating must be between 1 and 5 stars.")
+        return value
+
+
 class BookingSerializer(serializers.ModelSerializer):
     customer_name = serializers.ReadOnlyField(source='customer.username')
     venue_details = VenueSerializer(source='venue', read_only=True)
     vendor_details = VendorProfileSerializer(source='vendor', read_only=True)
+    provider_user_id = serializers.SerializerMethodField()
+    has_reviewed = serializers.SerializerMethodField()
+    review = ReviewSerializer(read_only=True)
+
+    def get_provider_user_id(self, obj):
+        if obj.venue:
+            if obj.venue.owner and obj.venue.owner.user_id:
+                return obj.venue.owner.user_id
+            if obj.venue.vendor and obj.venue.vendor.user_id:
+                return obj.venue.vendor.user_id
+        if obj.vendor and obj.vendor.user_id:
+            return obj.vendor.user_id
+        return None
+
+    def get_has_reviewed(self, obj):
+        return hasattr(obj, 'review') and obj.review is not None
 
     class Meta:
         model = Booking
         fields = [
             'id', 'customer', 'customer_name', 'venue', 'venue_details', 
-            'vendor', 'vendor_details', 'event_title', 'event_type', 'event_date', 
+            'vendor', 'vendor_details', 'provider_user_id', 'event_title', 'event_type', 'event_date', 
             'end_date', 'guest_count', 'total_price', 'status', 'notes', 
+            'has_reviewed', 'review',
             'created_at', 'updated_at'
         ]
 
 
-class ReviewSerializer(serializers.ModelSerializer):
-    user_name = serializers.ReadOnlyField(source='user.username')
+class MessageSerializer(serializers.ModelSerializer):
+    sender_name = serializers.SerializerMethodField()
+    sender_avatar = serializers.SerializerMethodField()
+    recipient_name = serializers.SerializerMethodField()
+    recipient_avatar = serializers.SerializerMethodField()
+    venue_title = serializers.ReadOnlyField(source='venue.title')
+    vendor_name = serializers.ReadOnlyField(source='vendor.business_name')
+    event_title = serializers.ReadOnlyField(source='booking.event_title')
+
+    def get_sender_name(self, obj):
+        if obj.sender.first_name:
+            return f"{obj.sender.first_name} {obj.sender.last_name or ''}".strip()
+        return obj.sender.username
+
+    def get_sender_avatar(self, obj):
+        return getattr(obj.sender, 'avatar_url', None)
+
+    def get_recipient_name(self, obj):
+        if obj.recipient.first_name:
+            return f"{obj.recipient.first_name} {obj.recipient.last_name or ''}".strip()
+        return obj.recipient.username
+
+    def get_recipient_avatar(self, obj):
+        return getattr(obj.recipient, 'avatar_url', None)
 
     class Meta:
-        model = Review
-        fields = ['id', 'user', 'user_name', 'venue', 'vendor', 'rating', 'comment', 'created_at']
+        model = Message
+        fields = [
+            'id', 'sender', 'sender_name', 'sender_avatar',
+            'recipient', 'recipient_name', 'recipient_avatar',
+            'booking', 'event_title', 'venue', 'venue_title', 'vendor', 'vendor_name',
+            'content', 'is_read', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']
+
+
+class EventServiceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EventService
+        fields = [
+            'id', 'event', 'name', 'category', 'notes',
+            'estimated_cost', 'is_completed', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_name(self, value):
+        if not value or not str(value).strip():
+            raise serializers.ValidationError("Service name is required and cannot be blank.")
+        return str(value).strip()
+
+
+class EventSerializer(serializers.ModelSerializer):
+    owner_name = serializers.SerializerMethodField()
+    services = EventServiceSerializer(many=True, read_only=True)
+
+    def get_owner_name(self, obj):
+        if obj.owner:
+            full = f"{obj.owner.first_name} {obj.owner.last_name or ''}".strip()
+            return full if full else obj.owner.username
+        return ''
+
+    def validate_name(self, value):
+        if not value or not str(value).strip():
+            raise serializers.ValidationError("Event name is required and cannot be blank.")
+        return str(value).strip()
+
+    def validate_event_type(self, value):
+        if not value or not str(value).strip():
+            raise serializers.ValidationError("Event type is required and cannot be blank.")
+        return str(value).strip()
+
+    def validate_location(self, value):
+        if not value or not str(value).strip():
+            raise serializers.ValidationError("Location is required and cannot be blank.")
+        return str(value).strip()
+
+    def validate_expected_guest_count(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError("Expected guest count cannot be negative.")
+        return value or 0
+
+    def validate_budget(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError("Budget cannot be negative.")
+        return value or 0
+
+    def validate(self, attrs):
+        start_time = attrs.get('start_time')
+        end_time = attrs.get('end_time')
+        if start_time and end_time and end_time < start_time:
+            raise serializers.ValidationError({"end_time": "End time cannot be earlier than start time."})
+        return attrs
+
+    class Meta:
+        model = Event
+        fields = [
+            'id', 'owner', 'owner_name', 'name', 'event_type', 'date',
+            'start_time', 'end_time', 'location', 'expected_guest_count',
+            'budget', 'description', 'status', 'image_url', 'services', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
+
+

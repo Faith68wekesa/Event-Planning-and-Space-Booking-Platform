@@ -247,3 +247,89 @@ input:focus, select:focus, textarea:focus {
   box-shadow: var(--shadow-card-hover);
 }
 
+/* Global Modal Styles */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  overflow-y: auto;
+}
+
+.modal-content {
+  background: #ffffff;
+  color: #0f172a;
+  border-radius: 20px;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  border: 1px solid #e2e8f0;
+  position: relative;
+  width: 100%;
+  animation: modalFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+}
+
+/* Custom styled scrollbars for modal */
+.locyfy-modal-dialog {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: 90vh;
+}
+
+.locyfy-modal-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 24px 28px;
+}
+
+.locyfy-modal-body::-webkit-scrollbar {
+  width: 6px;
+  display: block;
+}
+
+.locyfy-modal-body::-webkit-scrollbar-track {
+  background: #f8fafc;
+}
+
+.locyfy-modal-body::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+.locyfy-modal-body::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Responsive adjustments for mobile */
+@media (max-width: 640px) {
+  .modal-overlay {
+    padding: 10px 8px;
+    align-items: flex-end;
+  }
+  .locyfy-modal-dialog {
+    max-height: 96vh !important;
+    border-bottom-left-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+  }
+  .locyfy-modal-body {
+    padding: 16px 16px 20px !important;
+  }
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+

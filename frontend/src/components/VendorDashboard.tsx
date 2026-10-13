@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { Booking, Venue, BookingStatus, PlatformStats, Vendor } from '../types';
+import type { Booking, Venue, BookingStatus, PlatformStats, Vendor, Review } from '../types';
 import { ApiService } from '../services/api';
 import { VendorDashboardOverview } from './VendorDashboardOverview';
 import { VendorDashboardBookings } from './VendorDashboardBookings';
@@ -21,6 +21,7 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'portfolio' | 'bookings' | 'reviews' | 'profile' | 'messages' | 'calendar' | 'settings' | 'my_profile'>('overview');
   const [isUploading, setIsUploading] = useState(false);
+  const [reviews, setReviews] = useState<Review[]>([]);
 
   const handleProfilePictureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0 && currentVendor.user_details) {
@@ -91,9 +92,10 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
 
   const fetchDashboardData = useCallback(async () => {
     try {
-      const [dashData, bookingsData] = await Promise.all([
+      const [dashData, bookingsData, reviewsData] = await Promise.all([
         ApiService.getVendorDashboard(currentVendor.id),
-        ApiService.getVendorBookings(currentVendor.id)
+        ApiService.getVendorBookings(currentVendor.id),
+        ApiService.getReviews({ vendor: currentVendor.id }).catch(() => [])
       ]);
       setStats({
         total_venues: dashData.total_venues,
@@ -104,6 +106,7 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
       } as any);
       setVenues(dashData.venues);
       setBookings(bookingsData);
+      setReviews(reviewsData);
     } catch (e) {
       console.error(e);
     }
@@ -242,7 +245,7 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
         )}
 
         {activeTab === 'reviews' && (
-          <VendorDashboardReviews reviews={[]} />
+          <VendorDashboardReviews reviews={reviews} />
         )}
 
         {activeTab === 'calendar' && (
