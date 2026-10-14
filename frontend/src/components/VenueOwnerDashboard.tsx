@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cleanImageUrl, handleImageError, DEFAULT_SPACE_IMAGE } from '../utils/imageUtils';
+import { CreateListingPage } from './CreateListingPage';
 
 interface VenueOwnerDashboardProps {
   currentOwner: VenueOwner;
@@ -28,7 +29,7 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
   currentOwner,
   onLogout,
 }) => {
-  const [activeTab, setActiveTab] = useState<'venues' | 'bookings' | 'messages' | 'profile'>('venues');
+  const [activeTab, setActiveTab] = useState<'venues' | 'bookings' | 'messages' | 'profile' | 'create_listing'>('venues');
   const [isUploading, setIsUploading] = useState(false);
   const [selectedBookingChatId, setSelectedBookingChatId] = useState<number | null>(null);
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
@@ -163,12 +164,12 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
   }, [activeTab, selectedBookingChatId, bookings, fetchChatMessages]);
 
   const handleUpdateBookingStatus = async (id: number, status: BookingStatus) => {
-    const success = await ApiService.updateBookingStatus(id, status);
-    if (success) {
+    const res = await ApiService.updateBookingStatus(id, status);
+    if (res.success) {
       toast.success(`Booking ${status.toLowerCase()}!`);
       fetchDashboardData();
     } else {
-      toast.error('Failed to update booking status.');
+      toast.error(res.error || 'Failed to update booking status.');
     }
   };
 
@@ -284,7 +285,7 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
               )}
             </div>
             <button
-              onClick={() => setShowAddModal(true)}
+              onClick={() => setActiveTab('create_listing')}
               style={{
                 background: '#ffb800',
                 color: '#0f172a',
@@ -519,6 +520,20 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
           </button>
         </div>
 
+        {/* TAB: CREATE LISTING FULL PAGE */}
+        {activeTab === 'create_listing' && (
+          <CreateListingPage
+            onBack={() => setActiveTab('venues')}
+            onSuccess={() => {
+              fetchDashboardData();
+              setActiveTab('venues');
+            }}
+            defaultMode="venue"
+            currentOwnerId={currentOwner.id}
+            currentUserId={currentOwner.user_details?.id}
+          />
+        )}
+
         {/* Tab 1: Listed Venues */}
         {activeTab === 'venues' && (
           <div>
@@ -544,7 +559,7 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
                   Add your first event venue to start receiving booking requests from clients .
                 </p>
                 <button
-                  onClick={() => setShowAddModal(true)}
+                  onClick={() => setActiveTab('create_listing')}
                   className="btn-primary"
                   style={{ padding: '12px 24px', fontWeight: 700 }}
                 >

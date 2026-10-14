@@ -150,6 +150,31 @@ class BookingSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at'
         ]
 
+    def validate(self, attrs):
+        from core.services.booking_validator import BookingCapacityValidator
+        
+        customer = attrs.get('customer') or (self.instance.customer if self.instance else None)
+        event_date = attrs.get('event_date') or (self.instance.event_date if self.instance else None)
+        guest_count = attrs.get('guest_count') if 'guest_count' in attrs else (self.instance.guest_count if self.instance else 0)
+        venue = attrs.get('venue') or (self.instance.venue if self.instance else None)
+        vendor = attrs.get('vendor') or (self.instance.vendor if self.instance else None)
+        event_type = attrs.get('event_type') or (self.instance.event_type if self.instance else None)
+        notes = attrs.get('notes') if 'notes' in attrs else (self.instance.notes if self.instance else None)
+
+        if event_date and guest_count is not None:
+            BookingCapacityValidator.validate_booking(
+                customer=customer,
+                event_date=event_date,
+                guest_count=guest_count,
+                venue=venue,
+                vendor=vendor,
+                event_type=event_type,
+                notes=notes,
+                exclude_booking_id=self.instance.id if self.instance else None
+            )
+
+        return attrs
+
 
 class MessageSerializer(serializers.ModelSerializer):
     sender_name = serializers.SerializerMethodField()

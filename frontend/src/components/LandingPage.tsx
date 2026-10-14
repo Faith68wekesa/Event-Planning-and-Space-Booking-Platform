@@ -316,8 +316,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', borderRadius: '10px', marginBottom: '16px', fontSize: '0.85rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#334155', fontWeight: 600 }}>
-                        <Users size={16} color="#0F8F7A" /> Up to {venue.capacity} guests
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#047857', fontWeight: 700 }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
+                        <Users size={16} color="#0F8F7A" /> Capacity: {venue.capacity} guests
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: (venue.review_count || 0) > 0 ? '#d97706' : '#64748b', fontWeight: 700 }}>
                         {(venue.review_count || 0) > 0 ? (

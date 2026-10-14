@@ -62,14 +62,21 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
   }, [initialTab]);
 
   const [events, setEvents] = useState<EventItem[]>([]);
+  const [isLoadingEvents, setIsLoadingEvents] = useState(false);
+  const [eventsError, setEventsError] = useState<string | null>(null);
 
   const fetchEvents = useCallback(async () => {
     if (!currentUser?.id) return;
+    setIsLoadingEvents(true);
+    setEventsError(null);
     try {
       const data = await ApiService.getEvents(currentUser.id);
       setEvents(data);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Error fetching events:', e);
+      setEventsError(e.message || 'Failed to load events. Please try again.');
+    } finally {
+      setIsLoadingEvents(false);
     }
   }, [currentUser?.id]);
 
@@ -1211,6 +1218,9 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
         {activeTab === 'events' && (
           <MyEventsView
             events={events}
+            isLoading={isLoadingEvents}
+            error={eventsError}
+            onRetry={fetchEvents}
             currentUser={currentUser}
             onCreateEvent={handleCreateEvent}
             onUpdateEvent={handleUpdateEvent}

@@ -25,10 +25,13 @@ import {
   Check,
   Layers,
   Send,
-  ShieldCheck
+  ShieldCheck,
+  Clock
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cleanImageUrl, handleImageError, DEFAULT_SPACE_IMAGE, DEFAULT_SERVICE_IMAGE } from '../utils/imageUtils';
+import { CreateListingPage } from './CreateListingPage';
+import { ProviderAvailabilityDashboard } from './ProviderAvailabilityDashboard';
 
 interface ProviderDashboardProps {
   currentUser?: User | null;
@@ -45,7 +48,8 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   onLogout,
   onExplore,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'spaces' | 'services' | 'bookings' | 'calendar' | 'reviews' | 'messages' | 'profile' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'spaces' | 'services' | 'availability' | 'bookings' | 'calendar' | 'reviews' | 'messages' | 'profile' | 'settings' | 'create_listing'>('overview');
+  const [createListingDefaultMode, setCreateListingDefaultMode] = useState<'service' | 'venue'>('service');
   
   // Inspiration UI Navigation and Filter States
   const [myListingsExpanded, setMyListingsExpanded] = useState(true);
@@ -396,12 +400,12 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   };
 
   const handleUpdateBookingStatus = async (id: number, status: BookingStatus) => {
-    const ok = await ApiService.updateBookingStatus(id, status);
-    if (ok) {
+    const res = await ApiService.updateBookingStatus(id, status);
+    if (res.success) {
       toast.success(`Booking ${status.toLowerCase()}!`);
       fetchData();
     } else {
-      toast.error("Failed to update status.");
+      toast.error(res.error || "Failed to update status.");
     }
   };
 
@@ -551,6 +555,14 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
             )}
           </div>
 
+          {/* Availability */}
+          <button
+            className={`vendor-sidebar-item ${activeTab === 'availability' ? 'active' : ''}`}
+            onClick={() => setActiveTab('availability')}
+          >
+            <Clock size={18} /> Availability
+          </button>
+
           {/* Booking Requests */}
           <button
             className={`vendor-sidebar-item ${activeTab === 'bookings' ? 'active' : ''}`}
@@ -635,7 +647,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
       <main className="vendor-main-content">
         
         {/* Top Header Row for non-overview tabs */}
-        {activeTab !== 'overview' && (
+        {activeTab !== 'overview' && activeTab !== 'create_listing' && (
           <div className="vendor-topbar">
             <div>
               <h1>{getPageTitle()}</h1>
@@ -645,7 +657,10 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
             <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
               {activeTab === 'spaces' && (
                 <button
-                  onClick={() => setShowAddSpaceModal(true)}
+                  onClick={() => {
+                    setCreateListingDefaultMode('venue');
+                    setActiveTab('create_listing');
+                  }}
                   className="btn-primary-light"
                 >
                   <Plus size={16} /> Add Venue
@@ -653,7 +668,10 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
               )}
               {activeTab === 'services' && (
                 <button
-                  onClick={() => setShowAddServiceModal(true)}
+                  onClick={() => {
+                    setCreateListingDefaultMode('service');
+                    setActiveTab('create_listing');
+                  }}
                   className="btn-primary-light"
                 >
                   <Plus size={16} /> Add Service
@@ -661,6 +679,29 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
               )}
             </div>
           </div>
+        )}
+
+        {/* TAB: CREATE A NEW LISTING (FULL PAGE VIEW MATCHING DESIGN) */}
+        {activeTab === 'create_listing' && (
+          <CreateListingPage
+            onBack={() => setActiveTab('overview')}
+            onSuccess={() => {
+              fetchData();
+              setActiveTab('overview');
+            }}
+            defaultMode={createListingDefaultMode}
+            currentVendorId={currentVendor?.id}
+            currentOwnerId={currentVenueOwner?.id}
+            currentUserId={currentUser?.id}
+          />
+        )}
+
+        {/* TAB: AVAILABILITY & CAPACITY (MATCHING SPEC) */}
+        {activeTab === 'availability' && (
+          <ProviderAvailabilityDashboard
+            bookings={bookings}
+            venues={[...spaces, ...services]}
+          />
         )}
 
         {/* 4. Tab: OVERVIEW (Inspiration Layout) */}
@@ -694,7 +735,8 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                       className="listing-dropdown-item"
                       onClick={() => {
                         setShowAddListingDropdown(false);
-                        setShowAddSpaceModal(true);
+                        setCreateListingDefaultMode('venue');
+                        setActiveTab('create_listing');
                       }}
                     >
                       <Building2 size={18} color="#0d8a73" />
@@ -704,7 +746,8 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                       className="listing-dropdown-item"
                       onClick={() => {
                         setShowAddListingDropdown(false);
-                        setShowAddServiceModal(true);
+                        setCreateListingDefaultMode('service');
+                        setActiveTab('create_listing');
                       }}
                     >
                       <Package size={18} color="#0d8a73" />
@@ -841,8 +884,12 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                         <button
                           className="btn-primary-light"
                           onClick={() => {
-                            if (listingsCategoryFilter === 'VENUES') setShowAddSpaceModal(true);
-                            else setShowAddServiceModal(true);
+                            if (listingsCategoryFilter === 'VENUES') {
+                              setCreateListingDefaultMode('venue');
+                            } else {
+                              setCreateListingDefaultMode('service');
+                            }
+                            setActiveTab('create_listing');
                           }}
                         >
                           <Plus size={16} /> Add Listing Now
@@ -1034,7 +1081,14 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                 <Building2 size={40} color="#cbd5e1" style={{ marginBottom: '12px' }} />
                 <h3 style={{ margin: '0 0 8px', color: '#0f172a' }}>No spaces found in this category</h3>
                 <p style={{ margin: '0 0 20px', fontSize: '0.9rem' }}>Add wedding gardens, conference halls, or event spaces to start taking bookings.</p>
-                <button onClick={() => setShowAddSpaceModal(true)} className="btn-primary-light" style={{ background: '#0d8a73', color: '#fff' }}>
+                <button
+                  onClick={() => {
+                    setCreateListingDefaultMode('venue');
+                    setActiveTab('create_listing');
+                  }}
+                  className="btn-primary-light"
+                  style={{ background: '#0d8a73', color: '#fff' }}
+                >
                   <Plus size={16} /> Add an Event Space
                 </button>
               </div>
@@ -1124,7 +1178,14 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                 <Package size={40} color="#cbd5e1" style={{ marginBottom: '12px' }} />
                 <h3 style={{ margin: '0 0 8px', color: '#0f172a' }}>No services found in this category</h3>
                 <p style={{ margin: '0 0 20px', fontSize: '0.9rem' }}>Add catering packages, DJ setups, or photography services.</p>
-                <button onClick={() => setShowAddServiceModal(true)} className="btn-primary-light" style={{ background: '#0d8a73', color: '#fff' }}>
+                <button
+                  onClick={() => {
+                    setCreateListingDefaultMode('service');
+                    setActiveTab('create_listing');
+                  }}
+                  className="btn-primary-light"
+                  style={{ background: '#0d8a73', color: '#fff' }}
+                >
                   <Plus size={16} /> Add a Service
                 </button>
               </div>

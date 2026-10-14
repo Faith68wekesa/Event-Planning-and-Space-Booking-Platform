@@ -12,21 +12,19 @@ import {
   Plus,
   Search,
   ArrowLeft,
-  Camera,
-  Utensils,
-  Building2,
-  Lightbulb,
   Settings,
-  Info,
   FilePlus,
-  FileText,
   CheckCircle2,
   X,
 } from 'lucide-react';
 import { EventFormModal } from './EventFormModal';
+import toast from 'react-hot-toast';
 
 interface MyEventsViewProps {
   events: EventItem[];
+  isLoading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
   currentUser?: any;
   onCreateEvent: (data: Partial<EventItem>) => Promise<boolean>;
   onUpdateEvent: (id: number, data: Partial<EventItem>) => Promise<boolean>;
@@ -36,6 +34,9 @@ interface MyEventsViewProps {
 
 export const MyEventsView: React.FC<MyEventsViewProps> = ({
   events,
+  isLoading = false,
+  error = null,
+  onRetry,
   onCreateEvent,
   onUpdateEvent,
   onDeleteEvent,
@@ -49,6 +50,129 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
   const [selectedEventDetails, setSelectedEventDetails] = useState<EventItem | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<EventItem | null>(null);
+
+  const confirmDeleteEvent = (eventToDelete: EventItem) => {
+    toast((t) => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', minWidth: '240px' }}>
+        <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#0f172a' }}>
+          Delete <strong>"{eventToDelete.name}"</strong>?
+        </div>
+        <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+          This will permanently remove the event and its saved services.
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
+          <button
+            onClick={() => toast.dismiss(t.id)}
+            style={{
+              padding: '5px 12px',
+              borderRadius: '6px',
+              border: '1px solid #cbd5e1',
+              background: '#fff',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              color: '#475569',
+              cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={async () => {
+              toast.dismiss(t.id);
+              const ok = await onDeleteEvent(eventToDelete.id);
+              if (ok) {
+                if (selectedEventDetails?.id === eventToDelete.id) {
+                  setSelectedEventDetails(null);
+                }
+              }
+            }}
+            style={{
+              padding: '5px 12px',
+              borderRadius: '6px',
+              border: 'none',
+              background: '#ef4444',
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              color: '#fff',
+              cursor: 'pointer',
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    ), {
+      duration: 6000,
+      position: 'top-center',
+      style: {
+        background: '#ffffff',
+        padding: '14px 18px',
+        borderRadius: '12px',
+        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+        border: '1px solid #e2e8f0',
+      },
+    });
+  };
+
+  const confirmDeleteService = (eventId: number, serviceToDelete: EventServiceItem) => {
+    toast((t) => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', minWidth: '230px' }}>
+        <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#0f172a' }}>
+          Remove <strong>"{serviceToDelete.name}"</strong>?
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
+          <button
+            onClick={() => toast.dismiss(t.id)}
+            style={{
+              padding: '5px 12px',
+              borderRadius: '6px',
+              border: '1px solid #cbd5e1',
+              background: '#fff',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              color: '#475569',
+              cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={async () => {
+              toast.dismiss(t.id);
+              setCustomServicesByEvent((prev) => ({
+                ...prev,
+                [eventId]: (prev[eventId] || []).filter((s) => s.id !== serviceToDelete.id),
+              }));
+              await ApiService.deleteEventService(serviceToDelete.id);
+              toast.success(`Removed "${serviceToDelete.name}"`);
+            }}
+            style={{
+              padding: '5px 12px',
+              borderRadius: '6px',
+              border: 'none',
+              background: '#ef4444',
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              color: '#fff',
+              cursor: 'pointer',
+            }}
+          >
+            Remove
+          </button>
+        </div>
+      </div>
+    ), {
+      duration: 6000,
+      position: 'top-center',
+      style: {
+        background: '#ffffff',
+        padding: '14px 18px',
+        borderRadius: '12px',
+        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+        border: '1px solid #e2e8f0',
+      },
+    });
+  };
 
   // Manual / Custom services state per event (keyed by event id)
   const [customServicesByEvent, setCustomServicesByEvent] = useState<Record<number, EventServiceItem[]>>({});
@@ -404,9 +528,27 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
                     <div style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', marginBottom: '6px' }}>
                       No services added yet
                     </div>
-                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>
+                    <p style={{ margin: '0 0 14px 0', fontSize: '0.85rem', color: '#64748b' }}>
                       Click the button above to add a service for this event.
                     </p>
+                    {onNavigateTab && (
+                      <button
+                        type="button"
+                        onClick={() => onNavigateTab('vendors')}
+                        style={{
+                          background: 'none',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '6px',
+                          padding: '6px 12px',
+                          fontSize: '0.8rem',
+                          fontWeight: 600,
+                          color: '#0d8a73',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Explore Vendors & Services
+                      </button>
+                    )}
                   </div>
                 ) : (
                   /* Render manually added services */
@@ -520,16 +662,7 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
                           </button>
                           <button
                             type="button"
-                            onClick={async () => {
-                              if (window.confirm(`Remove "${svc.name}" from this event?`)) {
-                                setCustomServicesByEvent((prev) => ({
-                                  ...prev,
-                                  [ev.id]: (prev[ev.id] || []).filter((s) => s.id !== svc.id),
-                                }));
-                                // Persist deletion to backend
-                                await ApiService.deleteEventService(svc.id);
-                              }
-                            }}
+                            onClick={() => confirmDeleteService(ev.id, svc)}
                             title="Remove service"
                             style={{
                               background: 'none',
@@ -566,6 +699,7 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
 
               return (
                 <div
+                  id="event-plan-checklist"
                   style={{
                     background: '#ffffff',
                     borderRadius: '16px',
@@ -644,6 +778,29 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <button
                   onClick={() => {
+                    const el = document.getElementById('event-plan-checklist');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '11px',
+                    borderRadius: '8px',
+                    background: '#e6f7f3',
+                    border: '1.5px solid #0d8a73',
+                    color: '#0d8a73',
+                    fontWeight: 700,
+                    fontSize: '0.88rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                  }}
+                >
+                  <CheckCircle2 size={16} /> View Event Checklist
+                </button>
+                <button
+                  onClick={() => {
                     setEditingEvent(ev);
                     setIsModalOpen(true);
                   }}
@@ -666,12 +823,7 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
                   <Edit2 size={16} /> Edit Event
                 </button>
                 <button
-                  onClick={async () => {
-                    if (window.confirm(`Are you sure you want to delete "${ev.name}"?`)) {
-                      const ok = await onDeleteEvent(ev.id);
-                      if (ok) setSelectedEventDetails(null);
-                    }
-                  }}
+                  onClick={() => confirmDeleteEvent(ev)}
                   style={{
                     width: '100%',
                     padding: '11px',
@@ -1124,8 +1276,86 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
         </div>
       </div>
 
-      {/* Events List Cards */}
-      {filteredEvents.length > 0 ? (
+      {/* Loading State */}
+      {isLoading ? (
+        <div
+          style={{
+            padding: '60px 24px',
+            textAlign: 'center',
+            background: '#ffffff',
+            borderRadius: '16px',
+            border: '1px solid #e2e8f0',
+          }}
+        >
+          <div
+            style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: '50%',
+              border: '3px solid #e2e8f0',
+              borderTopColor: '#0d8a73',
+              margin: '0 auto 16px',
+              animation: 'spin 1s linear infinite',
+            }}
+          />
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a', margin: '0 0 6px 0' }}>
+            Loading your events...
+          </h3>
+          <p style={{ color: '#64748b', fontSize: '0.88rem', margin: 0 }}>
+            Fetching your saved celebrations from LOCYFY.
+          </p>
+        </div>
+      ) : error ? (
+        /* Error State */
+        <div
+          style={{
+            padding: '48px 24px',
+            textAlign: 'center',
+            background: '#ffffff',
+            borderRadius: '16px',
+            border: '1px solid #fee2e2',
+          }}
+        >
+          <div
+            style={{
+              width: '52px',
+              height: '52px',
+              borderRadius: '50%',
+              background: '#fef2f2',
+              color: '#ef4444',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 14px',
+            }}
+          >
+            <X size={26} />
+          </div>
+          <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#991b1b', margin: '0 0 6px 0' }}>
+            Unable to Load Events
+          </h3>
+          <p style={{ color: '#64748b', fontSize: '0.9rem', maxWidth: '420px', margin: '0 auto 18px' }}>
+            {error}
+          </p>
+          {onRetry && (
+            <button
+              onClick={onRetry}
+              style={{
+                padding: '9px 20px',
+                borderRadius: '8px',
+                background: '#0d8a73',
+                color: '#fff',
+                border: 'none',
+                fontWeight: 700,
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+              }}
+            >
+              Try Again
+            </button>
+          )}
+        </div>
+      ) : filteredEvents.length > 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
           {filteredEvents.map((ev) => (
             <div
@@ -1250,11 +1480,7 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
                 </button>
 
                 <button
-                  onClick={async () => {
-                    if (window.confirm(`Are you sure you want to delete "${ev.name}"?`)) {
-                      await onDeleteEvent(ev.id);
-                    }
-                  }}
+                  onClick={() => confirmDeleteEvent(ev)}
                   style={{
                     width: '100%',
                     padding: '8px',

@@ -189,34 +189,38 @@ export const ApiService = {
   },
 
   async createBooking(bookingData: Partial<Booking>): Promise<Booking> {
-    try {
-      const res = await fetch(`${API_BASE}/bookings/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(bookingData),
-      });
-      if (res.ok) {
-        return await res.json();
-      }
-      throw new Error(await res.text());
-    } catch (e) {
-      console.error("Failed to create booking", e);
-      throw e;
+    const res = await fetch(`${API_BASE}/bookings/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(bookingData),
+    });
+    if (res.ok) {
+      return await res.json();
     }
+    const errText = await res.text();
+    let parsedErr = errText;
+    try {
+      parsedErr = formatApiError(JSON.parse(errText), 'Failed to create booking.');
+    } catch {
+      parsedErr = errText || 'Failed to create booking.';
+    }
+    throw new Error(parsedErr);
   },
 
-  async updateBookingStatus(id: number, status: BookingStatus): Promise<boolean> {
+  async updateBookingStatus(id: number, status: BookingStatus): Promise<{ success: boolean; data?: any; error?: string }> {
     try {
       const res = await fetch(`${API_BASE}/bookings/${id}/update_status/`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
       });
-      if (res.ok) return true;
-    } catch (e) {
+      const data = await res.json();
+      if (res.ok) return { success: true, data };
+      return { success: false, error: data.error || formatApiError(data, 'Failed to update status.') };
+    } catch (e: any) {
       console.error("Failed to update status", e);
+      return { success: false, error: e.message || 'Network error occurred.' };
     }
-    return false;
   },
 
   async toggleVerifyVenue(id: number): Promise<boolean> {

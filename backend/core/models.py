@@ -87,6 +87,21 @@ class VendorProfile(models.Model):
         return f"{self.business_name} - {self.vendor_type}"
 
 
+class ProviderAvailabilitySetting(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='availability_settings')
+    max_guests = models.IntegerField(default=100, help_text="Total guest / attendee capacity across events on a day")
+    working_hours_start = models.TimeField(default='08:00', help_text="Earliest booking start time")
+    working_hours_end = models.TimeField(default='18:00', help_text="Latest booking end time")
+    buffer_time_minutes = models.IntegerField(default=30, help_text="Buffer time between events in minutes")
+    unavailable_dates = models.JSONField(default=list, blank=True, help_text="List of blocked dates in YYYY-MM-DD format")
+    day_statuses = models.JSONField(default=dict, blank=True, help_text="Dictionary of YYYY-MM-DD to status (AVAILABLE, UNAVAILABLE, etc)")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Availability Setting for {self.user.username} (Max {self.max_guests} guests)"
+
+
 class Venue(models.Model):
     CATEGORY_CHOICES = [
         ('WEDDING', 'Wedding Gardens & Halls'),

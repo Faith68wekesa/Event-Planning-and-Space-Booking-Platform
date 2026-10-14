@@ -78,13 +78,12 @@ export const VenueCard: React.FC<VenueCardProps> = ({ venue, onSelect, onBook })
           </h3>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '14px', flexWrap: 'wrap' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <MapPin size={14} color="#0d8a73" /> {venue.location}
           </span>
-          <span>•</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <Users size={14} color="#059669" /> Up to {venue.capacity} guests
+          <span style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#ecfdf5', color: '#059669', padding: '2px 8px', borderRadius: '6px', fontWeight: 700, fontSize: '0.78rem' }}>
+            <Users size={13} color="#059669" /> Capacity: {venue.capacity} guests
           </span>
         </div>
 

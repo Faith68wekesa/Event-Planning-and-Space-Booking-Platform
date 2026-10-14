@@ -87,8 +87,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       toast.success('Booking request sent successfully!');
       onSuccess(created);
       onClose();
-    } catch {
-      toast.error('Error creating booking request. Please try again.');
+    } catch (err: any) {
+      toast.error(err.message || 'Error creating booking request. Please try again.');
     } finally {
       setSubmitting(false);
     }

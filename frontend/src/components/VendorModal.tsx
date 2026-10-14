@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { Vendor, Review } from '../types';
-import { X, ShieldCheck, MapPin, Star, ArrowRight, MessageCircle, UserCheck } from 'lucide-react';
+import { X, ShieldCheck, MapPin, Star, ArrowRight, MessageCircle, UserCheck, Calendar, CheckCircle2, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ApiService } from '../services/api';
 
@@ -18,6 +18,99 @@ export const VendorModal: React.FC<VendorModalProps> = ({ vendor, currentUser, o
   const [showMessageModal, setShowMessageModal] = useState<boolean>(false);
   const [directMessageText, setDirectMessageText] = useState<string>('');
   const [sendingDirectMsg, setSendingDirectMsg] = useState<boolean>(false);
+
+  // Date availability checker state (accessible to anyone, even logged out)
+  const [checkDate, setCheckDate] = useState<string>('');
+  const [checkingAvailability, setCheckingAvailability] = useState<boolean>(false);
+  const [availabilityResult, setAvailabilityResult] = useState<{
+    checked: boolean;
+    available: boolean;
+    message: string;
+    statusType: 'AVAILABLE' | 'UNAVAILABLE' | 'BOOKED';
+  } | null>(null);
+
+  const handleCheckDateAvailability = async () => {
+    if (!checkDate) {
+      toast.error('Please select a date to check availability.');
+      return;
+    }
+
+    setCheckingAvailability(true);
+
+    try {
+      // 1. Check vendor-configured custom schedule
+      let isExplicitlyBlocked = false;
+      try {
+        const savedStatuses = localStorage.getItem('locyfy_vendor_day_statuses');
+        if (savedStatuses) {
+          const parsed: Record<string, string> = JSON.parse(savedStatuses);
+          if (parsed[checkDate] === 'UNAVAILABLE') {
+            isExplicitlyBlocked = true;
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+
+      // 2. Check bookings for this vendor and calculate remaining guest capacity
+      let totalCapacityLimit = 100;
+      try {
+        const savedCap = localStorage.getItem('locyfy_provider_capacity');
+        if (savedCap) {
+          const parsed = JSON.parse(savedCap);
+          if (parsed.maxGuests) totalCapacityLimit = Number(parsed.maxGuests);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+
+      const bookings = await ApiService.getBookings({ vendor: vendor.id });
+      const confirmedBookingsOnDate = bookings.filter(b => 
+        (b.vendor === vendor.id || (b.vendor_details && b.vendor_details.id === vendor.id)) &&
+        (b.status === 'APPROVED' || b.status === 'COMPLETED') &&
+        b.event_date.startsWith(checkDate)
+      );
+
+      // Sum all guests already booked on this day
+      const bookedGuestsOnDate = confirmedBookingsOnDate.reduce((sum, b) => sum + (Number(b.guest_count) || 0), 0);
+      const remainingGuestCapacity = Math.max(0, totalCapacityLimit - bookedGuestsOnDate);
+      const isDateFull = remainingGuestCapacity <= 0;
+
+      if (isExplicitlyBlocked) {
+        setAvailabilityResult({
+          checked: true,
+          available: false,
+          statusType: 'UNAVAILABLE',
+          message: 'This service provider is marked as unavailable on this date.'
+        });
+      } else if (isDateFull) {
+        setAvailabilityResult({
+          checked: true,
+          available: false,
+          statusType: 'BOOKED',
+          message: `This service provider is fully booked for this date (${totalCapacityLimit} guests accommodated across bookings).`
+        });
+      } else {
+        setAvailabilityResult({
+          checked: true,
+          available: true,
+          statusType: 'AVAILABLE',
+          message: bookedGuestsOnDate > 0
+            ? `Available! (${remainingGuestCapacity} guest capacity remaining out of ${totalCapacityLimit})`
+            : `Great news! Fully available (Up to ${totalCapacityLimit} guests).`
+        });
+      }
+    } catch {
+      setAvailabilityResult({
+        checked: true,
+        available: true,
+        statusType: 'AVAILABLE',
+        message: 'This service appears available on this date!'
+      });
+    } finally {
+      setCheckingAvailability(false);
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -147,6 +240,125 @@ export const VendorModal: React.FC<VendorModalProps> = ({ vendor, currentUser, o
         <div style={{ marginBottom: '24px' }}>
           <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a', marginBottom: '8px' }}>Provider Experience & Profile</h3>
           <p style={{ color: '#475569', lineHeight: 1.6 }}>{vendor.description || 'Verified local service provider offering specialized event management, creative services, and quality assurance.'}</p>
+        </div>
+
+        {/* Real-time Customer Date Availability Checker (No login required) */}
+        <div style={{
+          marginBottom: '28px',
+          background: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          borderRadius: '16px',
+          padding: '20px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+            <Calendar size={18} color="#0d8a73" />
+            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
+              Check Date Availability
+            </h3>
+          </div>
+          <p style={{ margin: '0 0 16px 0', fontSize: '0.85rem', color: '#64748b' }}>
+            Select your planned event date to see if this service provider is available and open for bookings.
+          </p>
+
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <input
+              type="date"
+              min={new Date().toISOString().split('T')[0]}
+              value={checkDate}
+              onChange={(e) => {
+                setCheckDate(e.target.value);
+                setAvailabilityResult(null);
+              }}
+              style={{
+                padding: '10px 14px',
+                borderRadius: '8px',
+                border: '1px solid #cbd5e1',
+                fontSize: '0.9rem',
+                color: '#0f172a',
+                outline: 'none',
+                flex: '1',
+                minWidth: '200px'
+              }}
+            />
+            <button
+              type="button"
+              onClick={handleCheckDateAvailability}
+              disabled={checkingAvailability}
+              style={{
+                padding: '10px 20px',
+                borderRadius: '8px',
+                background: '#0d8a73',
+                color: '#ffffff',
+                border: 'none',
+                fontWeight: 700,
+                fontSize: '0.9rem',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              {checkingAvailability ? 'Checking...' : 'Check Availability'}
+            </button>
+          </div>
+
+          {availabilityResult && (
+            <div style={{
+              marginTop: '16px',
+              padding: '14px 16px',
+              borderRadius: '10px',
+              border: `1px solid ${
+                availabilityResult.available ? '#a7f3d0' : '#fecaca'
+              }`,
+              background: availabilityResult.available ? '#ecfdf5' : '#fef2f2',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px'
+            }}>
+              {availabilityResult.available ? (
+                <CheckCircle2 size={20} color="#059669" />
+              ) : (
+                <AlertCircle size={20} color="#dc2626" />
+              )}
+              <div style={{ flex: 1 }}>
+                <div style={{
+                  fontSize: '0.9rem',
+                  fontWeight: 700,
+                  color: availabilityResult.available ? '#065f46' : '#991b1b'
+                }}>
+                  {availabilityResult.available ? 'Available on this date!' : 'Unavailable on this date'}
+                </div>
+                <div style={{
+                  fontSize: '0.82rem',
+                  color: availabilityResult.available ? '#047857' : '#b91c1c',
+                  marginTop: '2px'
+                }}>
+                  {availabilityResult.message}
+                </div>
+              </div>
+              {availabilityResult.available && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onBook(vendor);
+                  }}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '6px',
+                    background: '#059669',
+                    color: '#fff',
+                    border: 'none',
+                    fontWeight: 700,
+                    fontSize: '0.8rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Book Now
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Customer Reviews Section */}

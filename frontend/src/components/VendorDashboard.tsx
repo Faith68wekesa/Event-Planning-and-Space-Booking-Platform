@@ -9,8 +9,10 @@ import { VendorDashboardCalendar } from './VendorDashboardCalendar';
 import { VendorDashboardMessages } from './VendorDashboardMessages';
 import { VendorDashboardSettings } from './VendorDashboardSettings';
 import './vendor-dashboard.css';
-import { Home, Building, Package, MessageCircle, Settings, LogOut, User, CalendarCheck, Calendar, Star } from 'lucide-react';
+import { Home, Building, Package, MessageCircle, Settings, LogOut, User, CalendarCheck, Calendar, Star, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { CreateListingPage } from './CreateListingPage';
+import { ProviderAvailabilityDashboard } from './ProviderAvailabilityDashboard';
 
 interface VendorDashboardProps {
   currentVendor: Vendor;
@@ -19,7 +21,7 @@ interface VendorDashboardProps {
 export const VendorDashboard: React.FC<VendorDashboardProps> = ({
   currentVendor,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'portfolio' | 'bookings' | 'reviews' | 'profile' | 'messages' | 'calendar' | 'settings' | 'my_profile'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'portfolio' | 'availability' | 'bookings' | 'reviews' | 'profile' | 'messages' | 'calendar' | 'settings' | 'my_profile' | 'create_listing'>('overview');
   const [isUploading, setIsUploading] = useState(false);
   const [reviews, setReviews] = useState<Review[]>([]);
 
@@ -117,8 +119,13 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
   }, [fetchDashboardData]);
 
   const handleUpdateStatus = async (id: number, status: BookingStatus) => {
-    await ApiService.updateBookingStatus(id, status);
-    fetchDashboardData();
+    const res = await ApiService.updateBookingStatus(id, status);
+    if (res.success) {
+      toast.success(`Booking ${status.toLowerCase()}!`);
+      fetchDashboardData();
+    } else {
+      toast.error(res.error || 'Failed to update booking status.');
+    }
   };
 
   const handleAddVenueSubmit = async (e: React.FormEvent) => {
@@ -141,6 +148,7 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
     { id: 'overview', label: 'Overview', icon: Home },
     { id: 'profile', label: 'Business Profile', icon: Building },
     { id: 'portfolio', label: 'My Services', icon: Package },
+    { id: 'availability', label: 'Availability', icon: Clock },
     { id: 'bookings', label: 'Booking Requests', icon: CalendarCheck },
     { id: 'messages', label: 'Messages', icon: MessageCircle },
     { id: 'calendar', label: 'Calendar', icon: Calendar },
@@ -219,18 +227,33 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
       {/* Main Content Area */}
       <main className="vendor-main-content">
 
-        <div className="vendor-topbar">
-          <div>
-            <h1>{getPageTitle()}</h1>
-            <p style={{ color: '#64748b', fontSize: '0.9rem', margin: '4px 0 0 0' }}>{getPageSubtitle()}</p>
-          </div>
+        {activeTab !== 'create_listing' && (
+          <div className="vendor-topbar">
+            <div>
+              <h1>{getPageTitle()}</h1>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', margin: '4px 0 0 0' }}>{getPageSubtitle()}</p>
+            </div>
 
-          <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-            <button style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '50%', width: '40px', height: '40px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              🔔
-            </button>
+            <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+              <button style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '50%', width: '40px', height: '40px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                🔔
+              </button>
+            </div>
           </div>
-        </div>
+        )}
+
+        {activeTab === 'create_listing' && (
+          <CreateListingPage
+            onBack={() => setActiveTab('portfolio')}
+            onSuccess={() => {
+              fetchDashboardData();
+              setActiveTab('portfolio');
+            }}
+            defaultMode="service"
+            currentVendorId={currentVendor.id}
+            currentUserId={currentVendor.user_details?.id}
+          />
+        )}
 
         {activeTab === 'overview' && (
           <VendorDashboardOverview bookings={bookings} stats={stats} venues={venues} onNavigate={(tab) => setActiveTab(tab as any)} />
@@ -241,7 +264,11 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
         )}
 
         {activeTab === 'portfolio' && (
-          <VendorDashboardPortfolio venues={venues} onAddClick={() => setShowAddModal(true)} />
+          <VendorDashboardPortfolio venues={venues} onAddClick={() => setActiveTab('create_listing')} />
+        )}
+
+        {activeTab === 'availability' && (
+          <ProviderAvailabilityDashboard bookings={bookings} venues={venues} />
         )}
 
         {activeTab === 'reviews' && (

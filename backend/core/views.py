@@ -199,15 +199,78 @@ class BookingViewSet(viewsets.ModelViewSet):
 
         return queryset
 
+    def create(self, request, *args, **kwargs):
+        from django.db import transaction
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
     @action(detail=True, methods=['patch'])
     def update_status(self, request, pk=None):
-        booking = self.get_object()
+        from django.db import transaction
+        from core.services.booking_validator import BookingCapacityValidator
+        from rest_framework.exceptions import ValidationError
+
         new_status = request.data.get('status')
-        if new_status in dict(Booking.STATUS_CHOICES):
-            booking.status = new_status
-            booking.save()
-            return Response(BookingSerializer(booking).data)
-        return Response({'error': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
+        if new_status not in dict(Booking.STATUS_CHOICES):
+            return Response({'error': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            with transaction.atomic():
+                # Lock the booking record
+                booking = Booking.objects.select_for_update().get(pk=pk)
+
+                # Permission check: verify that user is authorized to update status if authenticated
+                if request.user and request.user.is_authenticated and not request.user.is_staff:
+                    provider_uid = None
+                    if booking.venue:
+                        if booking.venue.owner and booking.venue.owner.user_id:
+                            provider_uid = booking.venue.owner.user_id
+                        elif booking.venue.vendor and booking.venue.vendor.user_id:
+                            provider_uid = booking.venue.vendor.user_id
+                    elif booking.vendor and booking.vendor.user_id:
+                        provider_uid = booking.vendor.user_id
+
+                    # If this is provider accepting/rejecting, must be the provider or admin
+                    if new_status in ['APPROVED', 'REJECTED']:
+                        if provider_uid and provider_uid != request.user.id:
+                            return Response(
+                                {'error': 'Permission denied. Only the listing provider can accept or reject this booking.'},
+                                status=status.HTTP_403_FORBIDDEN
+                            )
+                    # If customer is cancelling, must be the customer
+                    elif new_status == 'CANCELLED':
+                        if booking.customer_id != request.user.id and (provider_uid and provider_uid != request.user.id):
+                            return Response(
+                                {'error': 'Permission denied. Only the customer or provider can cancel this booking.'},
+                                status=status.HTTP_403_FORBIDDEN
+                            )
+
+                # Revalidation upon Provider Acceptance (Pending -> Approved)
+                if new_status == 'APPROVED' and booking.status != 'APPROVED':
+                    BookingCapacityValidator.validate_booking(
+                        customer=booking.customer,
+                        event_date=booking.event_date,
+                        guest_count=booking.guest_count,
+                        venue=booking.venue,
+                        vendor=booking.vendor,
+                        event_type=booking.event_type,
+                        notes=booking.notes,
+                        exclude_booking_id=booking.id,
+                        lock_provider=True
+                    )
+
+                booking.status = new_status
+                booking.save()
+                return Response(BookingSerializer(booking).data)
+        except Booking.DoesNotExist:
+            return Response({'error': 'Booking not found.'}, status=status.HTTP_404_NOT_FOUND)
+        except ValidationError as e:
+            msg = e.detail[0] if isinstance(e.detail, list) and e.detail else str(e.detail)
+            return Response({'error': msg}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class ReviewViewSet(viewsets.ModelViewSet):

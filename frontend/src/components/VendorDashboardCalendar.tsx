@@ -16,7 +16,21 @@ export const VendorDashboardCalendar: React.FC<VendorDashboardCalendarProps> = (
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<number | null>(null);
   
-  const [blockedDates, setBlockedDates] = useState<BlockedDate[]>([]);
+  // Keep blocked dates synced with local storage so both tabs reflect the vendor's settings
+  const [blockedDates, setBlockedDates] = useState<BlockedDate[]>(() => {
+    try {
+      const savedStatuses = localStorage.getItem('locyfy_vendor_day_statuses');
+      if (savedStatuses) {
+        const parsed: Record<string, string> = JSON.parse(savedStatuses);
+        return Object.entries(parsed)
+          .filter(([_, status]) => status === 'UNAVAILABLE')
+          .map(([date]) => ({ date, reason: 'Unavailable' }));
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  });
 
   const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
   const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay();
@@ -46,14 +60,30 @@ export const VendorDashboardCalendar: React.FC<VendorDashboardCalendarProps> = (
 
   const handleUnblockDate = (date: string) => {
     setBlockedDates(prev => prev.filter(b => b.date !== date));
-    toast.success('Date unblocked successfully');
+    try {
+      const saved = localStorage.getItem('locyfy_vendor_day_statuses');
+      const statuses = saved ? JSON.parse(saved) : {};
+      statuses[date] = 'AVAILABLE';
+      localStorage.setItem('locyfy_vendor_day_statuses', JSON.stringify(statuses));
+    } catch (err) {
+      console.error(err);
+    }
+    toast.success('Date set to Available');
   };
 
   const handleBlockDate = (date: string) => {
     const reason = window.prompt("Reason for blocking this date?", "Unavailable");
     if (reason !== null) {
-      setBlockedDates(prev => [...prev, { date, reason: reason || 'Unavailable' }]);
-      toast.success('Date blocked successfully');
+      setBlockedDates(prev => [...prev.filter(b => b.date !== date), { date, reason: reason || 'Unavailable' }]);
+      try {
+        const saved = localStorage.getItem('locyfy_vendor_day_statuses');
+        const statuses = saved ? JSON.parse(saved) : {};
+        statuses[date] = 'UNAVAILABLE';
+        localStorage.setItem('locyfy_vendor_day_statuses', JSON.stringify(statuses));
+      } catch (err) {
+        console.error(err);
+      }
+      toast.success('Date blocked (marked Unavailable)');
     }
   };
 
