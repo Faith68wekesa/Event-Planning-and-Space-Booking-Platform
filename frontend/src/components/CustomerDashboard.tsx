@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { Booking, Venue, Review, Message, ConversationThread, EventItem } from '../types';
+import type { Booking, Venue, Review, Message, ConversationThread, EventItem, NotificationItem, ReminderPreference } from '../types';
 import './customer-dashboard.css';
 import {
   Calendar,
@@ -24,7 +24,8 @@ import {
   LogOut,
   RotateCw,
   Send,
-  CalendarDays
+  CalendarDays,
+  AlertTriangle
 } from 'lucide-react';
 import { ApiService } from '../services/api';
 import toast from 'react-hot-toast';
@@ -126,10 +127,50 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [reminderPrefs, setReminderPrefs] = useState<ReminderPreference>({
+    in_app_enabled: true,
+    email_enabled: false,
+    remind_7_days: true,
+    remind_1_day: true,
+    remind_due_today: true,
+    remind_overdue: true,
+  });
   const [showAccountMenu, setShowAccountMenu] = useState(false);
   const [selectedBookingDetails, setSelectedBookingDetails] = useState<any | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [bookingFilterStatus, setBookingFilterStatus] = useState<string>('ALL');
+
+  // Sync notifications from backend
+  const syncNotifications = useCallback(async () => {
+    if (!currentUser?.id) return;
+    try {
+      const items = await ApiService.getNotifications(currentUser.id);
+      if (Array.isArray(items)) {
+        setNotifications(items);
+      }
+    } catch (e) {
+      console.error('Failed to sync notifications:', e);
+    }
+  }, [currentUser?.id]);
+
+  // Sync reminder preferences
+  const syncReminderPreferences = useCallback(async () => {
+    if (!currentUser?.id) return;
+    try {
+      const prefs = await ApiService.getReminderPreferences(currentUser.id);
+      if (prefs) {
+        setReminderPrefs(prefs);
+      }
+    } catch (e) {
+      console.error('Failed to fetch reminder prefs:', e);
+    }
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    syncNotifications();
+    syncReminderPreferences();
+  }, [syncNotifications, syncReminderPreferences]);
 
   // Live Customer Bookings State (Auto-sync with backend changes)
   const [localBookings, setLocalBookings] = useState<Booking[]>(bookings);
@@ -603,58 +644,143 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
           </div>
 
           <div className="customer-topbar-actions">
-            <div style={{ position: 'relative' }}>
-              <button
-                className="customer-notif-btn"
-                onClick={() => setShowNotifications(!showNotifications)}
-                title="Notifications"
-              >
-                <Bell size={20} />
-                {pendingCount > 0 && <span className="customer-notif-badge">{pendingCount}</span>}
-              </button>
+            {(() => {
+              const unreadNotifsCount = notifications.filter(n => !n.is_read).length;
+              const totalBadge = unreadNotifsCount + pendingCount;
+              return (
+                <div style={{ position: 'relative' }}>
+                  <button
+                    className="customer-notif-btn"
+                    onClick={() => setShowNotifications(!showNotifications)}
+                    title="Notifications"
+                  >
+                    <Bell size={20} />
+                    {totalBadge > 0 && <span className="customer-notif-badge">{totalBadge}</span>}
+                  </button>
 
-              {/* Notification Popover */}
-              {showNotifications && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: '52px',
-                    right: 0,
-                    width: '320px',
-                    background: '#ffffff',
-                    borderRadius: '14px',
-                    boxShadow: '0 10px 25px rgba(0, 0, 0, 0.15)',
-                    border: '1px solid #e2e8f0',
-                    zIndex: 50,
-                    padding: '16px',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <h4 style={{ fontSize: '0.95rem', fontWeight: 800, margin: 0, color: '#0f172a' }}>Notifications</h4>
-                    <span 
-                      style={{ fontSize: '0.75rem', color: '#0d8a73', fontWeight: 600, cursor: 'pointer' }}
-                      onClick={() => setShowNotifications(false)}
+                  {/* Notification Popover */}
+                  {showNotifications && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '52px',
+                        right: 0,
+                        width: '360px',
+                        maxHeight: '440px',
+                        background: '#ffffff',
+                        borderRadius: '16px',
+                        boxShadow: '0 20px 40px rgba(0, 0, 0, 0.18)',
+                        border: '1px solid #e2e8f0',
+                        zIndex: 100,
+                        padding: '16px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                      }}
                     >
-                      Close
-                    </span>
-                  </div>
-                  {dynamicRecentActivity.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      {dynamicRecentActivity.slice(0, 3).map((act) => (
-                        <div key={act.id} style={{ fontSize: '0.82rem', padding: '8px', background: '#f8fafc', borderRadius: '8px' }}>
-                          <span style={{ color: '#1e293b', display: 'block', fontWeight: 600 }}>{act.text}</span>
-                          <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>{act.time}</span>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1px solid #f1f5f9', paddingBottom: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <h4 style={{ fontSize: '0.98rem', fontWeight: 800, margin: 0, color: '#0f172a' }}>Notifications</h4>
+                          {unreadNotifsCount > 0 && (
+                            <span style={{ fontSize: '0.72rem', background: '#fee2e2', color: '#ef4444', padding: '2px 8px', borderRadius: '12px', fontWeight: 700 }}>
+                              {unreadNotifsCount} new
+                            </span>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div style={{ padding: '16px 0', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>
-                      No new notifications
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          {unreadNotifsCount > 0 && (
+                            <span 
+                              style={{ fontSize: '0.75rem', color: '#0d8a73', fontWeight: 600, cursor: 'pointer' }}
+                              onClick={async () => {
+                                if (currentUser?.id) {
+                                  await ApiService.markAllNotificationsRead(currentUser.id);
+                                  setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+                                  toast.success('All notifications marked as read');
+                                }
+                              }}
+                            >
+                              Mark all read
+                            </span>
+                          )}
+                          <span 
+                            style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, cursor: 'pointer' }}
+                            onClick={() => setShowNotifications(false)}
+                          >
+                            Close
+                          </span>
+                        </div>
+                      </div>
+
+                      <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '340px' }}>
+                        {notifications.length > 0 ? (
+                          notifications.map((n) => (
+                            <div
+                              key={n.id}
+                              onClick={async () => {
+                                if (!n.is_read) {
+                                  await ApiService.markNotificationRead(n.id);
+                                  setNotifications(prev => prev.map(item => item.id === n.id ? { ...item, is_read: true } : item));
+                                }
+                                if (n.event) {
+                                  setShowNotifications(false);
+                                  setActiveTab('events');
+                                  toast(`Opening event checklist...`, { icon: '📋' });
+                                }
+                              }}
+                              style={{
+                                padding: '10px 12px',
+                                background: n.is_read ? '#f8fafc' : '#f0fdf4',
+                                border: n.is_read ? '1px solid #e2e8f0' : '1px solid #bbf7d0',
+                                borderRadius: '10px',
+                                cursor: n.event ? 'pointer' : 'default',
+                                transition: 'all 0.15s ease',
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                                <div style={{ marginTop: '2px' }}>
+                                  {n.message.includes('overdue') ? (
+                                    <AlertTriangle size={16} color="#ef4444" />
+                                  ) : n.message.includes('today') || n.message.includes('tomorrow') ? (
+                                    <Clock size={16} color="#f59e0b" />
+                                  ) : (
+                                    <CalendarDays size={16} color="#0d8a73" />
+                                  )}
+                                </div>
+                                <div style={{ flex: 1 }}>
+                                  <p style={{ margin: 0, fontSize: '0.84rem', fontWeight: n.is_read ? 500 : 700, color: '#1e293b', lineHeight: 1.35 }}>
+                                    {n.message}
+                                  </p>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                                    <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                                      {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                    {n.event && (
+                                      <span style={{ fontSize: '0.72rem', color: '#0d8a73', fontWeight: 600 }}>
+                                        View Task →
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))
+                        ) : dynamicRecentActivity.length > 0 ? (
+                          dynamicRecentActivity.slice(0, 3).map((act) => (
+                            <div key={act.id} style={{ fontSize: '0.82rem', padding: '8px', background: '#f8fafc', borderRadius: '8px' }}>
+                              <span style={{ color: '#1e293b', display: 'block', fontWeight: 600 }}>{act.text}</span>
+                              <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>{act.time}</span>
+                            </div>
+                          ))
+                        ) : (
+                          <div style={{ padding: '24px 0', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>
+                            No new notifications
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
-              )}
-            </div>
+              );
+            })()}
 
             {/* Profile Dropdown (Shifted to top right as requested) */}
             <div style={{ position: 'relative' }}>
@@ -2063,6 +2189,127 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                     </p>
                   </div>
                   <input type="checkbox" defaultChecked style={{ width: '20px', height: '20px', accentColor: '#0d8a73' }} />
+                </div>
+
+                <div style={{ borderTop: '1px solid #f1f5f9' }} />
+
+                {/* Module 7: Automated Checklist Reminder Preferences */}
+                <div>
+                  <div style={{ marginBottom: '14px' }}>
+                    <h3 style={{ margin: '0 0 4px', fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
+                      Checklist Reminder Preferences
+                    </h3>
+                    <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748b' }}>
+                      Configure how and when LOCYFY alerts you about upcoming and overdue checklist milestones.
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                    {/* In-app toggle */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <strong style={{ fontSize: '0.9rem', color: '#0f172a', display: 'block' }}>In-App Reminders</strong>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Display milestone notifications under the topbar bell icon.</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={reminderPrefs.in_app_enabled}
+                        onChange={async (e) => {
+                          const updated = { ...reminderPrefs, in_app_enabled: e.target.checked };
+                          setReminderPrefs(updated);
+                          if (currentUser?.id) {
+                            await ApiService.updateReminderPreferences(currentUser.id, { in_app_enabled: e.target.checked });
+                            toast.success(`In-app reminders turned ${e.target.checked ? 'ON' : 'OFF'}`);
+                          }
+                        }}
+                        style={{ width: '18px', height: '18px', accentColor: '#0d8a73' }}
+                      />
+                    </div>
+
+                    {/* 7 Days */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <strong style={{ fontSize: '0.9rem', color: '#0f172a', display: 'block' }}>7-Day Advance Reminder</strong>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Notify me 7 days before a task deadline to plan ahead.</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={reminderPrefs.remind_7_days}
+                        onChange={async (e) => {
+                          const updated = { ...reminderPrefs, remind_7_days: e.target.checked };
+                          setReminderPrefs(updated);
+                          if (currentUser?.id) {
+                            await ApiService.updateReminderPreferences(currentUser.id, { remind_7_days: e.target.checked });
+                            toast.success('7-day reminders updated');
+                          }
+                        }}
+                        style={{ width: '18px', height: '18px', accentColor: '#0d8a73' }}
+                      />
+                    </div>
+
+                    {/* 1 Day */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <strong style={{ fontSize: '0.9rem', color: '#0f172a', display: 'block' }}>1-Day Advance Reminder</strong>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Remind me when a task is due tomorrow.</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={reminderPrefs.remind_1_day}
+                        onChange={async (e) => {
+                          const updated = { ...reminderPrefs, remind_1_day: e.target.checked };
+                          setReminderPrefs(updated);
+                          if (currentUser?.id) {
+                            await ApiService.updateReminderPreferences(currentUser.id, { remind_1_day: e.target.checked });
+                            toast.success('1-day reminders updated');
+                          }
+                        }}
+                        style={{ width: '18px', height: '18px', accentColor: '#0d8a73' }}
+                      />
+                    </div>
+
+                    {/* Deadline Day */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <strong style={{ fontSize: '0.9rem', color: '#0f172a', display: 'block' }}>Deadline Day Reminder</strong>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Alert me when a task is due today.</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={reminderPrefs.remind_due_today}
+                        onChange={async (e) => {
+                          const updated = { ...reminderPrefs, remind_due_today: e.target.checked };
+                          setReminderPrefs(updated);
+                          if (currentUser?.id) {
+                            await ApiService.updateReminderPreferences(currentUser.id, { remind_due_today: e.target.checked });
+                            toast.success('Deadline day reminders updated');
+                          }
+                        }}
+                        style={{ width: '18px', height: '18px', accentColor: '#0d8a73' }}
+                      />
+                    </div>
+
+                    {/* Overdue */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <strong style={{ fontSize: '0.9rem', color: '#0f172a', display: 'block' }}>Overdue Reminder</strong>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Send a single alert when an incomplete task passes its deadline.</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={reminderPrefs.remind_overdue}
+                        onChange={async (e) => {
+                          const updated = { ...reminderPrefs, remind_overdue: e.target.checked };
+                          setReminderPrefs(updated);
+                          if (currentUser?.id) {
+                            await ApiService.updateReminderPreferences(currentUser.id, { remind_overdue: e.target.checked });
+                            toast.success('Overdue reminders updated');
+                          }
+                        }}
+                        style={{ width: '18px', height: '18px', accentColor: '#0d8a73' }}
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 <div style={{ borderTop: '1px solid #f1f5f9' }} />

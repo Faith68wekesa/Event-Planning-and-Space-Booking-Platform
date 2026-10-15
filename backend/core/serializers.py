@@ -1,5 +1,8 @@
 from rest_framework import serializers
-from .models import User, VendorProfile, VenueOwnerProfile, Venue, Booking, Review, Message, Event, EventService
+from .models import (
+    User, VendorProfile, VenueOwnerProfile, Venue, Booking, Review, Message, Event, EventService,
+    Notification, CustomerReminderPreference
+)
 
 class UserSerializer(serializers.ModelSerializer):
     is_provider = serializers.BooleanField(read_only=True)
@@ -217,7 +220,7 @@ class EventServiceSerializer(serializers.ModelSerializer):
         model = EventService
         fields = [
             'id', 'event', 'name', 'category', 'notes',
-            'estimated_cost', 'is_completed', 'created_at', 'updated_at'
+            'estimated_cost', 'is_completed', 'due_date', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
@@ -277,5 +280,28 @@ class EventSerializer(serializers.ModelSerializer):
             'budget', 'description', 'status', 'image_url', 'services', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    event_name = serializers.CharField(source='event.name', read_only=True)
+    task_name = serializers.CharField(source='task.name', read_only=True)
+
+    class Meta:
+        model = Notification
+        fields = [
+            'id', 'user', 'event', 'event_name', 'task', 'task_name',
+            'title', 'message', 'notification_type', 'is_read', 'created_at'
+        ]
+        read_only_fields = ['id', 'user', 'created_at']
+
+
+class CustomerReminderPreferenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomerReminderPreference
+        fields = [
+            'id', 'user', 'in_app_enabled', 'email_enabled',
+            'remind_7_days', 'remind_1_day', 'remind_due_today', 'remind_overdue', 'updated_at'
+        ]
+        read_only_fields = ['id', 'user', 'updated_at']
 
 

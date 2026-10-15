@@ -7,7 +7,8 @@ from .views import (
     VenueOwnerDashboardView, VenueOwnerBookingsView,
     send_otp, verify_otp, reset_password,
     upload_profile_picture,
-    register_user, login_user, request_role
+    register_user, login_user, request_role,
+    NotificationViewSet, CustomerReminderPreferenceView
 )
 
 router = DefaultRouter()
@@ -20,6 +21,7 @@ router.register(r'reviews', ReviewViewSet, basename='review')
 router.register(r'messages', MessageViewSet, basename='message')
 router.register(r'events', EventViewSet, basename='event')
 router.register(r'event-services', EventServiceViewSet, basename='event-service')
+router.register(r'notifications', NotificationViewSet, basename='notification')
 
 urlpatterns = [
     path('auth/register/', register_user, name='register-user'),
@@ -35,5 +37,6 @@ urlpatterns = [
     path('otp/verify/', verify_otp, name='verify-otp'),
     path('otp/reset-password/', reset_password, name='reset-password'),
     path('users/<int:user_id>/upload-avatar/', upload_profile_picture, name='upload-avatar'),
+    path('reminder-preferences/', CustomerReminderPreferenceView.as_view(), name='reminder-preferences'),
 ]
 

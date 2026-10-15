@@ -1,4 +1,4 @@
-import type { Venue, Vendor, VenueOwner, Booking, PlatformStats, FilterState, BookingStatus, Review, Message, ConversationThread, EventItem, EventServiceItem } from '../types';
+import type { Venue, Vendor, VenueOwner, Booking, PlatformStats, FilterState, BookingStatus, Review, Message, ConversationThread, EventItem, EventServiceItem, NotificationItem, ReminderPreference } from '../types';
 
 const API_BASE = 'http://localhost:8000/api';
 
@@ -690,6 +690,81 @@ export const ApiService = {
     } catch (e) {
       console.error('Failed to delete event service:', e);
       return false;
+    }
+  },
+
+  async getNotifications(userId: number | string): Promise<NotificationItem[]> {
+    try {
+      const res = await fetch(`${API_BASE}/notifications/?user_id=${userId}`);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.error('Failed to fetch notifications:', e);
+    }
+    return [];
+  },
+
+  async markNotificationRead(id: number): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/notifications/${id}/mark_read/`, {
+        method: 'POST',
+      });
+      return res.ok;
+    } catch (e) {
+      console.error('Failed to mark notification read:', e);
+      return false;
+    }
+  },
+
+  async markAllNotificationsRead(userId: number | string): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/notifications/mark_all_read/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId }),
+      });
+      return res.ok;
+    } catch (e) {
+      console.error('Failed to mark all notifications read:', e);
+      return false;
+    }
+  },
+
+  async getReminderPreferences(userId: number | string): Promise<ReminderPreference> {
+    try {
+      const res = await fetch(`${API_BASE}/reminder-preferences/?user_id=${userId}`);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.error('Failed to fetch reminder preferences:', e);
+    }
+    return {
+      in_app_enabled: true,
+      email_enabled: false,
+      remind_7_days: true,
+      remind_1_day: true,
+      remind_due_today: true,
+      remind_overdue: true,
+    };
+  },
+
+  async updateReminderPreferences(userId: number | string, prefs: Partial<ReminderPreference>): Promise<{ success: boolean; data?: ReminderPreference; error?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/reminder-preferences/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, ...prefs }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        return { success: true, data };
+      }
+      return { success: false, error: formatApiError(data, 'Failed to update reminder preferences.') };
+    } catch (e: any) {
+      console.error('Failed to update reminder preferences:', e);
+      return { success: false, error: e?.message || 'Network error updating reminder preferences.' };
     }
   }
 };

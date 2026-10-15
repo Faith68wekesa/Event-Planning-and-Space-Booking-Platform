@@ -248,6 +248,7 @@ export interface EventServiceItem {
   notes?: string;
   estimated_cost?: number | string | null;
   is_completed: boolean;
+  due_date?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -269,6 +270,32 @@ export interface EventItem {
   image_url?: string | null;
   services?: EventServiceItem[];
   created_at?: string;
+  updated_at?: string;
+}
+
+export interface NotificationItem {
+  id: number;
+  user: number;
+  event?: number | null;
+  event_name?: string | null;
+  task?: number | null;
+  task_name?: string | null;
+  title: string;
+  message: string;
+  notification_type: 'CHECKLIST_REMINDER' | 'BOOKING_UPDATE' | 'SYSTEM';
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface ReminderPreference {
+  id?: number;
+  user?: number;
+  in_app_enabled: boolean;
+  email_enabled: boolean;
+  remind_7_days: boolean;
+  remind_1_day: boolean;
+  remind_due_today: boolean;
+  remind_overdue: boolean;
   updated_at?: string;
 }
 

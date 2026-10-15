@@ -6,11 +6,16 @@ from rest_framework.permissions import AllowAny
 from django.contrib.auth import authenticate
 from django.db import transaction
 from django.db.models import Q, Sum
-from .models import User, VendorProfile, VenueOwnerProfile, Venue, Booking, Review, EmailOTP, Message, Event, EventService
+from .models import (
+    User, VendorProfile, VenueOwnerProfile, Venue, Booking, Review, EmailOTP, Message, Event, EventService,
+    Notification, CustomerReminderPreference
+)
 from .serializers import (
     UserSerializer, VendorProfileSerializer, VenueOwnerProfileSerializer, VenueSerializer, 
-    BookingSerializer, ReviewSerializer, MessageSerializer, EventSerializer, EventServiceSerializer
+    BookingSerializer, ReviewSerializer, MessageSerializer, EventSerializer, EventServiceSerializer,
+    NotificationSerializer, CustomerReminderPreferenceSerializer
 )
+from .services.reminder_service import evaluate_and_generate_reminders
 from django.core.mail import send_mail
 import random
 import datetime
@@ -1046,3 +1051,99 @@ def request_role(request):
         return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class NotificationViewSet(viewsets.ModelViewSet):
+    serializer_class = NotificationSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            user_id = self.request.query_params.get('user_id')
+            if user_id:
+                try:
+                    user = User.objects.get(pk=user_id)
+                except User.DoesNotExist:
+                    return Notification.objects.none()
+            else:
+                return Notification.objects.none()
+
+        # Opportunistically evaluate pending reminders for this user
+        evaluate_and_generate_reminders(user=user)
+        return Notification.objects.filter(user=user).order_by('-created_at')
+
+    @action(detail=True, methods=['post', 'patch'])
+    def mark_read(self, request, pk=None):
+        notif = self.get_object()
+        notif.is_read = True
+        notif.save()
+        return Response(NotificationSerializer(notif).data)
+
+    @action(detail=False, methods=['post'])
+    def mark_all_read(self, request):
+        user = request.user
+        if not user or not user.is_authenticated:
+            user_id = request.data.get('user_id') or request.query_params.get('user_id')
+            if user_id:
+                try:
+                    user = User.objects.get(pk=user_id)
+                except User.DoesNotExist:
+                    return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+            else:
+                return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        Notification.objects.filter(user=user, is_read=False).update(is_read=True)
+        return Response({'status': 'All notifications marked as read'})
+
+    @action(detail=False, methods=['post'])
+    def scan_reminders(self, request):
+        """Force a scan of reminders for the user"""
+        user = request.user
+        if not user or not user.is_authenticated:
+            user_id = request.data.get('user_id') or request.query_params.get('user_id')
+            if user_id:
+                try:
+                    user = User.objects.get(pk=user_id)
+                except User.DoesNotExist:
+                    return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+            else:
+                return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        new_notifs = evaluate_and_generate_reminders(user=user)
+        return Response({
+            'status': 'Scan complete',
+            'generated_count': len(new_notifs),
+            'notifications': NotificationSerializer(new_notifs, many=True).data
+        })
+
+
+class CustomerReminderPreferenceView(APIView):
+    def get_user(self, request):
+        if request.user and request.user.is_authenticated:
+            return request.user
+        user_id = request.query_params.get('user_id') or request.data.get('user_id')
+        if user_id:
+            try:
+                return User.objects.get(pk=user_id)
+            except User.DoesNotExist:
+                return None
+        return None
+
+    def get(self, request):
+        user = self.get_user(request)
+        if not user:
+            return Response({'error': 'User not found or unauthenticated'}, status=status.HTTP_401_UNAUTHORIZED)
+        pref, _ = CustomerReminderPreference.objects.get_or_create(user=user)
+        return Response(CustomerReminderPreferenceSerializer(pref).data)
+
+    def post(self, request):
+        user = self.get_user(request)
+        if not user:
+            return Response({'error': 'User not found or unauthenticated'}, status=status.HTTP_401_UNAUTHORIZED)
+        pref, _ = CustomerReminderPreference.objects.get_or_create(user=user)
+        
+        serializer = CustomerReminderPreferenceSerializer(pref, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

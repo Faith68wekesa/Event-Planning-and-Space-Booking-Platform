@@ -15,6 +15,8 @@ import {
   Settings,
   FilePlus,
   CheckCircle2,
+  AlertCircle,
+  Clock,
   X,
 } from 'lucide-react';
 import { EventFormModal } from './EventFormModal';
@@ -182,6 +184,8 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
   const [newServiceCategory, setNewServiceCategory] = useState('Photography');
   const [newServiceNotes, setNewServiceNotes] = useState('');
   const [newServiceCost, setNewServiceCost] = useState('');
+  const [newServiceDueDate, setNewServiceDueDate] = useState('');
+  const [taskFilter, setTaskFilter] = useState<'all' | 'completed' | 'pending' | 'overdue'>('all');
 
   // Load services from event when selected or from API
   useEffect(() => {
@@ -325,7 +329,7 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
 
         {/* 2-Column Layout */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '24px', alignItems: 'start' }}>
-          {/* Left Column: Event details card & services */}
+          {/* Left Column: Event details card, progress card, and checklist tasks */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
             {/* Event Details Card */}
             <div
@@ -418,283 +422,16 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
               </div>
             </div>
 
-            {/* Services Needed Section (Matches screenshot) */}
-            <div
-              style={{
-                background: '#ffffff',
-                borderRadius: '16px',
-                border: '1px solid #e2e8f0',
-                padding: '24px',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
-              }}
-            >
-              {/* Header with Icon, Title, Subtitle, and Add Service Manually Button */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <div
-                    style={{
-                      width: '46px',
-                      height: '46px',
-                      borderRadius: '50%',
-                      background: '#e6f7f3',
-                      color: '#0d8a73',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Settings size={22} />
-                  </div>
-                  <div>
-                    <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: '0 0 3px 0' }}>
-                      Services Needed
-                    </h3>
-                    <p style={{ margin: 0, fontSize: '0.86rem', color: '#64748b' }}>
-                      Add the services you plan to book for this event.
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNewServiceName('');
-                    setNewServiceCategory('Photography');
-                    setNewServiceNotes('');
-                    setNewServiceCost('');
-                    setIsAddServiceModalOpen(true);
-                  }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '9px 18px',
-                    borderRadius: '8px',
-                    background: '#ffffff',
-                    border: '1.5px solid #0d8a73',
-                    color: '#0d8a73',
-                    fontWeight: 700,
-                    fontSize: '0.88rem',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                  onMouseOver={(e) => {
-                    e.currentTarget.style.background = '#e6f7f3';
-                  }}
-                  onMouseOut={(e) => {
-                    e.currentTarget.style.background = '#ffffff';
-                  }}
-                >
-                  <Plus size={16} strokeWidth={2.5} /> Add Service Manually
-                </button>
-              </div>
-
-              {/* Your Selected Services Subsection */}
-              <div>
-                <h4 style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', margin: '0 0 14px 0' }}>
-                  Your Selected Services
-                </h4>
-
-                {(!customServicesByEvent[ev.id] || customServicesByEvent[ev.id].length === 0) ? (
-                  /* Empty state exactly matching screenshot */
-                  <div
-                    style={{
-                      border: '1px solid #f1f5f9',
-                      borderRadius: '14px',
-                      padding: '44px 20px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      textAlign: 'center',
-                      background: '#ffffff',
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: '54px',
-                        height: '54px',
-                        borderRadius: '50%',
-                        background: '#e6f7f3',
-                        color: '#0d8a73',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        marginBottom: '14px',
-                      }}
-                    >
-                      <FilePlus size={26} />
-                    </div>
-                    <div style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', marginBottom: '6px' }}>
-                      No services added yet
-                    </div>
-                    <p style={{ margin: '0 0 14px 0', fontSize: '0.85rem', color: '#64748b' }}>
-                      Click the button above to add a service for this event.
-                    </p>
-                    {onNavigateTab && (
-                      <button
-                        type="button"
-                        onClick={() => onNavigateTab('vendors')}
-                        style={{
-                          background: 'none',
-                          border: '1px solid #cbd5e1',
-                          borderRadius: '6px',
-                          padding: '6px 12px',
-                          fontSize: '0.8rem',
-                          fontWeight: 600,
-                          color: '#0d8a73',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Explore Vendors & Services
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  /* Render manually added services */
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {customServicesByEvent[ev.id].map((svc) => (
-                      <div
-                        key={svc.id}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '14px 18px',
-                          borderRadius: '12px',
-                          border: '1px solid #e2e8f0',
-                          background: svc.is_completed ? '#f0fdf4' : '#f8fafc',
-                          transition: 'background 0.2s ease',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              const newStatus = !svc.is_completed;
-                              setCustomServicesByEvent((prev) => ({
-                                ...prev,
-                                [ev.id]: (prev[ev.id] || []).map((s) =>
-                                  s.id === svc.id ? { ...s, is_completed: newStatus } : s
-                                ),
-                              }));
-                              await ApiService.updateEventService(svc.id, { is_completed: newStatus });
-                            }}
-                            title={svc.is_completed ? 'Mark as pending' : 'Mark as booked/completed'}
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              cursor: 'pointer',
-                              padding: 0,
-                              color: svc.is_completed ? '#16a34a' : '#94a3b8',
-                              display: 'flex',
-                              alignItems: 'center',
-                            }}
-                          >
-                            <CheckCircle2 size={20} />
-                          </button>
-                          <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span
-                                style={{
-                                  fontSize: '0.94rem',
-                                  fontWeight: 700,
-                                  color: '#0f172a',
-                                  textDecoration: svc.is_completed ? 'line-through' : 'none',
-                                }}
-                              >
-                                {svc.name}
-                              </span>
-                              {svc.category && (
-                                <span
-                                  style={{
-                                    fontSize: '0.72rem',
-                                    fontWeight: 700,
-                                    background: '#e6f7f3',
-                                    color: '#0d8a73',
-                                    padding: '2px 8px',
-                                    borderRadius: '6px',
-                                  }}
-                                >
-                                  {svc.category}
-                                </span>
-                              )}
-                            </div>
-                            {svc.notes && (
-                              <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>
-                                {svc.notes}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                          {svc.estimated_cost && (
-                            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0d8a73' }}>
-                              KSh {Number(svc.estimated_cost).toLocaleString()}
-                            </span>
-                          )}
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              const newStatus = !svc.is_completed;
-                              setCustomServicesByEvent((prev) => ({
-                                ...prev,
-                                [ev.id]: (prev[ev.id] || []).map((s) =>
-                                  s.id === svc.id ? { ...s, is_completed: newStatus } : s
-                                ),
-                              }));
-                              // Persist to backend
-                              await ApiService.updateEventService(svc.id, { is_completed: newStatus });
-                            }}
-                            style={{
-                              padding: '5px 10px',
-                              borderRadius: '6px',
-                              border: svc.is_completed ? '1px solid #bbf7d0' : '1px solid #cbd5e1',
-                              background: svc.is_completed ? '#dcfce7' : '#ffffff',
-                              color: svc.is_completed ? '#15803d' : '#475569',
-                              fontSize: '0.75rem',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                            }}
-                          >
-                            {svc.is_completed ? 'Booked' : 'Mark Booked'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => confirmDeleteService(ev.id, svc)}
-                            title="Remove service"
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              color: '#94a3b8',
-                              cursor: 'pointer',
-                              padding: '4px',
-                              display: 'flex',
-                              alignItems: 'center',
-                            }}
-                            onMouseOver={(e) => {
-                              e.currentTarget.style.color = '#ef4444';
-                            }}
-                            onMouseOut={(e) => {
-                              e.currentTarget.style.color = '#94a3b8';
-                            }}
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Your Event Plan Tracking Progress Card (Matches bottom screenshot) */}
+            {/* Checklist Progress Overview Card (Step 2 in Module 6) */}
             {(() => {
               const currentServices = customServicesByEvent[ev.id] || [];
               const totalItems = currentServices.length;
               const completedItems = currentServices.filter((s) => s.is_completed).length;
+              const todayStr = new Date().toISOString().split('T')[0];
+              const overdueItems = currentServices.filter(
+                (s) => !s.is_completed && s.due_date && s.due_date < todayStr
+              ).length;
+              const pendingItems = totalItems - completedItems;
               const progressPercentage = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
 
               return (
@@ -704,46 +441,29 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
                     background: '#ffffff',
                     borderRadius: '16px',
                     border: '1px solid #e2e8f0',
-                    padding: '20px 24px',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                    padding: '24px',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
                     display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
+                    flexDirection: 'column',
                     gap: '20px',
-                    flexWrap: 'wrap',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                    <div
-                      style={{
-                        width: '46px',
-                        height: '46px',
-                        borderRadius: '12px',
-                        background: '#e6f7f3',
-                        color: '#0d8a73',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                      }}
-                    >
-                      <Calendar size={22} />
-                    </div>
-                    <div>
-                      <h4 style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', margin: '0 0 3px 0' }}>
-                        Your Event Plan
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                        Checklist Progress
                       </h4>
-                      <p style={{ margin: 0, fontSize: '0.84rem', color: '#64748b' }}>
-                        Track your progress as you add services and complete your checklist.
-                      </p>
+                      <span style={{ fontSize: '1rem', fontWeight: 800, color: '#0d8a73' }}>
+                        {progressPercentage}%
+                      </span>
                     </div>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px', minWidth: '240px' }}>
+                    <div style={{ color: '#64748b', fontSize: '0.86rem', marginBottom: '12px' }}>
+                      {completedItems} of {totalItems} tasks completed
+                    </div>
                     <div
                       style={{
-                        flex: 1,
-                        height: '8px',
+                        width: '100%',
+                        height: '10px',
                         borderRadius: '999px',
                         background: '#e2e8f0',
                         overflow: 'hidden',
@@ -759,10 +479,427 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
                         }}
                       />
                     </div>
-                    <span style={{ fontSize: '0.84rem', fontWeight: 700, color: '#64748b', whiteSpace: 'nowrap' }}>
-                      {progressPercentage}% complete
-                    </span>
                   </div>
+
+                  {/* 3 Status Summary Chips */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        padding: '14px 16px',
+                        borderRadius: '12px',
+                        background: '#f0fdf4',
+                        border: '1px solid #bbf7d0',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: '36px',
+                          height: '36px',
+                          borderRadius: '8px',
+                          background: '#dcfce7',
+                          color: '#16a34a',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <CheckCircle2 size={20} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#16a34a', textTransform: 'uppercase' }}>
+                          Completed
+                        </div>
+                        <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#0f172a' }}>
+                          {completedItems}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        padding: '14px 16px',
+                        borderRadius: '12px',
+                        background: '#fffbeb',
+                        border: '1px solid #fde68a',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: '36px',
+                          height: '36px',
+                          borderRadius: '8px',
+                          background: '#fef3c7',
+                          color: '#d97706',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Clock size={20} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#d97706', textTransform: 'uppercase' }}>
+                          Pending
+                        </div>
+                        <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#0f172a' }}>
+                          {pendingItems}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        padding: '14px 16px',
+                        borderRadius: '12px',
+                        background: overdueItems > 0 ? '#fef2f2' : '#f8fafc',
+                        border: overdueItems > 0 ? '1px solid #fecaca' : '1px solid #e2e8f0',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: '36px',
+                          height: '36px',
+                          borderRadius: '8px',
+                          background: overdueItems > 0 ? '#fee2e2' : '#e2e8f0',
+                          color: overdueItems > 0 ? '#dc2626' : '#64748b',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <AlertCircle size={20} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 700, color: overdueItems > 0 ? '#dc2626' : '#64748b', textTransform: 'uppercase' }}>
+                          Overdue
+                        </div>
+                        <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#0f172a' }}>
+                          {overdueItems}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Event Checklist Tasks View (Step 3 & 7 in Module 6) */}
+            {(() => {
+              const currentServices = customServicesByEvent[ev.id] || [];
+              const todayStr = new Date().toISOString().split('T')[0];
+
+              const getTaskStatus = (svc: EventServiceItem): 'Completed' | 'Overdue' | 'Pending' => {
+                if (svc.is_completed) return 'Completed';
+                if (svc.due_date && svc.due_date < todayStr) return 'Overdue';
+                return 'Pending';
+              };
+
+              const overdueCount = currentServices.filter((s) => !s.is_completed && s.due_date && s.due_date < todayStr).length;
+
+              const filteredServices = currentServices.filter((svc) => {
+                const status = getTaskStatus(svc);
+                if (taskFilter === 'completed') return status === 'Completed';
+                if (taskFilter === 'pending') return status === 'Pending';
+                if (taskFilter === 'overdue') return status === 'Overdue';
+                return true;
+              });
+
+              return (
+                <div
+                  style={{
+                    background: '#ffffff',
+                    borderRadius: '16px',
+                    border: '1px solid #e2e8f0',
+                    padding: '24px',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                  }}
+                >
+                  {/* Overdue Banner Warning (Step 7) */}
+                  {overdueCount > 0 && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        padding: '12px 16px',
+                        background: '#fef2f2',
+                        border: '1px solid #fecaca',
+                        borderRadius: '10px',
+                        color: '#b91c1c',
+                        fontSize: '0.88rem',
+                        fontWeight: 700,
+                        marginBottom: '20px',
+                      }}
+                    >
+                      <AlertCircle size={18} />
+                      <span>{overdueCount} {overdueCount === 1 ? 'task is' : 'tasks are'} overdue! Please review your schedule.</span>
+                    </div>
+                  )}
+
+                  {/* Header with Title and Add Task button */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
+                    <div>
+                      <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: '0 0 4px 0' }}>
+                        Event Checklist
+                      </h3>
+                      <p style={{ margin: 0, fontSize: '0.86rem', color: '#64748b' }}>
+                        See all tasks with due dates, status, and actions.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewServiceName('');
+                        setNewServiceCategory('Photography');
+                        setNewServiceNotes('');
+                        setNewServiceCost('');
+                        setNewServiceDueDate(ev.date || '');
+                        setIsAddServiceModalOpen(true);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '9px 18px',
+                        borderRadius: '8px',
+                        background: '#0d8a73',
+                        border: 'none',
+                        color: '#ffffff',
+                        fontWeight: 700,
+                        fontSize: '0.88rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <Plus size={16} strokeWidth={2.5} /> Add Task
+                    </button>
+                  </div>
+
+                  {/* Filter Tabs: All, Completed, Pending, Overdue */}
+                  <div style={{ display: 'flex', gap: '10px', marginBottom: '18px', flexWrap: 'wrap' }}>
+                    {[
+                      { id: 'all', label: `All (${currentServices.length})` },
+                      { id: 'completed', label: `Completed (${currentServices.filter((s) => s.is_completed).length})` },
+                      { id: 'pending', label: `Pending (${currentServices.filter((s) => !s.is_completed && (!s.due_date || s.due_date >= todayStr)).length})` },
+                      { id: 'overdue', label: `Overdue (${overdueCount})` },
+                    ].map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setTaskFilter(tab.id as any)}
+                        style={{
+                          padding: '6px 14px',
+                          borderRadius: '8px',
+                          border: taskFilter === tab.id ? '1.5px solid #0d8a73' : '1px solid #e2e8f0',
+                          background: taskFilter === tab.id ? '#e6f7f3' : '#ffffff',
+                          color: taskFilter === tab.id ? '#0d8a73' : '#64748b',
+                          fontSize: '0.82rem',
+                          fontWeight: taskFilter === tab.id ? 700 : 600,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Tasks List */}
+                  {filteredServices.length === 0 ? (
+                    <div
+                      style={{
+                        border: '1px dashed #cbd5e1',
+                        borderRadius: '14px',
+                        padding: '40px 20px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        textAlign: 'center',
+                        background: '#f8fafc',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: '48px',
+                          height: '48px',
+                          borderRadius: '50%',
+                          background: '#e6f7f3',
+                          color: '#0d8a73',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          marginBottom: '12px',
+                        }}
+                      >
+                        <FilePlus size={24} />
+                      </div>
+                      <div style={{ fontSize: '0.96rem', fontWeight: 800, color: '#0f172a', marginBottom: '4px' }}>
+                        No tasks in this view
+                      </div>
+                      <p style={{ margin: '0 0 12px 0', fontSize: '0.84rem', color: '#64748b' }}>
+                        {taskFilter === 'all'
+                          ? 'Click "Add Task" above to start your checklist.'
+                          : `No tasks currently marked as ${taskFilter}.`}
+                      </p>
+                      {onNavigateTab && (
+                        <button
+                          type="button"
+                          onClick={() => onNavigateTab('vendors')}
+                          style={{
+                            background: 'none',
+                            border: '1px solid #cbd5e1',
+                            borderRadius: '6px',
+                            padding: '6px 12px',
+                            fontSize: '0.8rem',
+                            fontWeight: 600,
+                            color: '#0d8a73',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Explore Vendors & Services
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {filteredServices.map((svc) => {
+                        const status = getTaskStatus(svc);
+                        return (
+                          <div
+                            key={svc.id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '14px 18px',
+                              borderRadius: '12px',
+                              border: '1px solid #e2e8f0',
+                              background: status === 'Completed' ? '#f0fdf4' : status === 'Overdue' ? '#fef2f2' : '#ffffff',
+                              transition: 'background 0.2s ease',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const newStatus = !svc.is_completed;
+                                  setCustomServicesByEvent((prev) => ({
+                                    ...prev,
+                                    [ev.id]: (prev[ev.id] || []).map((s) =>
+                                      s.id === svc.id ? { ...s, is_completed: newStatus } : s
+                                    ),
+                                  }));
+                                  await ApiService.updateEventService(svc.id, { is_completed: newStatus });
+                                }}
+                                title={svc.is_completed ? 'Reopen task' : 'Mark task complete'}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  padding: 0,
+                                  color: svc.is_completed ? '#16a34a' : status === 'Overdue' ? '#dc2626' : '#94a3b8',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                }}
+                              >
+                                <CheckCircle2 size={22} />
+                              </button>
+                              <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span
+                                    style={{
+                                      fontSize: '0.94rem',
+                                      fontWeight: 700,
+                                      color: '#0f172a',
+                                      textDecoration: svc.is_completed ? 'line-through' : 'none',
+                                    }}
+                                  >
+                                    {svc.name}
+                                  </span>
+                                  {svc.category && (
+                                    <span
+                                      style={{
+                                        fontSize: '0.72rem',
+                                        fontWeight: 700,
+                                        background: '#f1f5f9',
+                                        color: '#475569',
+                                        padding: '2px 8px',
+                                        borderRadius: '6px',
+                                      }}
+                                    >
+                                      {svc.category}
+                                    </span>
+                                  )}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '4px' }}>
+                                  {svc.due_date && (
+                                    <span style={{ fontSize: '0.78rem', color: status === 'Overdue' ? '#dc2626' : '#64748b', fontWeight: status === 'Overdue' ? 700 : 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                      <Clock size={12} /> Due: {formatDateDisplay(svc.due_date)}
+                                    </span>
+                                  )}
+                                  {svc.notes && (
+                                    <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                                      {svc.notes}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                              {/* Status Badge */}
+                              <span
+                                style={{
+                                  padding: '4px 10px',
+                                  borderRadius: '999px',
+                                  fontSize: '0.74rem',
+                                  fontWeight: 700,
+                                  background: status === 'Completed' ? '#dcfce7' : status === 'Overdue' ? '#fee2e2' : '#fef3c7',
+                                  color: status === 'Completed' ? '#16a34a' : status === 'Overdue' ? '#dc2626' : '#d97706',
+                                }}
+                              >
+                                {status}
+                              </span>
+
+                              <button
+                                type="button"
+                                onClick={() => confirmDeleteService(ev.id, svc)}
+                                title="Delete task"
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: '#94a3b8',
+                                  cursor: 'pointer',
+                                  padding: '4px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                }}
+                                onMouseOver={(e) => {
+                                  e.currentTarget.style.color = '#ef4444';
+                                }}
+                                onMouseOut={(e) => {
+                                  e.currentTarget.style.color = '#94a3b8';
+                                }}
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })()}
@@ -923,7 +1060,7 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
                     <Settings size={18} />
                   </div>
                   <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>
-                    Add Service Manually
+                    Add New Task
                   </h3>
                 </div>
                 <button
@@ -955,6 +1092,7 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
                       category: newServiceCategory,
                       notes: newServiceNotes.trim(),
                       estimated_cost: newServiceCost ? Number(newServiceCost) : null,
+                      due_date: newServiceDueDate ? newServiceDueDate : null,
                       is_completed: false,
                     };
                     const res = await ApiService.createEventService(payload);
@@ -973,6 +1111,7 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
                         category: newServiceCategory,
                         notes: newServiceNotes.trim(),
                         estimated_cost: newServiceCost ? Number(newServiceCost) : null,
+                        due_date: newServiceDueDate ? newServiceDueDate : null,
                         is_completed: false,
                       };
                       setCustomServicesByEvent((prev) => ({
@@ -991,12 +1130,12 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
               >
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-                    Service Name *
+                    Task Title *
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g., Drone Photography, Live Band, MC"
+                    placeholder="e.g. Book the venue, Confirm photographer"
                     value={newServiceName}
                     onChange={(e) => setNewServiceName(e.target.value)}
                     style={{
@@ -1012,6 +1151,27 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                      Due Date *
+                    </label>
+                    <input
+                      type="date"
+                      value={newServiceDueDate}
+                      onChange={(e) => setNewServiceDueDate(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: '1.5px solid #cbd5e1',
+                        fontSize: '0.88rem',
+                        boxSizing: 'border-box',
+                        background: '#fff',
+                        outline: 'none',
+                      }}
+                    />
+                  </div>
+
                   <div>
                     <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
                       Category
@@ -1030,9 +1190,9 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
                         outline: 'none',
                       }}
                     >
+                      <option value="Venue">Venue</option>
                       <option value="Photography">Photography</option>
                       <option value="Catering">Catering</option>
-                      <option value="Venue">Venue</option>
                       <option value="Decoration">Decoration</option>
                       <option value="Entertainment">Entertainment / DJ</option>
                       <option value="MC Services">MC Services</option>
@@ -1041,36 +1201,15 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
                       <option value="Other">Other</option>
                     </select>
                   </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-                      Est. Cost (KSh)
-                    </label>
-                    <input
-                      type="number"
-                      placeholder="Optional"
-                      value={newServiceCost}
-                      onChange={(e) => setNewServiceCost(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '10px 12px',
-                        borderRadius: '8px',
-                        border: '1.5px solid #cbd5e1',
-                        fontSize: '0.88rem',
-                        boxSizing: 'border-box',
-                        outline: 'none',
-                      }}
-                    />
-                  </div>
                 </div>
 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-                    Special Requirements / Notes
+                    Description (optional)
                   </label>
                   <textarea
                     rows={3}
-                    placeholder="Specify special requirements or provider details..."
+                    placeholder="Add more details about this task..."
                     value={newServiceNotes}
                     onChange={(e) => setNewServiceNotes(e.target.value)}
                     style={{

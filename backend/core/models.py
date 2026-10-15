@@ -329,6 +329,7 @@ class EventService(models.Model):
         validators=[MinValueValidator(0)]
     )
     is_completed = models.BooleanField(default=False)
+    due_date = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -337,4 +338,71 @@ class EventService(models.Model):
 
     def __str__(self):
         return f"{self.name} - {self.event.name}"
+
+
+class Notification(models.Model):
+    NOTIFICATION_TYPES = [
+        ('CHECKLIST_REMINDER', 'Checklist Reminder'),
+        ('BOOKING_UPDATE', 'Booking Update'),
+        ('SYSTEM', 'System Alert'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, null=True, blank=True, related_name='notifications')
+    task = models.ForeignKey(EventService, on_delete=models.CASCADE, null=True, blank=True, related_name='notifications')
+    title = models.CharField(max_length=200)
+    message = models.TextField()
+    notification_type = models.CharField(max_length=50, choices=NOTIFICATION_TYPES, default='CHECKLIST_REMINDER')
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.username} - {self.title} ({'Read' if self.is_read else 'Unread'})"
+
+
+class ChecklistReminderLog(models.Model):
+    REMINDER_TYPES = [
+        ('7_DAYS', '7 Days Before Deadline'),
+        ('1_DAY', '1 Day Before Deadline'),
+        ('DUE_TODAY', 'Due Today'),
+        ('OVERDUE', 'Task Overdue'),
+    ]
+    CHANNELS = [
+        ('IN_APP', 'In-App Notification'),
+        ('EMAIL', 'Email'),
+    ]
+
+    task = models.ForeignKey(EventService, on_delete=models.CASCADE, related_name='reminder_logs')
+    reminder_type = models.CharField(max_length=20, choices=REMINDER_TYPES)
+    channel = models.CharField(max_length=20, choices=CHANNELS, default='IN_APP')
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['task', 'reminder_type', 'channel'],
+                name='unique_task_reminder_per_channel'
+            )
+        ]
+        ordering = ['-sent_at']
+
+    def __str__(self):
+        return f"{self.task.name} - {self.reminder_type} via {self.channel}"
+
+
+class CustomerReminderPreference(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='reminder_preferences')
+    in_app_enabled = models.BooleanField(default=True)
+    email_enabled = models.BooleanField(default=False)
+    remind_7_days = models.BooleanField(default=True)
+    remind_1_day = models.BooleanField(default=True)
+    remind_due_today = models.BooleanField(default=True)
+    remind_overdue = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Preferences for {self.user.username}"
 
