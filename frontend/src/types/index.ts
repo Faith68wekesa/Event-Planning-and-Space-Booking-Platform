@@ -11,6 +11,10 @@ export interface User {
   is_vendor?: boolean;
   is_venue_owner?: boolean;
   is_provider?: boolean;
+  is_active?: boolean;
+  is_staff?: boolean;
+  is_superuser?: boolean;
+  date_joined?: string;
   phone_number?: string;
   avatar_url?: string;
   bio?: string;
@@ -23,6 +27,7 @@ export interface AuthResponse {
     is_vendor: boolean;
     is_venue_owner: boolean;
     is_provider?: boolean;
+    is_admin?: boolean;
   };
   vendor_profile?: Vendor;
   venue_owner_profile?: VenueOwner;
@@ -151,6 +156,7 @@ export interface Booking {
   id: number;
   customer: number;
   customer_name?: string;
+  customer_email?: string;
   venue?: number;
   venue_details?: Venue;
   vendor?: number;
@@ -236,6 +242,17 @@ export interface PlatformStats {
   verified_vendors: number;
   total_bookings: number;
   satisfied_clients: number;
+  total_users?: number;
+  total_customers?: number;
+  total_providers?: number;
+  pending_verifications?: number;
+  pending_bookings?: number;
+  approved_bookings?: number;
+  completed_bookings?: number;
+  cancelled_bookings?: number;
+  total_revenue?: number;
+  total_reviews?: number;
+  avg_rating?: number;
 }
 
 export type EventStatus = 'Upcoming' | 'Planning' | 'Completed' | 'Cancelled';

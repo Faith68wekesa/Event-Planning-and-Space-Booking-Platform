@@ -8,7 +8,8 @@ from .views import (
     send_otp, verify_otp, reset_password,
     upload_profile_picture,
     register_user, login_user, request_role,
-    NotificationViewSet, CustomerReminderPreferenceView
+    NotificationViewSet, CustomerReminderPreferenceView,
+    refresh_all_ratings
 )
 
 router = DefaultRouter()
@@ -33,6 +34,7 @@ urlpatterns = [
     path('venue-owners/<int:owner_id>/bookings/', VenueOwnerBookingsView.as_view(), name='venue-owner-bookings'),
     path('', include(router.urls)),
     path('stats/', platform_stats, name='platform-stats'),
+    path('admin/refresh-ratings/', refresh_all_ratings, name='refresh-all-ratings'),
     path('otp/send/', send_otp, name='send-otp'),
     path('otp/verify/', verify_otp, name='verify-otp'),
     path('otp/reset-password/', reset_password, name='reset-password'),

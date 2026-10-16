@@ -62,19 +62,35 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [, setLoading] = useState(true);
 
-  // Business profile form
-  const businessName = currentVenueOwner?.business_name || currentVendor?.business_name || 'My Business';
-  const location = currentVenueOwner?.location || currentVendor?.location || 'Nairobi';
-  const email = currentVenueOwner?.contact_email || currentVendor?.contact_email || '';
-  const phone = currentVenueOwner?.contact_phone || currentVendor?.contact_phone || '';
+  // Business profile form & live verification state
+  const [liveVendor, setLiveVendor] = useState<Vendor | null>(currentVendor || null);
+  const [liveVenueOwner, setLiveVenueOwner] = useState<VenueOwner | null>(currentVenueOwner || null);
+
+  useEffect(() => {
+    if (currentVendor) setLiveVendor(currentVendor);
+  }, [currentVendor]);
+
+  useEffect(() => {
+    if (currentVenueOwner) setLiveVenueOwner(currentVenueOwner);
+  }, [currentVenueOwner]);
+
+  const effectiveVendor = liveVendor || currentVendor;
+  const effectiveVenueOwner = liveVenueOwner || currentVenueOwner;
+  const isLiveVerified = Boolean(effectiveVendor?.is_verified || effectiveVenueOwner?.is_verified);
+  const verificationStatus = effectiveVendor?.verification_status || effectiveVenueOwner?.verification_status || (isLiveVerified ? 'APPROVED' : 'PENDING');
+
+  const businessName = effectiveVenueOwner?.business_name || effectiveVendor?.business_name || 'My Business';
+  const location = effectiveVenueOwner?.location || effectiveVendor?.location || 'Nairobi';
+  const email = effectiveVenueOwner?.contact_email || effectiveVendor?.contact_email || '';
+  const phone = effectiveVenueOwner?.contact_phone || effectiveVendor?.contact_phone || '';
 
   const [profileFormData, setProfileFormData] = useState({
     business_name: businessName,
     location: location,
     contact_email: email,
     contact_phone: phone,
-    description: currentVenueOwner?.description || currentVendor?.description || '',
-    website_url: currentVenueOwner?.website_url || currentVendor?.website_url || '',
+    description: effectiveVenueOwner?.description || effectiveVendor?.description || '',
+    website_url: effectiveVenueOwner?.website_url || effectiveVendor?.website_url || '',
   });
 
   const [isUploading, setIsUploading] = useState(false);
@@ -171,13 +187,20 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
       }
       if (userId) {
         try {
-          const userBookings = await ApiService.getBookings({ user: userId });
+          const [userBookings, liveVendors, liveOwners] = await Promise.all([
+            ApiService.getBookings({ user: userId }),
+            ApiService.getVendors({ user: userId }),
+            ApiService.getVenueOwners({ user: userId }),
+          ]);
+          if (liveVendors && liveVendors.length > 0) setLiveVendor(liveVendors[0]);
+          if (liveOwners && liveOwners.length > 0) setLiveVenueOwner(liveOwners[0]);
+
           const existingIds = new Set(fetchedBookings.map(b => b.id));
           userBookings.forEach(b => {
             if (!existingIds.has(b.id)) fetchedBookings.push(b);
           });
         } catch (e) {
-          console.error("Failed to load user bookings", e);
+          console.error("Failed to load user bookings or live profiles", e);
         }
       }
 
@@ -757,6 +780,80 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                 )}
               </div>
             </div>
+
+            {/* Business Verification Status Indicator */}
+            {(effectiveVendor || effectiveVenueOwner) && (
+              <div style={{
+                background: isLiveVerified ? '#f0fdf4' : verificationStatus === 'REJECTED' ? '#fef2f2' : '#fffbeb',
+                border: `1px solid ${isLiveVerified ? '#bbf7d0' : verificationStatus === 'REJECTED' ? '#fecaca' : '#fde68a'}`,
+                borderRadius: '16px',
+                padding: '16px 22px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '16px',
+                flexWrap: 'wrap',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{
+                    width: '42px',
+                    height: '42px',
+                    borderRadius: '12px',
+                    background: isLiveVerified ? '#dcfce7' : verificationStatus === 'REJECTED' ? '#fee2e2' : '#fef3c7',
+                    color: isLiveVerified ? '#16a34a' : verificationStatus === 'REJECTED' ? '#dc2626' : '#d97706',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: isLiveVerified ? '0 2px 6px rgba(22, 163, 74, 0.15)' : 'none'
+                  }}>
+                    {isLiveVerified ? <ShieldCheck size={24} /> : verificationStatus === 'REJECTED' ? <AlertCircle size={24} /> : <Clock size={24} />}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: '0.98rem', color: isLiveVerified ? '#15803d' : verificationStatus === 'REJECTED' ? '#991b1b' : '#92400e', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      {isLiveVerified ? 'Verified Business Provider Account' : verificationStatus === 'REJECTED' ? 'Verification Application Rejected' : 'Verification Application In Review'}
+                      <span style={{
+                        fontSize: '0.72rem',
+                        padding: '2px 8px',
+                        borderRadius: '999px',
+                        background: isLiveVerified ? '#dcfce7' : verificationStatus === 'REJECTED' ? '#fee2e2' : '#fef3c7',
+                        color: isLiveVerified ? '#166534' : verificationStatus === 'REJECTED' ? '#991b1b' : '#854d0e',
+                        fontWeight: 700,
+                        border: `1px solid ${isLiveVerified ? '#bbf7d0' : verificationStatus === 'REJECTED' ? '#fecaca' : '#fde68a'}`,
+                        textTransform: 'uppercase'
+                      }}>
+                        {isLiveVerified ? 'Verified Badge Active' : verificationStatus === 'REJECTED' ? 'Action Required' : 'Pending Admin Verification'}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.84rem', color: '#64748b', marginTop: '2px', maxWidth: '700px' }}>
+                      {isLiveVerified 
+                        ? 'Your business profile is verified and approved by Locyfy platform administrators. All your published venue spaces and service packages feature the official Verified badge across client discovery and booking pages.' 
+                        : verificationStatus === 'REJECTED' 
+                        ? 'An administrator has reviewed your account and requested updates. Please review your business profile information.' 
+                        : 'Your business profile has been submitted and is currently in the administrator verification queue. When verified by an administrator, your listings will automatically display the verified badge.'}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <button
+                    onClick={() => setActiveTab('profile')}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      background: '#ffffff',
+                      border: `1px solid ${isLiveVerified ? '#bbf7d0' : verificationStatus === 'REJECTED' ? '#fecaca' : '#fde68a'}`,
+                      color: isLiveVerified ? '#15803d' : verificationStatus === 'REJECTED' ? '#991b1b' : '#92400e',
+                      fontWeight: 700,
+                      fontSize: '0.82rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    View Business Profile
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* 4 KPI Stat Cards with Real Data */}
             <div className="inspo-stat-grid">

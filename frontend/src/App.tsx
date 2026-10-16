@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { UserRole, Venue, Vendor, VenueOwner, Booking, PlatformStats, FilterState } from './types';
-import { ApiService } from './services/api.ts';
+import { ApiService, setApiCurrentUserId } from './services/api.ts';
 import { LandingPage } from './components/LandingPage.tsx';
 import { Navbar } from './components/Navbar.tsx';
 import { HeroSearch } from './components/HeroSearch.tsx';
@@ -48,6 +48,7 @@ export const App: React.FC = () => {
   const [bookingTargetVenue, setBookingTargetVenue] = useState<Venue | null>(null);
   const [bookingTargetVendor, setBookingTargetVendor] = useState<Vendor | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [isAdminAuthModal, setIsAdminAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [currentUser, setCurrentUser] = useState<UserType | null>(null);
   const [currentVendor, setCurrentVendor] = useState<Vendor | null>(null);
@@ -58,7 +59,9 @@ export const App: React.FC = () => {
     else setBookingTargetVendor(target);
 
     if (!currentUser) {
-      setAuthMode('login'); setShowAuthModal(true);;
+      setIsAdminAuthModal(false);
+      setAuthMode('login'); 
+      setShowAuthModal(true);
     }
   };
 
@@ -73,12 +76,38 @@ export const App: React.FC = () => {
   };
 
   useEffect(() => {
+    setApiCurrentUserId(currentUser ? currentUser.id : null);
     if (currentUser) {
       ApiService.getBookings(currentUser.id).then(setBookings);
     } else {
       setBookings([]);
     }
   }, [currentUser, activeTab]);
+
+  const isAdmin = Boolean(currentUser && (
+    currentUser.role === 'ADMIN' || 
+    currentUser.is_staff || 
+    currentUser.is_superuser
+  ));
+
+  const handleOpenAdmin = () => {
+    if (!currentUser) {
+      toast('Please log in with an administrator account to access Admin Mode.', {
+        icon: '🔒',
+        duration: 4000,
+      });
+      setIsAdminAuthModal(true);
+      setAuthMode('login');
+      setShowAuthModal(true);
+      return;
+    }
+    if (!isAdmin) {
+      toast.error('Access Denied: Only platform administrators can access Admin Mode.');
+      return;
+    }
+    setActiveRole('ADMIN');
+    setActiveTab('admin-dashboard');
+  };
 
   useEffect(() => {
     loadData();
@@ -100,6 +129,7 @@ export const App: React.FC = () => {
     const ok = await ApiService.toggleVerifyVenue(id);
     if (ok) {
       setVenues((prev) => prev.map((v) => (v.id === id ? { ...v, is_verified: !v.is_verified } : v)));
+      loadData();
     }
   };
 
@@ -107,11 +137,16 @@ export const App: React.FC = () => {
     const ok = await ApiService.toggleVerifyVendor(id);
     if (ok) {
       setVendors((prev) => prev.map((v) => (v.id === id ? { ...v, is_verified: !v.is_verified } : v)));
+      loadData();
     }
   };
 
-  const handleRequestRole = async (role: 'CUSTOMER' | 'VENDOR' | 'VENUE_OWNER' | 'PROVIDER') => {
+  const handleRequestRole = async (role: 'CUSTOMER' | 'VENDOR' | 'VENUE_OWNER' | 'PROVIDER' | 'ADMIN') => {
     if (!currentUser) return;
+    if (role === 'ADMIN') {
+      toast.error('Access Denied: Administrator roles cannot be requested.');
+      return;
+    }
     const roleName = role === 'PROVIDER' ? 'Business Provider' : role === 'VENDOR' ? 'Vendor' : role === 'VENUE_OWNER' ? 'Venue Owner' : 'Customer';
     const toastId = toast.loading(`Activating ${roleName} mode...`);
     try {
@@ -122,8 +157,13 @@ export const App: React.FC = () => {
         if (data.vendor_profile) setCurrentVendor(data.vendor_profile);
         if (data.venue_owner_profile) setCurrentVenueOwner(data.venue_owner_profile);
         
-        setActiveRole(role === 'CUSTOMER' ? 'CUSTOMER' : 'PROVIDER');
-        setActiveTab(role === 'CUSTOMER' ? 'my-bookings' : 'provider-dashboard');
+        if (role === 'CUSTOMER') {
+          setActiveRole('CUSTOMER');
+          setActiveTab('my-bookings');
+        } else {
+          setActiveRole('PROVIDER');
+          setActiveTab('provider-dashboard');
+        }
       } else {
         toast.error("Failed to activate role.", { id: toastId });
       }
@@ -143,8 +183,8 @@ export const App: React.FC = () => {
             activeRole={activeRole}
             setActiveRole={setActiveRole}
             currentUser={currentUser}
-            onLoginClick={() => { setAuthMode('login'); setShowAuthModal(true); }}
-            onRegisterClick={() => { setAuthMode('register'); setShowAuthModal(true); }}
+            onLoginClick={() => { setIsAdminAuthModal(false); setAuthMode('login'); setShowAuthModal(true); }}
+            onRegisterClick={() => { setIsAdminAuthModal(false); setAuthMode('register'); setShowAuthModal(true); }}
             onRequestRole={handleRequestRole}
             searchQuery={filters.search}
             onSearchChange={(q) => setFilters((f) => ({ ...f, search: q }))}
@@ -170,6 +210,8 @@ export const App: React.FC = () => {
                 onBookVenue={(venue) => handleInterceptBook(venue, 'venue')}
                 onSelectVendor={(vendor) => setSelectedVendor(vendor)}
                 onBookVendor={(vendor) => handleInterceptBook(vendor, 'vendor')}
+                onOpenAdmin={handleOpenAdmin}
+                currentUser={currentUser}
               />
             ) : (
               <>
@@ -267,6 +309,17 @@ export const App: React.FC = () => {
                     vendors={vendors}
                     onToggleVerifyVenue={handleToggleVerifyVenue}
                     onToggleVerifyVendor={handleToggleVerifyVendor}
+                    currentUser={currentUser}
+                    onDataChange={loadData}
+                    onNavigateHome={() => {
+                      loadData();
+                      setActiveTab('venues');
+                    }}
+                    onLoginClick={() => {
+                      setIsAdminAuthModal(true);
+                      setAuthMode('login');
+                      setShowAuthModal(true);
+                    }}
                   />
                 )}
               </>
@@ -343,8 +396,8 @@ export const App: React.FC = () => {
                 <div>
                   <h4 style={{ fontWeight: 700, marginBottom: '16px', letterSpacing: '0.05em', textTransform: 'uppercase', fontSize: '0.8rem' }}>For Providers</h4>
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => { setAuthMode('register'); setShowAuthModal(true); }}>Become a Business Provider</li>
-                    <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => { setAuthMode('register'); setShowAuthModal(true); }}>List Spaces & Services</li>
+                    <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => { setIsAdminAuthModal(false); setAuthMode('register'); setShowAuthModal(true); }}>Become a Business Provider</li>
+                    <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => { setIsAdminAuthModal(false); setAuthMode('register'); setShowAuthModal(true); }}>List Spaces & Services</li>
                   </ul>
                 </div>
 
@@ -354,6 +407,9 @@ export const App: React.FC = () => {
                     <li style={{ cursor: 'pointer', color: '#e6f7f3' }}>Contact Us</li>
                     <li style={{ cursor: 'pointer', color: '#e6f7f3' }}>FAQs</li>
                     <li style={{ cursor: 'pointer', color: '#e6f7f3' }}>Help</li>
+                    {(!currentUser || isAdmin) && (
+                      <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={handleOpenAdmin}>Admin Portal</li>
+                    )}
                   </ul>
                 </div>
               </div>
@@ -374,19 +430,25 @@ export const App: React.FC = () => {
       {showAuthModal && (
         <AuthModal
           initialMode={authMode}
+          isAdminLogin={isAdminAuthModal}
           onClose={() => {
             setShowAuthModal(false);
+            setIsAdminAuthModal(false);
             setBookingTargetVenue(null);
             setBookingTargetVendor(null);
           }}
           onSuccess={(data) => {
             setShowAuthModal(false);
+            setIsAdminAuthModal(false);
             setCurrentUser(data.user);
             if (data.vendor_profile) setCurrentVendor(data.vendor_profile);
             if (data.venue_owner_profile) setCurrentVenueOwner(data.venue_owner_profile);
             
             // Set primary active role based on selection or roles available
-            if (data.roles?.is_provider || data.user?.role === 'PROVIDER' || (data.roles?.is_vendor && data.roles?.is_venue_owner)) {
+            if (data.roles?.is_admin || data.user?.role === 'ADMIN') {
+              setActiveRole('ADMIN');
+              setActiveTab('admin-dashboard');
+            } else if (data.roles?.is_provider || data.user?.role === 'PROVIDER' || (data.roles?.is_vendor && data.roles?.is_venue_owner)) {
               setActiveRole('PROVIDER');
               setActiveTab('provider-dashboard');
             } else if (data.roles?.is_vendor || data.roles?.is_venue_owner) {
