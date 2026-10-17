@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import type { Venue, Vendor, VenueOwner, VerificationStatus } from '../types';
+import type { Venue, Vendor, VenueOwner, VerificationStatus, User, Booking, Review, PlatformStats, BookingStatus } from '../types';
 import { 
-  ShieldCheck, AlertTriangle, Building, UserCheck, 
-  Check, X, Eye, Clock, MapPin, ExternalLink
+  ShieldCheck, AlertTriangle, Building2, UserCheck, 
+  X, Eye, Clock, MapPin, ExternalLink,
+  Users, Calendar, Star, Trash2, Edit3, RefreshCw,
+  Search, CheckCircle2, ArrowUpRight, DollarSign,
+  UserX, Shield, AlertCircle, ShieldAlert, Lock, ArrowLeft
 } from 'lucide-react';
 import { ApiService } from '../services/api';
+import { toast } from 'react-hot-toast';
 
 interface AdminDashboardProps {
   venues: Venue[];
@@ -12,6 +16,10 @@ interface AdminDashboardProps {
   onToggleVerifyVenue: (id: number) => void;
   onToggleVerifyVendor: (id: number) => void;
   onRefreshVendors?: () => void;
+  currentUser?: User | null;
+  onNavigateHome?: () => void;
+  onLoginClick?: () => void;
+  onDataChange?: () => void;
 }
 
 interface UnifiedAccount {
@@ -33,86 +41,381 @@ interface UnifiedAccount {
   rawItem: Vendor | VenueOwner;
 }
 
+type AdminTab = 'overview' | 'users' | 'bookings' | 'venues' | 'verifications' | 'reviews';
+
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
-  venues,
-  vendors,
+  venues: propVenues,
+  vendors: propVendors,
   onToggleVerifyVenue,
   onToggleVerifyVendor,
+  currentUser,
+  onNavigateHome,
+  onLoginClick,
+  onDataChange,
 }) => {
+  const isAdmin = Boolean(currentUser && (
+    currentUser.role === 'ADMIN' || 
+    currentUser.is_staff || 
+    currentUser.is_superuser
+  ));
+
+  const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  const [loading, setLoading] = useState(false);
+  const [refreshingRatings, setRefreshingRatings] = useState(false);
+
+  // Data states
+  const [stats, setStats] = useState<PlatformStats | null>(null);
+  const [users, setUsers] = useState<User[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [venues, setVenues] = useState<Venue[]>(propVenues);
+  const [vendors, setVendors] = useState<Vendor[]>(propVendors);
   const [venueOwners, setVenueOwners] = useState<VenueOwner[]>([]);
-  const [localVendors, setLocalVendors] = useState<Vendor[]>(vendors);
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('ALL');
-  const [typeFilter, setTypeFilter] = useState<'ALL' | 'VENDOR' | 'VENUE_OWNER' | 'VENUES'>('ALL');
+  const [reviews, setReviews] = useState<Review[]>([]);
+
+  // Filter & Search states
+  const [userSearch, setUserSearch] = useState('');
+  const [userRoleFilter, setUserRoleFilter] = useState<string>('ALL');
+
+  const [bookingSearch, setBookingSearch] = useState('');
+  const [bookingStatusFilter, setBookingStatusFilter] = useState<string>('ALL');
+
+  const [venueSearch, setVenueSearch] = useState('');
+  const [venueCategoryFilter, setVenueCategoryFilter] = useState<string>('ALL');
+
+  const [reviewSearch, setReviewSearch] = useState('');
+  const [reviewRatingFilter, setReviewRatingFilter] = useState<string>('ALL');
+
+  const [verificationStatusFilter, setVerificationStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('ALL');
+  const [verificationTypeFilter, setVerificationTypeFilter] = useState<'ALL' | 'VENDOR' | 'VENUE_OWNER'>('ALL');
+
+  // Modals
   const [selectedAccount, setSelectedAccount] = useState<UnifiedAccount | null>(null);
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [newRoleSelection, setNewRoleSelection] = useState<string>('CUSTOMER');
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    type: 'user' | 'booking' | 'venue' | 'review';
+    id: number;
+    title: string;
+  } | null>(null);
 
-  const fetchOwners = async () => {
+  // Initial load
+  const loadAdminData = async () => {
+    if (!isAdmin) return;
+    setLoading(true);
     try {
-      const owners = await ApiService.getVenueOwners();
-      setVenueOwners(owners);
-      const v = await ApiService.getVendors();
-      setLocalVendors(v);
+      const [fetchedStats, fetchedUsers, fetchedBookings, fetchedReviews, fetchedOwners, fetchedVendors, fetchedVenues] = await Promise.all([
+        ApiService.getStats(),
+        ApiService.getUsers(undefined, currentUser?.id),
+        ApiService.getBookings(),
+        ApiService.getReviews(),
+        ApiService.getVenueOwners(),
+        ApiService.getVendors(),
+        ApiService.getVenues()
+      ]);
+
+      if (fetchedStats) setStats(fetchedStats);
+      if (fetchedUsers) setUsers(fetchedUsers);
+      if (fetchedBookings) setBookings(fetchedBookings);
+      if (fetchedReviews) setReviews(fetchedReviews);
+      if (fetchedOwners) setVenueOwners(fetchedOwners);
+      if (fetchedVendors) setVendors(fetchedVendors);
+      if (fetchedVenues) setVenues(fetchedVenues);
+    } catch (err) {
+      console.error('Failed to load admin data:', err);
+      toast.error('Failed to load some dashboard data.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAdmin) {
+      loadAdminData();
+    }
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (propVenues && propVenues.length > 0) setVenues(propVenues);
+  }, [propVenues]);
+
+  useEffect(() => {
+    if (propVendors && propVendors.length > 0) setVendors(propVendors);
+  }, [propVendors]);
+
+  // Handle Refresh Ratings
+  const handleRefreshRatings = async () => {
+    setRefreshingRatings(true);
+    const toastId = toast.loading('Recalculating review averages across platform...');
+    try {
+      const ok = await ApiService.refreshAllRatings();
+      if (ok) {
+        toast.success('Ratings & review statistics refreshed successfully!', { id: toastId });
+        const [v, ven, s, r] = await Promise.all([
+          ApiService.getVenues(),
+          ApiService.getVendors(),
+          ApiService.getStats(),
+          ApiService.getReviews()
+        ]);
+        setVenues(v);
+        setVendors(ven);
+        setStats(s);
+        setReviews(r);
+      } else {
+        toast.error('Failed to recalculate ratings.', { id: toastId });
+      }
     } catch (e) {
-      console.error('Failed to load accounts for admin', e);
+      toast.error('Error occurred while recalculating ratings.', { id: toastId });
+    } finally {
+      setRefreshingRatings(false);
     }
   };
 
-  useEffect(() => {
-    fetchOwners();
-  }, []);
-
-  useEffect(() => {
-    setLocalVendors(vendors);
-  }, [vendors]);
-
-  // Handle Approve action
-  const handleApprove = async (account: UnifiedAccount) => {
-    if (account.account_type === 'Vendor') {
-      const res = await ApiService.setVendorVerificationStatus(account.id, 'APPROVED');
-      if (res) {
-        setLocalVendors(prev => prev.map(v => v.id === account.id ? { ...v, verification_status: 'APPROVED', is_verified: true } : v));
+  // User Management Handlers
+  const handleToggleUserActive = async (user: User) => {
+    const toastId = toast.loading(`${user.is_active !== false ? 'Deactivating' : 'Activating'} ${user.username}...`);
+    try {
+      const updated = await ApiService.toggleUserActive(user.id);
+      if (updated) {
+        setUsers(prev => prev.map(u => u.id === user.id ? updated : u));
+        toast.success(`User ${updated.username} is now ${updated.is_active ? 'active' : 'deactivated'}.`, { id: toastId });
       } else {
-        await onToggleVerifyVendor(account.id);
-        setLocalVendors(prev => prev.map(v => v.id === account.id ? { ...v, verification_status: 'APPROVED', is_verified: true } : v));
+        toast.error('Failed to update user status.', { id: toastId });
       }
-    } else {
-      const res = await ApiService.setVenueOwnerVerificationStatus(account.id, 'APPROVED');
-      if (res) {
-        setVenueOwners(prev => prev.map(o => o.id === account.id ? { ...o, verification_status: 'APPROVED', is_verified: true } : o));
-      } else {
-        await ApiService.toggleVerifyVenueOwner(account.id);
-        setVenueOwners(prev => prev.map(o => o.id === account.id ? { ...o, verification_status: 'APPROVED', is_verified: true } : o));
-      }
-    }
-    if (selectedAccount && selectedAccount.id === account.id) {
-      setSelectedAccount(prev => prev ? { ...prev, verification_status: 'APPROVED', is_verified: true } : null);
+    } catch (e) {
+      toast.error('Error updating user status.', { id: toastId });
     }
   };
 
-  // Handle Reject action
-  const handleReject = async (account: UnifiedAccount) => {
-    if (account.account_type === 'Vendor') {
-      const res = await ApiService.setVendorVerificationStatus(account.id, 'REJECTED');
-      if (res) {
-        setLocalVendors(prev => prev.map(v => v.id === account.id ? { ...v, verification_status: 'REJECTED', is_verified: false } : v));
+  const handleSaveUserRole = async () => {
+    if (!editingUser) return;
+    const toastId = toast.loading(`Updating role for ${editingUser.username}...`);
+    try {
+      const updated = await ApiService.updateUserRole(editingUser.id, newRoleSelection);
+      if (updated) {
+        setUsers(prev => prev.map(u => u.id === editingUser.id ? updated : u));
+        toast.success(`Role updated to ${updated.role} successfully!`, { id: toastId });
+        setEditingUser(null);
       } else {
-        setLocalVendors(prev => prev.map(v => v.id === account.id ? { ...v, verification_status: 'REJECTED', is_verified: false } : v));
+        toast.error('Failed to update role.', { id: toastId });
       }
-    } else {
-      const res = await ApiService.setVenueOwnerVerificationStatus(account.id, 'REJECTED');
-      if (res) {
-        setVenueOwners(prev => prev.map(o => o.id === account.id ? { ...o, verification_status: 'REJECTED', is_verified: false } : o));
-      } else {
-        setVenueOwners(prev => prev.map(o => o.id === account.id ? { ...o, verification_status: 'REJECTED', is_verified: false } : o));
-      }
-    }
-    if (selectedAccount && selectedAccount.id === account.id) {
-      setSelectedAccount(prev => prev ? { ...prev, verification_status: 'REJECTED', is_verified: false } : null);
+    } catch (e) {
+      toast.error('Error updating role.', { id: toastId });
     }
   };
 
-  // Normalize Vendors & Venue Owners into a unified list
+  const handleDeleteUser = async (id: number) => {
+    const toastId = toast.loading('Deleting user account...');
+    try {
+      const ok = await ApiService.deleteUser(id);
+      if (ok) {
+        setUsers(prev => prev.filter(u => u.id !== id));
+        toast.success('User deleted successfully.', { id: toastId });
+      } else {
+        toast.error('Failed to delete user.', { id: toastId });
+      }
+    } catch (e) {
+      toast.error('Error deleting user.', { id: toastId });
+    } finally {
+      setDeleteConfirm(null);
+    }
+  };
+
+  // Booking Handlers
+  const handleUpdateBookingStatus = async (bookingId: number, status: BookingStatus) => {
+    const toastId = toast.loading(`Marking booking #${bookingId} as ${status}...`);
+    try {
+      const res = await ApiService.updateBookingStatus(bookingId, status);
+      if (res.success) {
+        setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status } : b));
+        if (selectedBooking && selectedBooking.id === bookingId) {
+          setSelectedBooking(prev => prev ? { ...prev, status } : null);
+        }
+        toast.success(`Booking #${bookingId} is now ${status}.`, { id: toastId });
+        // Refresh stats
+        const updatedStats = await ApiService.getStats();
+        if (updatedStats) setStats(updatedStats);
+      } else {
+        toast.error(res.error || 'Failed to update booking status.', { id: toastId });
+      }
+    } catch (e) {
+      toast.error('Error updating booking.', { id: toastId });
+    }
+  };
+
+  const handleDeleteBooking = async (id: number) => {
+    const toastId = toast.loading(`Deleting booking #${id}...`);
+    try {
+      const ok = await ApiService.deleteBooking(id);
+      if (ok) {
+        setBookings(prev => prev.filter(b => b.id !== id));
+        if (selectedBooking?.id === id) setSelectedBooking(null);
+        toast.success('Booking deleted successfully.', { id: toastId });
+        const updatedStats = await ApiService.getStats();
+        if (updatedStats) setStats(updatedStats);
+      } else {
+        toast.error('Failed to delete booking.', { id: toastId });
+      }
+    } catch (e) {
+      toast.error('Error deleting booking.', { id: toastId });
+    } finally {
+      setDeleteConfirm(null);
+    }
+  };
+
+  // Venue Moderation Handlers
+  const handleToggleVenueAvailability = async (venueId: number) => {
+    try {
+      const ok = await ApiService.toggleVenueAvailability(venueId);
+      if (ok) {
+        setVenues(prev => prev.map(v => v.id === venueId ? { ...v, is_available: !v.is_available } : v));
+        toast.success('Venue availability updated.');
+        onDataChange?.();
+      } else {
+        toast.error('Failed to update availability.');
+      }
+    } catch (e) {
+      toast.error('Error updating availability.');
+    }
+  };
+
+  const handleDeleteVenue = async (id: number) => {
+    const toastId = toast.loading('Deleting venue listing...');
+    try {
+      const ok = await ApiService.deleteVenue(id);
+      if (ok) {
+        setVenues(prev => prev.filter(v => v.id !== id));
+        toast.success('Venue listing deleted.', { id: toastId });
+        const updatedStats = await ApiService.getStats();
+        if (updatedStats) setStats(updatedStats);
+        onDataChange?.();
+      } else {
+        toast.error('Failed to delete venue.', { id: toastId });
+      }
+    } catch (e) {
+      toast.error('Error deleting venue.', { id: toastId });
+    } finally {
+      setDeleteConfirm(null);
+    }
+  };
+
+  // Review Handlers
+  const handleDeleteReview = async (id: number) => {
+    const toastId = toast.loading('Deleting review...');
+    try {
+      const ok = await ApiService.deleteReview(id);
+      if (ok) {
+        setReviews(prev => prev.filter(r => r.id !== id));
+        toast.success('Review removed and ratings updated.', { id: toastId });
+        // Re-fetch venue and vendor lists to get updated ratings
+        const [v, ven, s] = await Promise.all([
+          ApiService.getVenues(),
+          ApiService.getVendors(),
+          ApiService.getStats()
+        ]);
+        setVenues(v);
+        setVendors(ven);
+        if (s) setStats(s);
+      } else {
+        toast.error('Failed to delete review.', { id: toastId });
+      }
+    } catch (e) {
+      toast.error('Error deleting review.', { id: toastId });
+    } finally {
+      setDeleteConfirm(null);
+    }
+  };
+
+  // Verification Queue Handlers
+  const handleApproveAccount = async (account: UnifiedAccount) => {
+    const toastId = toast.loading(`Approving ${account.business_name}...`);
+    try {
+      if (account.account_type === 'Vendor') {
+        const res = await ApiService.setVendorVerificationStatus(account.id, 'APPROVED');
+        if (res) {
+          setVendors(prev => prev.map(v => v.id === account.id ? { ...v, verification_status: 'APPROVED', is_verified: true } : v));
+        } else {
+          await onToggleVerifyVendor(account.id);
+          setVendors(prev => prev.map(v => v.id === account.id ? { ...v, verification_status: 'APPROVED', is_verified: true } : v));
+        }
+      } else {
+        const res = await ApiService.setVenueOwnerVerificationStatus(account.id, 'APPROVED');
+        if (res) {
+          setVenueOwners(prev => prev.map(o => o.id === account.id ? { ...o, verification_status: 'APPROVED', is_verified: true } : o));
+        } else {
+          await ApiService.toggleVerifyVenueOwner(account.id);
+          setVenueOwners(prev => prev.map(o => o.id === account.id ? { ...o, verification_status: 'APPROVED', is_verified: true } : o));
+        }
+      }
+
+      // Interconnect: sync all venues and services linked to this approved provider
+      setVenues(prev => prev.map(v => {
+        const vOwnerId = typeof v.owner === 'object' ? (v.owner as any)?.id : v.owner;
+        const vVendorId = typeof v.vendor === 'object' ? (v.vendor as any)?.id : v.vendor;
+        if ((account.account_type === 'Vendor' && vVendorId === account.id) ||
+            (account.account_type === 'Venue Owner' && vOwnerId === account.id)) {
+          return { ...v, is_verified: true };
+        }
+        return v;
+      }));
+
+      if (selectedAccount && selectedAccount.id === account.id) {
+        setSelectedAccount(prev => prev ? { ...prev, verification_status: 'APPROVED', is_verified: true } : null);
+      }
+      toast.success(`${account.business_name} approved with verified badge!`, { id: toastId });
+      const updatedStats = await ApiService.getStats();
+      if (updatedStats) setStats(updatedStats);
+      onDataChange?.();
+    } catch (e) {
+      toast.error('Failed to approve account.', { id: toastId });
+    }
+  };
+
+  const handleRejectAccount = async (account: UnifiedAccount) => {
+    const toastId = toast.loading(`Rejecting ${account.business_name}...`);
+    try {
+      if (account.account_type === 'Vendor') {
+        const res = await ApiService.setVendorVerificationStatus(account.id, 'REJECTED');
+        if (res) {
+          setVendors(prev => prev.map(v => v.id === account.id ? { ...v, verification_status: 'REJECTED', is_verified: false } : v));
+        } else {
+          setVendors(prev => prev.map(v => v.id === account.id ? { ...v, verification_status: 'REJECTED', is_verified: false } : v));
+        }
+      } else {
+        const res = await ApiService.setVenueOwnerVerificationStatus(account.id, 'REJECTED');
+        if (res) {
+          setVenueOwners(prev => prev.map(o => o.id === account.id ? { ...o, verification_status: 'REJECTED', is_verified: false } : o));
+        } else {
+          setVenueOwners(prev => prev.map(o => o.id === account.id ? { ...o, verification_status: 'REJECTED', is_verified: false } : o));
+        }
+      }
+
+      // Interconnect: sync all venues and services linked to this rejected provider
+      setVenues(prev => prev.map(v => {
+        const vOwnerId = typeof v.owner === 'object' ? (v.owner as any)?.id : v.owner;
+        const vVendorId = typeof v.vendor === 'object' ? (v.vendor as any)?.id : v.vendor;
+        if ((account.account_type === 'Vendor' && vVendorId === account.id) ||
+            (account.account_type === 'Venue Owner' && vOwnerId === account.id)) {
+          return { ...v, is_verified: false };
+        }
+        return v;
+      }));
+
+      if (selectedAccount && selectedAccount.id === account.id) {
+        setSelectedAccount(prev => prev ? { ...prev, verification_status: 'REJECTED', is_verified: false } : null);
+      }
+      toast.success(`${account.business_name} application marked as rejected.`, { id: toastId });
+      const updatedStats = await ApiService.getStats();
+      if (updatedStats) setStats(updatedStats);
+      onDataChange?.();
+    } catch (e) {
+      toast.error('Failed to reject account.', { id: toastId });
+    }
+  };
+
+  // Normalize Unified Accounts for Verification
   const unifiedAccounts: UnifiedAccount[] = [
-    ...localVendors.map(v => ({
+    ...vendors.map(v => ({
       id: v.id,
       business_name: v.business_name,
       account_type: 'Vendor' as const,
@@ -125,7 +428,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       years_in_business: v.years_in_business,
       website_url: v.website_url,
       logo_url: v.logo_url,
-      verification_status: v.verification_status || (v.is_verified ? 'APPROVED' : 'PENDING'),
+      verification_status: (v.verification_status || (v.is_verified ? 'APPROVED' : 'PENDING')) as VerificationStatus,
       is_verified: v.is_verified,
       created_at: v.created_at,
       rawItem: v,
@@ -143,442 +446,1457 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       years_in_business: o.years_in_business,
       website_url: o.website_url,
       logo_url: o.logo_url,
-      verification_status: o.verification_status || (o.is_verified ? 'APPROVED' : 'PENDING'),
+      verification_status: (o.verification_status || (o.is_verified ? 'APPROVED' : 'PENDING')) as VerificationStatus,
       is_verified: o.is_verified,
       created_at: o.created_at,
       rawItem: o,
     })),
   ];
 
-  // Filtering
   const filteredAccounts = unifiedAccounts.filter(acc => {
-    if (statusFilter !== 'ALL' && acc.verification_status !== statusFilter) return false;
-    if (typeFilter === 'VENDOR' && acc.account_type !== 'Vendor') return false;
-    if (typeFilter === 'VENUE_OWNER' && acc.account_type !== 'Venue Owner') return false;
+    if (verificationStatusFilter !== 'ALL' && acc.verification_status !== verificationStatusFilter) return false;
+    if (verificationTypeFilter === 'VENDOR' && acc.account_type !== 'Vendor') return false;
+    if (verificationTypeFilter === 'VENUE_OWNER' && acc.account_type !== 'Venue Owner') return false;
     return true;
   });
 
-  const pendingCount = unifiedAccounts.filter(a => a.verification_status === 'PENDING').length;
-  const approvedCount = unifiedAccounts.filter(a => a.verification_status === 'APPROVED').length;
-  const rejectedCount = unifiedAccounts.filter(a => a.verification_status === 'REJECTED').length;
+  const pendingVerificationCount = unifiedAccounts.filter(a => a.verification_status === 'PENDING').length;
 
-  return (
-    <div style={{ maxWidth: '1200px', margin: '32px auto', padding: '0 20px' }}>
-      {/* Header */}
-      <div style={{ marginBottom: '28px' }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(13, 138, 115, 0.12)', color: '#0d8a73', padding: '4px 12px', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 700, marginBottom: '8px' }}>
-          <ShieldCheck size={14} /> Platform Administrator Control Panel
-        </div>
-        <h2 style={{ fontSize: '1.85rem', fontWeight: 800, color: '#1e293b', margin: '0 0 6px' }}>
-          Vendor & Venue Owner Verification Management
-        </h2>
-        <p style={{ color: '#64748b', fontSize: '0.95rem' }}>
-          Review registered businesses  and approve or reject their platform verification status.
-        </p>
-      </div>
+  // Filtered lists
+  const filteredUsers = users.filter(u => {
+    if (userRoleFilter !== 'ALL' && u.role !== userRoleFilter) return false;
+    if (userSearch) {
+      const q = userSearch.toLowerCase();
+      const matchName = (u.first_name || '').toLowerCase().includes(q) || (u.last_name || '').toLowerCase().includes(q);
+      const matchEmail = (u.email || '').toLowerCase().includes(q);
+      const matchUsername = (u.username || '').toLowerCase().includes(q);
+      if (!matchName && !matchEmail && !matchUsername) return false;
+    }
+    return true;
+  });
 
-      {/* Stats Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '28px' }}>
-        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '18px 22px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Pending Verification
-          </div>
-          <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#d97706', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Clock size={24} /> {pendingCount}
-          </div>
-          <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '4px 0 0' }}>Requires review</p>
-        </div>
+  const filteredBookings = bookings.filter(b => {
+    if (bookingStatusFilter !== 'ALL' && b.status !== bookingStatusFilter) return false;
+    if (bookingSearch) {
+      const q = bookingSearch.toLowerCase();
+      const matchTitle = (b.event_title || '').toLowerCase().includes(q);
+      const matchCustomer = (b.customer_name || '').toLowerCase().includes(q) || (b.customer_email || '').toLowerCase().includes(q);
+      const matchVenue = (b.venue_details?.title || '').toLowerCase().includes(q);
+      const matchVendor = (b.vendor_details?.business_name || '').toLowerCase().includes(q);
+      if (!matchTitle && !matchCustomer && !matchVenue && !matchVendor) return false;
+    }
+    return true;
+  });
 
-        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '18px 22px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Verified Accounts
-          </div>
-          <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#059669', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <ShieldCheck size={24} /> {approvedCount}
-          </div>
-          <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '4px 0 0' }}>Active with badge</p>
-        </div>
+  const filteredVenues = venues.filter(v => {
+    if (venueCategoryFilter !== 'ALL' && v.category !== venueCategoryFilter) return false;
+    if (venueSearch) {
+      const q = venueSearch.toLowerCase();
+      const matchTitle = (v.title || '').toLowerCase().includes(q);
+      const matchLocation = (v.location || '').toLowerCase().includes(q);
+      if (!matchTitle && !matchLocation) return false;
+    }
+    return true;
+  });
 
-        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '18px 22px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Rejected / Inactive
-          </div>
-          <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#dc2626', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <X size={24} /> {rejectedCount}
-          </div>
-          <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '4px 0 0' }}>Denied approval</p>
-        </div>
+  const filteredReviews = reviews.filter(r => {
+    if (reviewRatingFilter !== 'ALL' && r.rating !== parseInt(reviewRatingFilter)) return false;
+    if (reviewSearch) {
+      const q = reviewSearch.toLowerCase();
+      const matchUser = (r.user_name || '').toLowerCase().includes(q);
+      const matchComment = (r.comment || '').toLowerCase().includes(q);
+      const matchTarget = (r.target_name || '').toLowerCase().includes(q);
+      if (!matchUser && !matchComment && !matchTarget) return false;
+    }
+    return true;
+  });
 
-        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '18px 22px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Physical Venues
+  if (!isAdmin) {
+    return (
+      <div style={{
+        minHeight: '80vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '48px 24px',
+        background: '#f8fafc',
+      }}>
+        <div style={{
+          maxWidth: '540px',
+          width: '100%',
+          background: '#ffffff',
+          borderRadius: '24px',
+          border: '1px solid #e2e8f0',
+          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.02)',
+          padding: '48px 36px',
+          textAlign: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+        }}>
+          <div style={{
+            width: '76px',
+            height: '76px',
+            borderRadius: '22px',
+            background: '#fee2e2',
+            color: '#dc2626',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: '22px',
+            boxShadow: '0 8px 16px rgba(220, 38, 38, 0.12)',
+          }}>
+            <ShieldAlert size={40} />
           </div>
-          <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#0d8a73', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Building size={24} /> {venues.length}
+
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '4px 14px',
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            borderRadius: '999px',
+            color: '#b91c1c',
+            fontSize: '0.78rem',
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+            marginBottom: '14px',
+          }}>
+            <Lock size={13} /> Administrator Authorization Required
           </div>
-          <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '4px 0 0' }}>Spaces listed</p>
-        </div>
-      </div>
 
-      {/* Main Verification Table Card */}
-      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.03)', marginBottom: '32px' }}>
-        {/* Table Filter Toolbar */}
-        <div style={{ padding: '18px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', background: '#fafbfc' }}>
-          <div>
-            <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#1e293b', margin: 0 }}>
-              Business Verification Directory
-            </h3>
-            <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '2px 0 0' }}>
-              Showing {filteredAccounts.length} accounts matching filters
-            </p>
-          </div>
+          <h2 style={{ fontSize: '1.65rem', fontWeight: 800, color: '#0f172a', margin: '0 0 12px', letterSpacing: '-0.5px' }}>
+            Restricted Admin Portal
+          </h2>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-            {/* Status Tabs */}
-            <div style={{ display: 'inline-flex', background: '#e2e8f0', padding: '3px', borderRadius: '8px' }}>
-              {(['ALL', 'PENDING', 'APPROVED', 'REJECTED'] as const).map(st => (
-                <button
-                  key={st}
-                  onClick={() => setStatusFilter(st)}
-                  style={{
-                    border: 'none',
-                    background: statusFilter === st ? '#ffffff' : 'transparent',
-                    color: statusFilter === st ? '#0f172a' : '#64748b',
-                    padding: '6px 12px',
-                    borderRadius: '6px',
-                    fontSize: '0.78rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    boxShadow: statusFilter === st ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  {st === 'ALL' ? 'All Status' : st === 'PENDING' ? 'Pending' : st === 'APPROVED' ? 'Approved' : 'Rejected'}
-                </button>
-              ))}
-            </div>
+          <p style={{ color: '#64748b', fontSize: '0.94rem', lineHeight: 1.6, margin: '0 0 28px' }}>
+            {currentUser ? (
+              <>
+                You are currently signed in as <strong style={{ color: '#0f172a' }}>{currentUser.email}</strong> (Role: <span style={{ color: '#0d8a73', fontWeight: 700 }}>{currentUser.role}</span>). Only platform administrators have permission to access the Administrator Dashboard.
+              </>
+            ) : (
+              <>
+                Only platform administrators can access this section. Please sign in with your verified administrator credentials to view management and operations tools.
+              </>
+            )}
+          </p>
 
-            {/* Type Selector */}
-            <select
-              value={typeFilter}
-              onChange={e => setTypeFilter(e.target.value as any)}
+          <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', justifyContent: 'center', width: '100%' }}>
+            {onNavigateHome && (
+              <button
+                onClick={onNavigateHome}
+                style={{
+                  padding: '12px 22px',
+                  borderRadius: '12px',
+                  background: '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  color: '#475569',
+                  fontWeight: 600,
+                  fontSize: '0.92rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <ArrowLeft size={16} /> Return to Home
+              </button>
+            )}
+
+            <button
+              onClick={() => {
+                if (onLoginClick) onLoginClick();
+              }}
               style={{
-                padding: '6px 12px',
-                borderRadius: '8px',
-                border: '1px solid #cbd5e1',
-                fontSize: '0.82rem',
-                fontWeight: 600,
-                color: '#334155',
-                background: '#fff',
-                outline: 'none',
+                padding: '12px 24px',
+                borderRadius: '12px',
+                background: '#0d8a73',
+                border: 'none',
+                color: '#ffffff',
+                fontWeight: 700,
+                fontSize: '0.92rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                boxShadow: '0 4px 10px rgba(13, 138, 115, 0.25)',
+                transition: 'all 0.15s ease',
               }}
             >
-              <option value="ALL">All Account Types</option>
-              <option value="VENDOR">Vendors Only</option>
-              <option value="VENUE_OWNER">Venue Owners Only</option>
-            </select>
+              <ShieldCheck size={18} /> {currentUser ? 'Switch to Admin Account' : 'Log In as Administrator'}
+            </button>
           </div>
         </div>
+      </div>
+    );
+  }
 
-        {/* Table Content */}
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
-            <thead>
-              <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 700, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                <th style={{ padding: '14px 20px' }}>Business</th>
-                <th style={{ padding: '14px 16px' }}>Account Type</th>
-                <th style={{ padding: '14px 16px' }}>Service / Category</th>
-                <th style={{ padding: '14px 16px' }}>Location</th>
-                <th style={{ padding: '14px 16px' }}>Status</th>
-                <th style={{ padding: '14px 20px', textAlign: 'right' }}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredAccounts.length === 0 ? (
-                <tr>
-                  <td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
-                    No accounts found matching the current filters.
-                  </td>
-                </tr>
+  return (
+    <div style={{ maxWidth: '1360px', margin: '32px auto', padding: '0 24px', minHeight: '80vh' }}>
+      {/* Top Banner & Title */}
+      <div style={{
+        background: 'linear-gradient(135deg, #0d8a73 0%, #065f46 100%)',
+        borderRadius: '20px',
+        padding: '32px 36px',
+        color: '#ffffff',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: '20px',
+        boxShadow: '0 10px 25px -5px rgba(13, 138, 115, 0.3)',
+        marginBottom: '28px',
+      }}>
+        <div>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'rgba(255, 255, 255, 0.2)', padding: '4px 12px', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 700, marginBottom: '12px' }}>
+            <ShieldCheck size={16} /> Admin Command Center {currentUser?.username ? `• Logged in as ${currentUser.username}` : ''}
+          </div>
+          <h1 style={{ fontSize: '2rem', fontWeight: 800, margin: '0 0 8px', letterSpacing: '-0.5px' }}>
+            Platform Administration
+          </h1>
+          <p style={{ margin: 0, color: 'rgba(255, 255, 255, 0.85)', fontSize: '0.95rem', maxWidth: '600px' }}>
+            Manage platform users, moderate venue spaces, oversee bookings, verify vendor credentials, and monitor live reviews.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <button
+            onClick={handleRefreshRatings}
+            disabled={refreshingRatings}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: '#ffffff',
+              color: '#0d8a73',
+              border: 'none',
+              padding: '10px 20px',
+              borderRadius: '10px',
+              fontWeight: 700,
+              fontSize: '0.88rem',
+              cursor: refreshingRatings ? 'not-allowed' : 'pointer',
+              boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+              transition: 'all 0.2s',
+            }}
+          >
+            <RefreshCw size={16} className={refreshingRatings ? 'spin' : ''} />
+            {refreshingRatings ? 'Recalculating...' : 'Refresh Ratings'}
+          </button>
+          {onNavigateHome && (
+            <button
+              onClick={onNavigateHome}
+              style={{
+                background: 'rgba(255, 255, 255, 0.15)',
+                color: '#ffffff',
+                border: '1px solid rgba(255, 255, 255, 0.3)',
+                padding: '10px 18px',
+                borderRadius: '10px',
+                fontWeight: 600,
+                fontSize: '0.88rem',
+                cursor: 'pointer',
+              }}
+            >
+              Back to Site
+            </button>
+          )}
+        </div>
+      </div>
+
+      {loading && (
+        <div style={{ textAlign: 'center', padding: '12px 20px', background: '#f0fdfa', border: '1px solid #ccfbf1', borderRadius: '10px', color: '#0d8a73', fontWeight: 600, fontSize: '0.88rem', marginBottom: '20px' }}>
+          Refreshing platform data and user accounts...
+        </div>
+      )}
+
+      {/* Admin Navigation Tabs */}
+      <div style={{
+        display: 'flex',
+        gap: '8px',
+        borderBottom: '2px solid #e2e8f0',
+        marginBottom: '28px',
+        overflowX: 'auto',
+        paddingBottom: '4px',
+      }}>
+        {[
+          { id: 'overview', label: 'Overview & Analytics', icon: ShieldCheck },
+          { id: 'users', label: `Users (${users.length})`, icon: Users },
+          { id: 'bookings', label: `Bookings (${bookings.length})`, icon: Calendar },
+          { id: 'venues', label: `Venues & Spaces (${venues.length})`, icon: Building2 },
+          { id: 'verifications', label: `Verification Queue (${pendingVerificationCount})`, icon: UserCheck, badge: pendingVerificationCount },
+          { id: 'reviews', label: `Reviews & Ratings (${reviews.length})`, icon: Star },
+        ].map(tab => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as AdminTab)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '12px 18px',
+                border: 'none',
+                background: isActive ? '#f0fdfa' : 'transparent',
+                color: isActive ? '#0d8a73' : '#64748b',
+                fontWeight: isActive ? 700 : 600,
+                fontSize: '0.92rem',
+                borderRadius: '10px 10px 0 0',
+                cursor: 'pointer',
+                borderBottom: isActive ? '3px solid #0d8a73' : '3px solid transparent',
+                transition: 'all 0.15s ease',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <Icon size={18} color={isActive ? '#0d8a73' : '#64748b'} />
+              {tab.label}
+              {Boolean(tab.badge && tab.badge > 0) && (
+                <span style={{
+                  background: '#f59e0b',
+                  color: '#ffffff',
+                  fontSize: '0.72rem',
+                  fontWeight: 800,
+                  padding: '2px 7px',
+                  borderRadius: '999px',
+                }}>
+                  {tab.badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* TAB 1: OVERVIEW & ANALYTICS */}
+      {activeTab === 'overview' && (
+        <div>
+          {/* Metrics Grid */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: '18px',
+            marginBottom: '32px',
+          }}>
+            {/* Total Revenue */}
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '22px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Gross Revenue</span>
+                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <DollarSign size={20} />
+                </div>
+              </div>
+              <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#1e293b', marginTop: '12px' }}>
+                KES {(stats?.total_revenue || 0).toLocaleString()}
+              </div>
+              <p style={{ margin: '6px 0 0', fontSize: '0.78rem', color: '#059669', fontWeight: 600 }}>
+                From confirmed & completed bookings
+              </p>
+            </div>
+
+            {/* Total Bookings */}
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '22px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Total Bookings</span>
+                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Calendar size={20} />
+                </div>
+              </div>
+              <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#1e293b', marginTop: '12px' }}>
+                {stats?.total_bookings ?? bookings.length}
+              </div>
+              <div style={{ display: 'flex', gap: '8px', marginTop: '6px', fontSize: '0.75rem', color: '#64748b' }}>
+                <span><strong>{stats?.approved_bookings ?? bookings.filter(b => b.status === 'APPROVED').length}</strong> Approved</span> •
+                <span><strong>{stats?.pending_bookings ?? bookings.filter(b => b.status === 'PENDING').length}</strong> Pending</span>
+              </div>
+            </div>
+
+            {/* Total Users */}
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '22px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Total Users</span>
+                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#f5f3ff', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Users size={20} />
+                </div>
+              </div>
+              <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#1e293b', marginTop: '12px' }}>
+                {stats?.total_users ?? users.length}
+              </div>
+              <div style={{ display: 'flex', gap: '8px', marginTop: '6px', fontSize: '0.75rem', color: '#64748b' }}>
+                <span><strong>{stats?.total_customers ?? users.filter(u => u.is_customer).length}</strong> Clients</span> •
+                <span><strong>{stats?.total_providers ?? users.filter(u => u.is_vendor || u.is_venue_owner || u.role === 'PROVIDER').length}</strong> Providers</span>
+              </div>
+            </div>
+
+            {/* Pending Verifications */}
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '22px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Pending Review</span>
+                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#fef3c7', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Clock size={20} />
+                </div>
+              </div>
+              <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#d97706', marginTop: '12px' }}>
+                {pendingVerificationCount}
+              </div>
+              <button
+                onClick={() => setActiveTab('verifications')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  marginTop: '6px',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  color: '#0d8a73',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                Review Applications <ArrowUpRight size={14} />
+              </button>
+            </div>
+
+            {/* Platform Average Rating */}
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '22px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Platform Rating</span>
+                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#fffbeb', color: '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Star size={20} fill="#f59e0b" />
+                </div>
+              </div>
+              <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#1e293b', marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {stats?.avg_rating || 4.9} <span style={{ fontSize: '1rem', color: '#94a3b8', fontWeight: 600 }}>/ 5.0</span>
+              </div>
+              <p style={{ margin: '6px 0 0', fontSize: '0.78rem', color: '#64748b' }}>
+                Across <strong>{stats?.total_reviews ?? reviews.length}</strong> verified reviews
+              </p>
+            </div>
+          </div>
+
+          {/* Recent Bookings & Pending Verifications Split */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '24px' }}>
+            {/* Recent Bookings Box */}
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>Recent Event Bookings</h3>
+                <button
+                  onClick={() => setActiveTab('bookings')}
+                  style={{ background: 'none', border: 'none', color: '#0d8a73', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}
+                >
+                  View All ({bookings.length}) →
+                </button>
+              </div>
+
+              {bookings.length === 0 ? (
+                <p style={{ color: '#94a3b8', fontSize: '0.9rem', textAlign: 'center', padding: '24px 0' }}>No bookings registered yet.</p>
               ) : (
-                filteredAccounts.map((account) => {
-                  const isPending = account.verification_status === 'PENDING';
-                  const isApproved = account.verification_status === 'APPROVED';
-                  const isRejected = account.verification_status === 'REJECTED';
-
-                  return (
-                    <tr
-                      key={`${account.account_type}-${account.id}`}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {bookings.slice(0, 5).map(b => (
+                    <div
+                      key={b.id}
+                      onClick={() => setSelectedBooking(b)}
                       style={{
-                        borderBottom: '1px solid #f1f5f9',
+                        padding: '12px 14px',
+                        borderRadius: '12px',
+                        border: '1px solid #f1f5f9',
+                        background: '#f8fafc',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        cursor: 'pointer',
                         transition: 'background 0.15s',
-                        background: isPending ? 'rgba(254, 243, 199, 0.15)' : 'transparent',
                       }}
                     >
-                      {/* Business */}
-                      <td style={{ padding: '16px 20px' }}>
+                      <div>
+                        <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.9rem' }}>
+                          {b.event_title}
+                        </div>
+                        <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
+                          By {b.customer_name} • {b.event_date} • KES {Number(b.total_price).toLocaleString()}
+                        </div>
+                      </div>
+                      <span style={{
+                        padding: '4px 10px',
+                        borderRadius: '999px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        background: b.status === 'APPROVED' ? '#ecfdf5' : b.status === 'PENDING' ? '#fef3c7' : b.status === 'COMPLETED' ? '#eff6ff' : '#fee2e2',
+                        color: b.status === 'APPROVED' ? '#059669' : b.status === 'PENDING' ? '#b45309' : b.status === 'COMPLETED' ? '#2563eb' : '#dc2626',
+                      }}>
+                        {b.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Pending Provider Verifications Box */}
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>Businesses Awaiting Review</h3>
+                <button
+                  onClick={() => setActiveTab('verifications')}
+                  style={{ background: 'none', border: 'none', color: '#0d8a73', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}
+                >
+                  Go to Queue ({pendingVerificationCount}) →
+                </button>
+              </div>
+
+              {pendingVerificationCount === 0 ? (
+                <div style={{ textAlign: 'center', padding: '36px 0', color: '#059669' }}>
+                  <CheckCircle2 size={36} style={{ margin: '0 auto 8px' }} />
+                  <p style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem' }}>All Caught Up!</p>
+                  <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.82rem' }}>No pending businesses awaiting approval.</p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {unifiedAccounts.filter(a => a.verification_status === 'PENDING').slice(0, 5).map(acc => (
+                    <div
+                      key={`${acc.account_type}-${acc.id}`}
+                      style={{
+                        padding: '12px 14px',
+                        borderRadius: '12px',
+                        border: '1px solid #fef3c7',
+                        background: '#fffbeb',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.9rem' }}>
+                          {acc.business_name}
+                        </div>
+                        <div style={{ fontSize: '0.78rem', color: '#78350f', marginTop: '2px' }}>
+                          {acc.account_type} • {acc.category_or_type} • {acc.location}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button
+                          onClick={() => setSelectedAccount(acc)}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: '8px',
+                            background: '#0d8a73',
+                            color: '#ffffff',
+                            border: 'none',
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Inspect
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: USERS MANAGEMENT */}
+      {activeTab === 'users' && (
+        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+          {/* Header & Filters */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
+            <div>
+              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>Registered User Accounts</h2>
+              <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>View, activate, deactivate, or modify access levels for platform accounts.</p>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ position: 'relative' }}>
+                <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+                <input
+                  type="text"
+                  placeholder="Search user, email..."
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                  style={{
+                    padding: '8px 14px 8px 36px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.85rem',
+                    outline: 'none',
+                    width: '220px',
+                  }}
+                />
+              </div>
+
+              <select
+                value={userRoleFilter}
+                onChange={(e) => setUserRoleFilter(e.target.value)}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.85rem',
+                  outline: 'none',
+                  background: '#fff',
+                  fontWeight: 600,
+                  color: '#334155',
+                }}
+              >
+                <option value="ALL">All Roles</option>
+                <option value="CUSTOMER">Customers</option>
+                <option value="PROVIDER">Business Providers</option>
+                <option value="ADMIN">Administrators</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Users Table */}
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#64748b' }}>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>User / Email</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Assigned Role</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Joined Date</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Status</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700, textAlign: 'right' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} style={{ padding: '36px', textAlign: 'center', color: '#94a3b8' }}>
+                      No users match your filter criteria.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredUsers.map(u => (
+                    <tr key={u.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '14px 16px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          {account.logo_url ? (
-                            <img
-                              src={account.logo_url}
-                              alt=""
-                              style={{ width: '36px', height: '36px', borderRadius: '8px', objectFit: 'cover', border: '1px solid #e2e8f0' }}
-                            />
-                          ) : (
-                            <div
-                              style={{
-                                width: '36px',
-                                height: '36px',
-                                borderRadius: '8px',
-                                background: account.account_type === 'Vendor' ? '#ecfdf5' : '#eff6ff',
-                                color: account.account_type === 'Vendor' ? '#0d8a73' : '#2563eb',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontWeight: 700,
-                                fontSize: '0.85rem',
-                              }}
-                            >
-                              {account.business_name.charAt(0).toUpperCase()}
-                            </div>
-                          )}
+                          <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#ccfbf1', color: '#0d8a73', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.9rem' }}>
+                            {u.username[0]?.toUpperCase() || 'U'}
+                          </div>
                           <div>
-                            <span style={{ fontWeight: 700, color: '#1e293b', display: 'block' }}>
-                              {account.business_name}
-                            </span>
-                            {account.email && (
-                              <span style={{ fontSize: '0.76rem', color: '#64748b' }}>
-                                {account.email}
-                              </span>
-                            )}
+                            <div style={{ fontWeight: 700, color: '#1e293b' }}>
+                              {u.first_name ? `${u.first_name} ${u.last_name || ''}` : u.username}
+                            </div>
+                            <div style={{ fontSize: '0.78rem', color: '#64748b' }}>{u.email || u.username}</div>
                           </div>
                         </div>
                       </td>
-
-                      {/* Account Type */}
-                      <td style={{ padding: '16px 16px' }}>
-                        <span
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            padding: '3px 8px',
-                            borderRadius: '6px',
-                            fontSize: '0.75rem',
-                            fontWeight: 700,
-                            background: account.account_type === 'Vendor' ? '#f0fdf4' : '#eff6ff',
-                            color: account.account_type === 'Vendor' ? '#166534' : '#1e40af',
-                            border: `1px solid ${account.account_type === 'Vendor' ? '#bbf7d0' : '#bfdbfe'}`,
-                          }}
-                        >
-                          {account.account_type === 'Vendor' ? <UserCheck size={12} /> : <Building size={12} />}
-                          {account.account_type}
+                      <td style={{ padding: '14px 16px' }}>
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '3px 10px',
+                          borderRadius: '999px',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          background: u.role === 'ADMIN' ? '#f5f3ff' : u.role === 'PROVIDER' ? '#ecfdf5' : '#eff6ff',
+                          color: u.role === 'ADMIN' ? '#7c3aed' : u.role === 'PROVIDER' ? '#059669' : '#2563eb',
+                        }}>
+                          {u.role === 'ADMIN' && <Shield size={12} />}
+                          {u.role}
                         </span>
                       </td>
-
-                      {/* Category */}
-                      <td style={{ padding: '16px 16px', color: '#334155', fontWeight: 500 }}>
-                        {account.category_or_type}
+                      <td style={{ padding: '14px 16px', color: '#64748b', fontSize: '0.82rem' }}>
+                        {u.date_joined ? new Date(u.date_joined).toLocaleDateString() : 'N/A'}
                       </td>
-
-                      {/* Location */}
-                      <td style={{ padding: '16px 16px' }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#475569' }}>
-                          <MapPin size={13} color="#94a3b8" />
-                          {account.location}
+                      <td style={{ padding: '14px 16px' }}>
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '3px 8px',
+                          borderRadius: '6px',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          background: u.is_active !== false ? '#ecfdf5' : '#fee2e2',
+                          color: u.is_active !== false ? '#059669' : '#dc2626',
+                        }}>
+                          {u.is_active !== false ? 'Active' : 'Inactive'}
                         </span>
                       </td>
-
-                      {/* Status */}
-                      <td style={{ padding: '16px 16px' }}>
-                        {isApproved && (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 10px', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 700, background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0' }}>
-                            <ShieldCheck size={12} /> Approved
-                          </span>
-                        )}
-                        {isPending && (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 10px', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 700, background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a' }}>
-                            <Clock size={12} /> Pending
-                          </span>
-                        )}
-                        {isRejected && (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 10px', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 700, background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-                            <X size={12} /> Rejected
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Actions */}
-                      <td style={{ padding: '16px 20px', textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                      <td style={{ padding: '14px 16px', textAlign: 'right' }}>
+                        <div style={{ display: 'inline-flex', gap: '8px' }}>
                           <button
-                            onClick={() => setSelectedAccount(account)}
-                            title="Review Details"
+                            onClick={() => {
+                              setEditingUser(u);
+                              setNewRoleSelection(u.role || 'CUSTOMER');
+                            }}
+                            title="Edit Role"
                             style={{
                               padding: '6px 10px',
                               borderRadius: '6px',
                               border: '1px solid #cbd5e1',
-                              background: '#ffffff',
-                              color: '#475569',
-                              fontSize: '0.78rem',
-                              fontWeight: 600,
+                              background: '#fff',
+                              color: '#334155',
                               cursor: 'pointer',
                               display: 'inline-flex',
                               alignItems: 'center',
                               gap: '4px',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
                             }}
                           >
-                            <Eye size={13} /> Review
+                            <Edit3 size={13} /> Edit Role
                           </button>
 
                           <button
-                            onClick={() => handleApprove(account)}
-                            disabled={isApproved}
-                            title="Approve Verification"
+                            onClick={() => handleToggleUserActive(u)}
+                            title={u.is_active !== false ? 'Deactivate Account' : 'Activate Account'}
                             style={{
-                              padding: '6px 12px',
+                              padding: '6px 10px',
                               borderRadius: '6px',
-                              border: 'none',
-                              background: isApproved ? '#e2e8f0' : '#059669',
-                              color: isApproved ? '#94a3b8' : '#ffffff',
-                              fontSize: '0.78rem',
-                              fontWeight: 700,
-                              cursor: isApproved ? 'default' : 'pointer',
+                              border: '1px solid #cbd5e1',
+                              background: u.is_active !== false ? '#fff1f2' : '#ecfdf5',
+                              color: u.is_active !== false ? '#e11d48' : '#059669',
+                              cursor: 'pointer',
                               display: 'inline-flex',
                               alignItems: 'center',
                               gap: '4px',
-                              boxShadow: isApproved ? 'none' : '0 1px 3px rgba(5,150,105,0.25)',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
                             }}
                           >
-                            <Check size={13} /> Approve
+                            {u.is_active !== false ? <UserX size={13} /> : <UserCheck size={13} />}
+                            {u.is_active !== false ? 'Deactivate' : 'Activate'}
                           </button>
 
                           <button
-                            onClick={() => handleReject(account)}
-                            disabled={isRejected}
-                            title="Reject Account"
+                            onClick={() => setDeleteConfirm({ type: 'user', id: u.id, title: u.username })}
+                            title="Delete User"
                             style={{
-                              padding: '6px 12px',
+                              padding: '6px 8px',
                               borderRadius: '6px',
-                              border: 'none',
-                              background: isRejected ? '#e2e8f0' : '#ef4444',
-                              color: isRejected ? '#94a3b8' : '#ffffff',
-                              fontSize: '0.78rem',
-                              fontWeight: 700,
-                              cursor: isRejected ? 'default' : 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
+                              border: '1px solid #fecdd3',
+                              background: '#fff',
+                              color: '#ef4444',
+                              cursor: 'pointer',
                             }}
                           >
-                            <X size={13} /> Reject
+                            <Trash2 size={13} />
                           </button>
                         </div>
                       </td>
                     </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Venues Section */}
-      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
-        <h3 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '16px', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Building size={20} color="#0d8a73" /> Physical Event Venues Verification ({venues.length})
-        </h3>
+      {/* TAB 3: BOOKINGS MANAGEMENT */}
+      {activeTab === 'bookings' && (
+        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
+            <div>
+              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>Platform Bookings Moderation</h2>
+              <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>View client reservations, inspect financial totals, and override approval or cancellation states.</p>
+            </div>
 
-        <div style={{ display: 'grid', gap: '12px' }}>
-          {venues.map((v) => (
-            <div
-              key={v.id}
-              style={{
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: '12px',
-                padding: '16px 20px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: '12px',
-              }}
-            >
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <h4 style={{ fontWeight: 700, fontSize: '1.05rem', margin: 0, color: '#1e293b' }}>{v.title}</h4>
-                  {v.is_verified ? (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 700, background: '#ecfdf5', color: '#059669' }}>
-                      <ShieldCheck size={11} /> Verified
-                    </span>
-                  ) : (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 700, background: '#fef3c7', color: '#b45309' }}>
-                      <AlertTriangle size={11} /> Pending Review
-                    </span>
-                  )}
-                </div>
-                <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '4px 0 0' }}>
-                  Category: <strong>{v.category_display || v.category}</strong> • Location: <strong>{v.location}</strong> • Capacity: <strong>{v.capacity} guests</strong> • Rate: <strong>KES {v.price_per_day.toLocaleString()}/day</strong>
-                </p>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ position: 'relative' }}>
+                <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+                <input
+                  type="text"
+                  placeholder="Search title, venue, client..."
+                  value={bookingSearch}
+                  onChange={(e) => setBookingSearch(e.target.value)}
+                  style={{
+                    padding: '8px 14px 8px 36px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.85rem',
+                    outline: 'none',
+                    width: '230px',
+                  }}
+                />
               </div>
 
-              <button
-                onClick={() => onToggleVerifyVenue(v.id)}
+              <select
+                value={bookingStatusFilter}
+                onChange={(e) => setBookingStatusFilter(e.target.value)}
                 style={{
-                  padding: '8px 16px',
+                  padding: '8px 12px',
                   borderRadius: '8px',
-                  fontSize: '0.82rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  border: v.is_verified ? '1px solid #cbd5e1' : 'none',
-                  background: v.is_verified ? '#fff' : '#0d8a73',
-                  color: v.is_verified ? '#475569' : '#fff',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.85rem',
+                  outline: 'none',
+                  background: '#fff',
+                  fontWeight: 600,
+                  color: '#334155',
                 }}
               >
-                {v.is_verified ? 'Revoke Verification' : 'Approve & Verify Venue'}
-              </button>
+                <option value="ALL">All Statuses</option>
+                <option value="PENDING">Pending Approval</option>
+                <option value="APPROVED">Approved</option>
+                <option value="COMPLETED">Completed</option>
+                <option value="CANCELLED">Cancelled</option>
+                <option value="REJECTED">Rejected</option>
+              </select>
             </div>
-          ))}
-        </div>
-      </div>
+          </div>
 
-      {/* Account Review Modal */}
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#64748b' }}>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>ID & Event</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Reserved Listing</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Customer</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Date & Guests</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Total Price</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Status</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700, textAlign: 'right' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredBookings.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} style={{ padding: '36px', textAlign: 'center', color: '#94a3b8' }}>
+                      No bookings found for the selected filter.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredBookings.map(b => (
+                    <tr key={b.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '14px 16px' }}>
+                        <div style={{ fontWeight: 700, color: '#1e293b' }}>#{b.id} {b.event_title}</div>
+                        <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Type: {b.event_type}</div>
+                      </td>
+                      <td style={{ padding: '14px 16px', color: '#334155' }}>
+                        {b.venue_details?.title || b.vendor_details?.business_name || (b.venue ? `Venue #${b.venue}` : `Vendor #${b.vendor}`)}
+                      </td>
+                      <td style={{ padding: '14px 16px' }}>
+                        <div style={{ fontWeight: 600, color: '#1e293b' }}>{b.customer_name}</div>
+                        {b.customer_email && <div style={{ fontSize: '0.78rem', color: '#64748b' }}>{b.customer_email}</div>}
+                      </td>
+                      <td style={{ padding: '14px 16px', color: '#64748b' }}>
+                        <div>{b.event_date}</div>
+                        <div style={{ fontSize: '0.78rem' }}>{b.guest_count} attendees</div>
+                      </td>
+                      <td style={{ padding: '14px 16px', fontWeight: 700, color: '#0d8a73' }}>
+                        KES {Number(b.total_price).toLocaleString()}
+                      </td>
+                      <td style={{ padding: '14px 16px' }}>
+                        <span style={{
+                          padding: '3px 8px',
+                          borderRadius: '999px',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          background: b.status === 'APPROVED' ? '#ecfdf5' : b.status === 'PENDING' ? '#fef3c7' : b.status === 'COMPLETED' ? '#eff6ff' : '#fee2e2',
+                          color: b.status === 'APPROVED' ? '#059669' : b.status === 'PENDING' ? '#b45309' : b.status === 'COMPLETED' ? '#2563eb' : '#dc2626',
+                        }}>
+                          {b.status}
+                        </span>
+                      </td>
+                      <td style={{ padding: '14px 16px', textAlign: 'right' }}>
+                        <div style={{ display: 'inline-flex', gap: '6px' }}>
+                          <button
+                            onClick={() => setSelectedBooking(b)}
+                            title="View Details"
+                            style={{
+                              padding: '6px 10px',
+                              borderRadius: '6px',
+                              border: '1px solid #cbd5e1',
+                              background: '#fff',
+                              color: '#334155',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                            }}
+                          >
+                            <Eye size={13} /> View
+                          </button>
+
+                          {b.status === 'PENDING' && (
+                            <button
+                              onClick={() => handleUpdateBookingStatus(b.id, 'APPROVED')}
+                              title="Approve Booking"
+                              style={{
+                                padding: '6px 10px',
+                                borderRadius: '6px',
+                                border: 'none',
+                                background: '#059669',
+                                color: '#fff',
+                                cursor: 'pointer',
+                                fontSize: '0.75rem',
+                                fontWeight: 700,
+                              }}
+                            >
+                              Approve
+                            </button>
+                          )}
+
+                          {b.status === 'APPROVED' && (
+                            <button
+                              onClick={() => handleUpdateBookingStatus(b.id, 'COMPLETED')}
+                              title="Mark Completed"
+                              style={{
+                                padding: '6px 10px',
+                                borderRadius: '6px',
+                                border: 'none',
+                                background: '#2563eb',
+                                color: '#fff',
+                                cursor: 'pointer',
+                                fontSize: '0.75rem',
+                                fontWeight: 700,
+                              }}
+                            >
+                              Complete
+                            </button>
+                          )}
+
+                          {b.status !== 'CANCELLED' && (
+                            <button
+                              onClick={() => handleUpdateBookingStatus(b.id, 'CANCELLED')}
+                              title="Cancel Booking"
+                              style={{
+                                padding: '6px 8px',
+                                borderRadius: '6px',
+                                border: '1px solid #cbd5e1',
+                                background: '#fff',
+                                color: '#dc2626',
+                                cursor: 'pointer',
+                                fontSize: '0.75rem',
+                                fontWeight: 600,
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          )}
+
+                          <button
+                            onClick={() => setDeleteConfirm({ type: 'booking', id: b.id, title: `Booking #${b.id} (${b.event_title})` })}
+                            title="Delete Booking"
+                            style={{
+                              padding: '6px 8px',
+                              borderRadius: '6px',
+                              border: '1px solid #fecdd3',
+                              background: '#fff',
+                              color: '#ef4444',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: VENUES & SPACES MODERATION */}
+      {activeTab === 'venues' && (
+        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
+            <div>
+              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>Venues & Space Listings</h2>
+              <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Moderate published spaces, toggle live availability, verify listings, and delete deprecated entries.</p>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ position: 'relative' }}>
+                <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+                <input
+                  type="text"
+                  placeholder="Search venue name, location..."
+                  value={venueSearch}
+                  onChange={(e) => setVenueSearch(e.target.value)}
+                  style={{
+                    padding: '8px 14px 8px 36px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.85rem',
+                    outline: 'none',
+                    width: '240px',
+                  }}
+                />
+              </div>
+
+              <select
+                value={venueCategoryFilter}
+                onChange={(e) => setVenueCategoryFilter(e.target.value)}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.85rem',
+                  outline: 'none',
+                  background: '#fff',
+                  fontWeight: 600,
+                  color: '#334155',
+                }}
+              >
+                <option value="ALL">All Categories</option>
+                <option value="WEDDING">Wedding Gardens & Halls</option>
+                <option value="CONFERENCE">Corporate & Conference</option>
+                <option value="BIRTHDAY">Private Parties & Birthdays</option>
+                <option value="OUTDOOR">Outdoor & Picnic</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#64748b' }}>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Venue Listing</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Category & Location</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Capacity & Rate</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Rating</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Availability</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Verification</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700, textAlign: 'right' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredVenues.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} style={{ padding: '36px', textAlign: 'center', color: '#94a3b8' }}>
+                      No venue listings match your criteria.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredVenues.map(v => (
+                    <tr key={v.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '14px 16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <img
+                            src={v.image_url || 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&q=80&w=300'}
+                            alt={v.title}
+                            style={{ width: '48px', height: '48px', borderRadius: '10px', objectFit: 'cover' }}
+                          />
+                          <div>
+                            <div style={{ fontWeight: 700, color: '#1e293b' }}>{v.title}</div>
+                            <div style={{ fontSize: '0.78rem', color: '#64748b' }}>ID #{v.id}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td style={{ padding: '14px 16px' }}>
+                        <div style={{ color: '#1e293b', fontWeight: 600 }}>{v.category_display || v.category}</div>
+                        <div style={{ fontSize: '0.78rem', color: '#64748b' }}>{v.location}</div>
+                      </td>
+                      <td style={{ padding: '14px 16px' }}>
+                        <div style={{ fontWeight: 700, color: '#0d8a73' }}>KES {Number(v.price_per_day).toLocaleString()}/day</div>
+                        <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Up to {v.capacity} guests</div>
+                      </td>
+                      <td style={{ padding: '14px 16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 700, color: '#1e293b' }}>
+                          <Star size={14} fill="#f59e0b" color="#f59e0b" />
+                          {v.rating ? v.rating.toFixed(1) : '5.0'}
+                          <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 400 }}>({v.review_count || 0})</span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '14px 16px' }}>
+                        <button
+                          onClick={() => handleToggleVenueAvailability(v.id)}
+                          style={{
+                            padding: '4px 10px',
+                            borderRadius: '999px',
+                            border: 'none',
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            background: v.is_available !== false ? '#ecfdf5' : '#fee2e2',
+                            color: v.is_available !== false ? '#059669' : '#dc2626',
+                          }}
+                        >
+                          {v.is_available !== false ? 'Available' : 'Unavailable'}
+                        </button>
+                      </td>
+                      <td style={{ padding: '14px 16px' }}>
+                        <button
+                          onClick={async () => {
+                            setVenues(prev => prev.map(item => item.id === v.id ? { ...item, is_verified: !item.is_verified } : item));
+                            await onToggleVerifyVenue(v.id);
+                            onDataChange?.();
+                          }}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '4px 10px',
+                            borderRadius: '999px',
+                            border: 'none',
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            background: v.is_verified ? '#ecfdf5' : '#fef3c7',
+                            color: v.is_verified ? '#059669' : '#b45309',
+                          }}
+                        >
+                          {v.is_verified ? <ShieldCheck size={12} /> : <AlertTriangle size={12} />}
+                          {v.is_verified ? 'Verified' : 'Unverified'}
+                        </button>
+                      </td>
+                      <td style={{ padding: '14px 16px', textAlign: 'right' }}>
+                        <button
+                          onClick={() => setDeleteConfirm({ type: 'venue', id: v.id, title: v.title })}
+                          title="Delete Venue"
+                          style={{
+                            padding: '6px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid #fecdd3',
+                            background: '#fff',
+                            color: '#ef4444',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 5: PROVIDER VERIFICATION QUEUE */}
+      {activeTab === 'verifications' && (
+        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
+            <div>
+              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>Vendor & Venue Owner Verification Queue</h2>
+              <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Review provider credentials, licenses, portfolios, and grant verified status badges.</p>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <select
+                value={verificationTypeFilter}
+                onChange={(e) => setVerificationTypeFilter(e.target.value as any)}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.85rem',
+                  outline: 'none',
+                  background: '#fff',
+                  fontWeight: 600,
+                  color: '#334155',
+                }}
+              >
+                <option value="ALL">All Provider Types</option>
+                <option value="VENDOR">Vendors & Planners</option>
+                <option value="VENUE_OWNER">Venue Owners</option>
+              </select>
+
+              <select
+                value={verificationStatusFilter}
+                onChange={(e) => setVerificationStatusFilter(e.target.value as any)}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.85rem',
+                  outline: 'none',
+                  background: '#fff',
+                  fontWeight: 600,
+                  color: '#334155',
+                }}
+              >
+                <option value="ALL">All Statuses</option>
+                <option value="PENDING">Pending Review</option>
+                <option value="APPROVED">Approved</option>
+                <option value="REJECTED">Rejected</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '16px' }}>
+            {filteredAccounts.length === 0 ? (
+              <div style={{ gridColumn: '1 / -1', padding: '48px 0', textAlign: 'center', color: '#94a3b8' }}>
+                No provider accounts found matching your selected filter.
+              </div>
+            ) : (
+              filteredAccounts.map(account => (
+                <div
+                  key={`${account.account_type}-${account.id}`}
+                  style={{
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '14px',
+                    padding: '20px',
+                    background: '#ffffff',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                  }}
+                >
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        {account.logo_url ? (
+                          <img src={account.logo_url} alt="Logo" style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'cover' }} />
+                        ) : (
+                          <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
+                            <Building2 size={20} />
+                          </div>
+                        )}
+                        <div>
+                          <h4 style={{ margin: 0, fontWeight: 700, color: '#1e293b', fontSize: '1rem' }}>
+                            {account.business_name}
+                          </h4>
+                          <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                            {account.account_type} • {account.category_or_type}
+                          </span>
+                        </div>
+                      </div>
+
+                      <span style={{
+                        padding: '3px 8px',
+                        borderRadius: '999px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        background: account.verification_status === 'APPROVED' ? '#ecfdf5' : account.verification_status === 'REJECTED' ? '#fee2e2' : '#fef3c7',
+                        color: account.verification_status === 'APPROVED' ? '#059669' : account.verification_status === 'REJECTED' ? '#dc2626' : '#b45309',
+                      }}>
+                        {account.verification_status}
+                      </span>
+                    </div>
+
+                    <div style={{ fontSize: '0.82rem', color: '#64748b', display: 'flex', flexDirection: 'column', gap: '4px', margin: '12px 0' }}>
+                      {account.location && <div><MapPin size={12} style={{ display: 'inline', marginRight: '4px' }} />{account.location}</div>}
+                      {account.email && <div>Email: {account.email}</div>}
+                      {account.years_in_business !== undefined && <div>Experience: {account.years_in_business} years</div>}
+                    </div>
+                  </div>
+
+                  <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                    <button
+                      onClick={() => setSelectedAccount(account)}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        background: '#fff',
+                        color: '#475569',
+                        fontWeight: 600,
+                        fontSize: '0.8rem',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Inspect Profile
+                    </button>
+
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      {account.verification_status !== 'APPROVED' && (
+                        <button
+                          onClick={() => handleApproveAccount(account)}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            background: '#059669',
+                            color: '#fff',
+                            fontWeight: 700,
+                            fontSize: '0.8rem',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Approve
+                        </button>
+                      )}
+
+                      {account.verification_status !== 'REJECTED' && (
+                        <button
+                          onClick={() => handleRejectAccount(account)}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            background: '#ef4444',
+                            color: '#fff',
+                            fontWeight: 700,
+                            fontSize: '0.8rem',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Reject
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 6: REVIEWS & RATINGS MODERATION */}
+      {activeTab === 'reviews' && (
+        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
+            <div>
+              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>Customer Reviews Moderation</h2>
+              <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Review submitted customer ratings and remove inappropriate, fraudulent, or abusive comments.</p>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ position: 'relative' }}>
+                <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+                <input
+                  type="text"
+                  placeholder="Search reviewer, comment..."
+                  value={reviewSearch}
+                  onChange={(e) => setReviewSearch(e.target.value)}
+                  style={{
+                    padding: '8px 14px 8px 36px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.85rem',
+                    outline: 'none',
+                    width: '240px',
+                  }}
+                />
+              </div>
+
+              <select
+                value={reviewRatingFilter}
+                onChange={(e) => setReviewRatingFilter(e.target.value)}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.85rem',
+                  outline: 'none',
+                  background: '#fff',
+                  fontWeight: 600,
+                  color: '#334155',
+                }}
+              >
+                <option value="ALL">All Stars</option>
+                <option value="5">5 Stars</option>
+                <option value="4">4 Stars</option>
+                <option value="3">3 Stars</option>
+                <option value="2">2 Stars</option>
+                <option value="1">1 Star</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#64748b' }}>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Reviewer</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Target Service / Space</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Rating</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Comment</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Date</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700, textAlign: 'right' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredReviews.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ padding: '36px', textAlign: 'center', color: '#94a3b8' }}>
+                      No reviews found matching the search criteria.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredReviews.map(r => (
+                    <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '14px 16px', fontWeight: 700, color: '#1e293b' }}>
+                        {r.user_name}
+                      </td>
+                      <td style={{ padding: '14px 16px', color: '#0d8a73', fontWeight: 600 }}>
+                        {r.target_name || (r.venue ? `Venue #${r.venue}` : `Vendor #${r.vendor}`)}
+                      </td>
+                      <td style={{ padding: '14px 16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px', color: '#f59e0b' }}>
+                          {[...Array(5)].map((_, i) => (
+                            <Star
+                              key={i}
+                              size={14}
+                              fill={i < r.rating ? '#f59e0b' : 'none'}
+                              color={i < r.rating ? '#f59e0b' : '#cbd5e1'}
+                            />
+                          ))}
+                        </div>
+                      </td>
+                      <td style={{ padding: '14px 16px', color: '#334155', maxWidth: '350px' }}>
+                        <p style={{ margin: 0, lineHeight: 1.4, fontSize: '0.84rem' }}>
+                          {r.comment || <em style={{ color: '#94a3b8' }}>No comment provided</em>}
+                        </p>
+                      </td>
+                      <td style={{ padding: '14px 16px', color: '#64748b', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                        {r.created_at ? new Date(r.created_at).toLocaleDateString() : 'N/A'}
+                      </td>
+                      <td style={{ padding: '14px 16px', textAlign: 'right' }}>
+                        <button
+                          onClick={() => setDeleteConfirm({ type: 'review', id: r.id, title: `Review by ${r.user_name}` })}
+                          title="Delete Inappropriate Review"
+                          style={{
+                            padding: '6px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid #fecdd3',
+                            background: '#fff',
+                            color: '#ef4444',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 1: Account Verification Review Modal */}
       {selectedAccount && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(15, 23, 42, 0.7)',
-            backdropFilter: 'blur(4px)',
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(15, 23, 42, 0.7)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1100,
+          padding: '20px',
+        }}>
+          <div style={{
+            background: '#fff',
+            borderRadius: '16px',
+            maxWidth: '560px',
+            width: '100%',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1100,
-            padding: '20px',
-          }}
-        >
-          <div
-            style={{
-              background: '#fff',
-              borderRadius: '16px',
-              maxWidth: '560px',
-              width: '100%',
-              maxHeight: '90vh',
-              overflowY: 'auto',
-              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
-              display: 'flex',
-              flexDirection: 'column',
-            }}
-          >
+            flexDirection: 'column',
+          }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
               <div>
                 <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: '#0d8a73' }}>
-                  {selectedAccount.account_type} Profile Review
+                  {selectedAccount.account_type} Verification Details
                 </span>
                 <h3 style={{ margin: '2px 0 0', fontSize: '1.25rem', fontWeight: 800, color: '#1e293b' }}>
                   {selectedAccount.business_name}
@@ -670,7 +1988,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               )}
 
-              {/* Status banner in modal */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', borderRadius: '8px', background: selectedAccount.verification_status === 'APPROVED' ? '#ecfdf5' : selectedAccount.verification_status === 'REJECTED' ? '#fef2f2' : '#fef3c7' }}>
                 <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>Current Status:</span>
                 <span style={{ fontWeight: 800, fontSize: '0.85rem', color: selectedAccount.verification_status === 'APPROVED' ? '#059669' : selectedAccount.verification_status === 'REJECTED' ? '#dc2626' : '#b45309' }}>
@@ -687,16 +2004,254 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 Close
               </button>
               <button
-                onClick={() => handleReject(selectedAccount)}
+                onClick={() => handleRejectAccount(selectedAccount)}
                 style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#ef4444', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
               >
-                Reject
+                Reject Application
               </button>
               <button
-                onClick={() => handleApprove(selectedAccount)}
+                onClick={() => handleApproveAccount(selectedAccount)}
                 style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#059669', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
               >
                 Approve & Verify
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: Booking Details Modal */}
+      {selectedBooking && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(15, 23, 42, 0.7)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1100,
+          padding: '20px',
+        }}>
+          <div style={{
+            background: '#fff',
+            borderRadius: '16px',
+            maxWidth: '560px',
+            width: '100%',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+          }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
+              <div>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: '#0d8a73' }}>
+                  Booking #{selectedBooking.id} Information
+                </span>
+                <h3 style={{ margin: '2px 0 0', fontSize: '1.25rem', fontWeight: 800, color: '#1e293b' }}>
+                  {selectedBooking.event_title}
+                </h3>
+              </div>
+              <button onClick={() => setSelectedBooking(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '0.9rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Customer</span>
+                  <strong style={{ color: '#1e293b' }}>{selectedBooking.customer_name}</strong>
+                  {selectedBooking.customer_email && <div style={{ fontSize: '0.78rem', color: '#64748b' }}>{selectedBooking.customer_email}</div>}
+                </div>
+                <div>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Reserved Item</span>
+                  <strong style={{ color: '#1e293b' }}>
+                    {selectedBooking.venue_details?.title || selectedBooking.vendor_details?.business_name || 'Service Item'}
+                  </strong>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Event Date</span>
+                  <strong style={{ color: '#1e293b' }}>{selectedBooking.event_date}</strong>
+                </div>
+                <div>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Guest Count</span>
+                  <strong style={{ color: '#1e293b' }}>{selectedBooking.guest_count} Attendees</strong>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Total Price</span>
+                  <strong style={{ color: '#0d8a73', fontSize: '1.1rem' }}>KES {Number(selectedBooking.total_price).toLocaleString()}</strong>
+                </div>
+                <div>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Current Status</span>
+                  <span style={{
+                    display: 'inline-block',
+                    padding: '3px 8px',
+                    borderRadius: '999px',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    background: selectedBooking.status === 'APPROVED' ? '#ecfdf5' : selectedBooking.status === 'PENDING' ? '#fef3c7' : selectedBooking.status === 'COMPLETED' ? '#eff6ff' : '#fee2e2',
+                    color: selectedBooking.status === 'APPROVED' ? '#059669' : selectedBooking.status === 'PENDING' ? '#b45309' : selectedBooking.status === 'COMPLETED' ? '#2563eb' : '#dc2626',
+                  }}>
+                    {selectedBooking.status}
+                  </span>
+                </div>
+              </div>
+
+              {selectedBooking.notes && (
+                <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>Client Notes</span>
+                  <p style={{ margin: 0, color: '#334155', lineHeight: 1.5, fontSize: '0.85rem' }}>
+                    {selectedBooking.notes}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '8px', background: '#f8fafc', borderBottomLeftRadius: '16px', borderBottomRightRadius: '16px' }}>
+              <button
+                onClick={() => setSelectedBooking(null)}
+                style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
+              >
+                Close
+              </button>
+              {selectedBooking.status === 'PENDING' && (
+                <button
+                  onClick={() => handleUpdateBookingStatus(selectedBooking.id, 'APPROVED')}
+                  style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#059669', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Approve Booking
+                </button>
+              )}
+              {selectedBooking.status === 'APPROVED' && (
+                <button
+                  onClick={() => handleUpdateBookingStatus(selectedBooking.id, 'COMPLETED')}
+                  style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Mark Completed
+                </button>
+              )}
+              {selectedBooking.status !== 'CANCELLED' && (
+                <button
+                  onClick={() => handleUpdateBookingStatus(selectedBooking.id, 'CANCELLED')}
+                  style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#dc2626', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Cancel Booking
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: Edit User Role Modal */}
+      {editingUser && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(15, 23, 42, 0.7)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1100,
+          padding: '20px',
+        }}>
+          <div style={{ background: '#fff', borderRadius: '16px', maxWidth: '440px', width: '100%', padding: '24px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: '1.2rem', fontWeight: 800, color: '#1e293b' }}>
+              Modify User Role
+            </h3>
+            <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: '#64748b' }}>
+              Change the permission tier for <strong>{editingUser.username}</strong>.
+            </p>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>
+                Select Role
+              </label>
+              <select
+                value={newRoleSelection}
+                onChange={(e) => setNewRoleSelection(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.9rem',
+                  fontWeight: 600,
+                  outline: 'none',
+                }}
+              >
+                <option value="CUSTOMER">Customer (Book spaces & services)</option>
+                <option value="PROVIDER">Business Provider (List venues & services)</option>
+                <option value="ADMIN">Administrator (Full platform moderation)</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                onClick={() => setEditingUser(null)}
+                style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveUserRole}
+                style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#0d8a73', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+              >
+                Save Role
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: Delete Confirmation Dialog */}
+      {deleteConfirm && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(15, 23, 42, 0.7)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1200,
+          padding: '20px',
+        }}>
+          <div style={{ background: '#fff', borderRadius: '16px', maxWidth: '420px', width: '100%', padding: '24px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+            <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: '#fee2e2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+              <AlertCircle size={24} />
+            </div>
+            <h3 style={{ margin: '0 0 8px', fontSize: '1.2rem', fontWeight: 800, color: '#1e293b' }}>
+              Confirm Deletion
+            </h3>
+            <p style={{ margin: '0 0 20px', fontSize: '0.85rem', color: '#64748b', lineHeight: 1.5 }}>
+              Are you sure you want to permanently delete <strong>{deleteConfirm.title}</strong>? This action cannot be undone.
+            </p>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (deleteConfirm.type === 'user') handleDeleteUser(deleteConfirm.id);
+                  else if (deleteConfirm.type === 'booking') handleDeleteBooking(deleteConfirm.id);
+                  else if (deleteConfirm.type === 'venue') handleDeleteVenue(deleteConfirm.id);
+                  else if (deleteConfirm.type === 'review') handleDeleteReview(deleteConfirm.id);
+                }}
+                style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#ef4444', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+              >
+                Delete Permanently
               </button>
             </div>
           </div>

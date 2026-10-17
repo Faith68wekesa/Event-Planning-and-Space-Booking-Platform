@@ -13,9 +13,10 @@ import {
   Camera,
   Utensils,
   Music,
-  Palette
+  Palette,
+  ShieldCheck
 } from 'lucide-react';
-import type { FilterState, Venue, Vendor, VenueCategory } from '../types';
+import type { FilterState, Venue, Vendor, VenueCategory, User } from '../types';
 import { ApiService } from '../services/api';
 import { handleImageError, DEFAULT_SPACE_IMAGE, DEFAULT_SERVICE_IMAGE } from '../utils/imageUtils';
 
@@ -28,6 +29,8 @@ export interface LandingPageProps {
   onBookVenue?: (venue: Venue) => void;
   onSelectVendor?: (vendor: Vendor) => void;
   onBookVendor?: (vendor: Vendor) => void;
+  onOpenAdmin?: () => void;
+  currentUser?: User | null;
 }
 
 const CATEGORY_TAGS: { label: string; cat: VenueCategory; icon: React.ReactNode }[] = [
@@ -48,7 +51,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   onBookVenue,
   onSelectVendor,
   onBookVendor,
+  onOpenAdmin,
+  currentUser,
 }) => {
+  const isNonAdminUser = Boolean(currentUser && currentUser.role !== 'ADMIN' && !currentUser.is_staff && !currentUser.is_superuser);
   const [spaces, setSpaces] = useState<Venue[]>([]);
   const [services, setServices] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
@@ -161,6 +167,29 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               onMouseLeave={(e) => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.color = '#0F8F7A'; }}
             >
               <Briefcase size={18} /> Event Services ({services.length > 0 ? `${services.length}+ Listed` : 'All'})
+            </button>
+          )}
+          {onOpenAdmin && !isNonAdminUser && (
+            <button 
+              onClick={onOpenAdmin} 
+              style={{ 
+                padding: '10px 22px', 
+                borderRadius: '999px', 
+                background: '#ffffff', 
+                color: '#0d8a73', 
+                border: '1px solid #0d8a73', 
+                fontWeight: 700, 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px', 
+                cursor: 'pointer', 
+                transition: 'all 0.2s', 
+                boxShadow: '0 2px 4px rgba(13,138,115,0.1)' 
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#0d8a73'; e.currentTarget.style.color = '#ffffff'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.color = '#0d8a73'; }}
+            >
+              <ShieldCheck size={18} /> Admin Portal
             </button>
           )}
         </div>
@@ -620,6 +649,77 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </div>
         </div>
       </section>
+
+      {/* 6. Admin Control Center Section */}
+      {onOpenAdmin && !isNonAdminUser && (
+        <section style={{ padding: '0 24px 64px', background: '#ffffff' }}>
+          <div style={{
+            maxWidth: '1200px',
+            margin: '0 auto',
+            background: 'linear-gradient(135deg, #f0fdfa 0%, #e6f7f3 100%)',
+            border: '1px solid #ccfbf1',
+            borderRadius: '20px',
+            padding: '32px 36px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '24px',
+            boxShadow: '0 4px 12px rgba(13, 138, 115, 0.08)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '18px' }}>
+              <div style={{
+                width: '56px',
+                height: '56px',
+                borderRadius: '16px',
+                background: 'linear-gradient(135deg, #0d8a73 0%, #065f46 100%)',
+                color: '#ffffff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 4px 10px rgba(13, 138, 115, 0.25)',
+                flexShrink: 0
+              }}>
+                <ShieldCheck size={28} />
+              </div>
+              <div>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0d8a73', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Platform Operations
+                </div>
+                <h3 style={{ margin: '4px 0 6px', fontSize: '1.35rem', fontWeight: 800, color: '#0f172a' }}>
+                  Administrator Control Center
+                </h3>
+                <p style={{ margin: 0, color: '#475569', fontSize: '0.9rem', maxWidth: '620px' }}>
+                  Access platform-wide moderation to oversee user accounts, moderate space listings, approve business credentials, and track platform revenue.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={onOpenAdmin}
+              style={{
+                padding: '12px 24px',
+                background: '#0d8a73',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '12px',
+                fontWeight: 700,
+                fontSize: '0.92rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+                boxShadow: '0 4px 8px rgba(13, 138, 115, 0.2)',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#0b725f'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = '#0d8a73'; }}
+            >
+              <ShieldCheck size={18} /> Enter Admin Dashboard <ArrowRight size={16} />
+            </button>
+          </div>
+        </section>
+      )}
     </div>
   );
 };

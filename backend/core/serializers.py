@@ -9,7 +9,11 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'role', 'phone_number', 'avatar_url', 'bio', 'is_customer', 'is_vendor', 'is_venue_owner', 'is_provider']
+        fields = [
+            'id', 'username', 'email', 'first_name', 'last_name', 'role', 
+            'phone_number', 'avatar_url', 'bio', 'is_customer', 'is_vendor', 
+            'is_venue_owner', 'is_provider', 'is_active', 'is_staff', 'is_superuser', 'date_joined'
+        ]
 
 
 class VenueOwnerProfileSerializer(serializers.ModelSerializer):
@@ -124,6 +128,7 @@ class ReviewSerializer(serializers.ModelSerializer):
 
 class BookingSerializer(serializers.ModelSerializer):
     customer_name = serializers.ReadOnlyField(source='customer.username')
+    customer_email = serializers.ReadOnlyField(source='customer.email')
     venue_details = VenueSerializer(source='venue', read_only=True)
     vendor_details = VendorProfileSerializer(source='vendor', read_only=True)
     provider_user_id = serializers.SerializerMethodField()
@@ -146,7 +151,7 @@ class BookingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Booking
         fields = [
-            'id', 'customer', 'customer_name', 'venue', 'venue_details', 
+            'id', 'customer', 'customer_name', 'customer_email', 'venue', 'venue_details', 
             'vendor', 'vendor_details', 'provider_user_id', 'event_title', 'event_type', 'event_date', 
             'end_date', 'guest_count', 'total_price', 'status', 'notes', 
             'has_reviewed', 'review',

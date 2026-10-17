@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, User as UserIcon, Building2, ChevronRight, Eye, EyeOff, RotateCw, AlertCircle, ArrowLeft } from 'lucide-react';
+import { X, User as UserIcon, Building2, ChevronRight, Eye, EyeOff, RotateCw, AlertCircle, ArrowLeft, ShieldCheck } from 'lucide-react';
 import { ApiService } from '../services/api.ts';
 import type { AuthResponse } from '../types';
 import toast from 'react-hot-toast';
@@ -8,10 +8,13 @@ interface AuthModalProps {
   onClose: () => void;
   onSuccess: (data: AuthResponse) => void;
   initialMode?: 'login' | 'register';
+  isAdminLogin?: boolean;
 }
 
-export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess, initialMode = 'login' }) => {
-  const [mode, setMode] = useState<'login' | 'register' | 'select_role' | 'verify_email' | 'forgot_password'>(initialMode);
+export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess, initialMode = 'login', isAdminLogin = false }) => {
+  const [mode, setMode] = useState<'login' | 'register' | 'select_role' | 'verify_email' | 'forgot_password'>(
+    isAdminLogin ? 'login' : initialMode
+  );
   const [loading, setLoading] = useState(false);
   const [userId, setUserId] = useState<number | null>(null);
   const [otpCode, setOtpCode] = useState('');
@@ -77,6 +80,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess, initia
           toast.error(msg);
         }
       } else if (mode === 'register') {
+        if (isAdminLogin) {
+          setErrorNotice("Administrator registration is disabled. Please log in with your credentials.");
+          setMode('login');
+          return;
+        }
         const data = await ApiService.registerUser({
           email: formData.email,
           password: formData.password,
@@ -204,8 +212,28 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess, initia
             <span>Locyfy</span>
           </div>
 
+          {isAdminLogin && (
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '4px 12px',
+              background: '#ecfdf5',
+              border: '1px solid #a7f3d0',
+              borderRadius: '999px',
+              color: '#065f46',
+              fontSize: '0.8rem',
+              fontWeight: 700,
+              margin: '0 auto 12px'
+            }}>
+              <ShieldCheck size={16} color="#059669" /> Administrator Sign In
+            </div>
+          )}
+
           <h2 style={{ fontSize: '1.65rem', fontWeight: 800, color: '#0f172a', margin: '0 0 8px' }}>
-            {mode === 'login' 
+            {isAdminLogin
+              ? 'Administrator Portal'
+              : mode === 'login' 
               ? 'Welcome Back!' 
               : mode === 'register' 
               ? 'Create your Locyfy account' 
@@ -216,7 +244,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess, initia
               : 'How would you like to use Locyfy?'}
           </h2>
           <p style={{ color: '#64748b', margin: 0, fontSize: '0.92rem', lineHeight: 1.5 }}>
-            {mode === 'login' 
+            {isAdminLogin
+              ? 'Sign in with your verified administrator credentials'
+              : mode === 'login' 
               ? 'Sign in to access your dashboard' 
               : mode === 'register' 
               ? 'Register once to start using Locyfy.' 
@@ -253,7 +283,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess, initia
                   </button>
                 </div>
               )}
-              {errorNotice.toLowerCase().includes('no account found') && (
+              {errorNotice.toLowerCase().includes('no account found') && !isAdminLogin && (
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '2px' }}>
                   <button
                     type="button"
@@ -475,18 +505,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess, initia
                   : 'Next'}
               </button>
 
-              <div style={{ textAlign: 'center', marginTop: '10px' }}>
-                <button 
-                  type="button" 
-                  onClick={() => {
-                    setMode(mode === 'login' ? 'register' : 'login');
-                    setErrorNotice(null);
-                  }}
-                  style={{ background: 'none', border: 'none', color: '#0F8F7A', fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer' }}
-                >
-                  {mode === 'login' ? "Don't have an account? Register" : "Already have an account? Log in"}
-                </button>
-              </div>
+              {!isAdminLogin && (
+                <div style={{ textAlign: 'center', marginTop: '10px' }}>
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      setMode(mode === 'login' ? 'register' : 'login');
+                      setErrorNotice(null);
+                    }}
+                    style={{ background: 'none', border: 'none', color: '#0F8F7A', fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    {mode === 'login' ? "Don't have an account? Register" : "Already have an account? Log in"}
+                  </button>
+                </div>
+              )}
             </form>
           )}
         </div>

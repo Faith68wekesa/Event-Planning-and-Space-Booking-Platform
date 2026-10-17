@@ -86,6 +86,19 @@ class VendorProfile(models.Model):
     def __str__(self):
         return f"{self.business_name} - {self.vendor_type}"
 
+    def update_rating_stats(self):
+        """Recalculate average rating and review count for this vendor.
+
+        Aggregates over all Review objects linked to this vendor and updates
+        the `rating` (average) and `review_count` fields. If there are no
+        reviews, rating defaults to 0 and count to 0.
+        """
+        from django.db.models import Avg, Count
+        stats = Review.objects.filter(vendor=self).aggregate(avg_rating=Avg('rating'), cnt=Count('id'))
+        self.rating = stats['avg_rating'] if stats['avg_rating'] is not None else 0
+        self.review_count = stats['cnt']
+        self.save(update_fields=['rating', 'review_count'])
+
 
 class ProviderAvailabilitySetting(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='availability_settings')
@@ -185,6 +198,19 @@ class Venue(models.Model):
 
     def __str__(self):
         return f"{self.title} ({self.location})"
+
+    def update_rating_stats(self):
+        """Recalculate average rating and review count for this venue.
+
+        Aggregates over all Review objects linked to this venue and updates
+        the `rating` (average) and `review_count` fields. If there are no
+        reviews, defaults to 0.
+        """
+        from django.db.models import Avg, Count
+        stats = Review.objects.filter(venue=self).aggregate(avg_rating=Avg('rating'), cnt=Count('id'))
+        self.rating = stats['avg_rating'] if stats['avg_rating'] is not None else 0
+        self.review_count = stats['cnt']
+        self.save(update_fields=['rating', 'review_count'])
 
 
 class Booking(models.Model):

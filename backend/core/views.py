@@ -22,12 +22,90 @@ import datetime
 import os
 from django.utils import timezone
 from django.conf import settings
+from rest_framework.exceptions import PermissionDenied
 from django.core.files.storage import FileSystemStorage
 from rest_framework.parsers import MultiPartParser, FormParser
 
+def is_admin_user(request):
+    """
+    Verifies if the request is performed by a platform administrator.
+    Checks:
+    1. Django request.user session/token authentication (role=='ADMIN', is_staff, or is_superuser).
+    2. Headers: 'X-User-Id' or 'X-Admin-Id'.
+    3. Query params: 'admin_user_id' or 'user_id'.
+    4. Request body: 'admin_user_id' or 'user_id'.
+    """
+    user = getattr(request, 'user', None)
+    if user and user.is_authenticated:
+        if getattr(user, 'role', '') == 'ADMIN' or getattr(user, 'is_staff', False) or getattr(user, 'is_superuser', False):
+            return True
+
+    user_id = (
+        request.headers.get('X-User-Id') or 
+        request.headers.get('X-Admin-Id') or
+        getattr(request, 'query_params', {}).get('admin_user_id') or 
+        getattr(request, 'query_params', {}).get('user_id')
+    )
+    if not user_id and hasattr(request, 'data') and isinstance(request.data, dict):
+        user_id = request.data.get('admin_user_id') or request.data.get('user_id')
+
+    if user_id:
+        try:
+            u = User.objects.get(pk=int(user_id))
+            return u.role == 'ADMIN' or u.is_staff or u.is_superuser
+        except (User.DoesNotExist, ValueError, TypeError):
+            return False
+    return False
+
 class UserViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.all()
+    queryset = User.objects.all().order_by('-date_joined')
     serializer_class = UserSerializer
+
+    def check_permissions(self, request):
+        super().check_permissions(request)
+        if not is_admin_user(request):
+            raise PermissionDenied("Access Denied: Only platform administrators can view or manage users.")
+
+    def get_queryset(self):
+        if not is_admin_user(self.request):
+            raise PermissionDenied("Access Denied: Only platform administrators can view user records.")
+        queryset = super().get_queryset()
+        search = self.request.query_params.get('search')
+        role = self.request.query_params.get('role')
+        if search:
+            queryset = queryset.filter(
+                Q(username__icontains=search) |
+                Q(email__icontains=search) |
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search)
+            )
+        if role and role != 'ALL':
+            queryset = queryset.filter(role=role)
+        return queryset
+
+    @action(detail=True, methods=['post', 'patch'])
+    def toggle_active(self, request, pk=None):
+        user = self.get_object()
+        user.is_active = not user.is_active
+        user.save(update_fields=['is_active'])
+        return Response(UserSerializer(user).data)
+
+    @action(detail=True, methods=['post', 'patch'])
+    def update_role(self, request, pk=None):
+        user = self.get_object()
+        new_role = request.data.get('role')
+        if new_role in dict(User.ROLE_CHOICES):
+            user.role = new_role
+            if new_role == 'ADMIN':
+                user.is_staff = True
+            elif new_role == 'CUSTOMER':
+                user.is_customer = True
+            elif new_role == 'PROVIDER':
+                user.is_vendor = True
+                user.is_venue_owner = True
+            user.save()
+            return Response(UserSerializer(user).data)
+        return Response({'error': 'Invalid role'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class VendorProfileViewSet(viewsets.ModelViewSet):
@@ -40,6 +118,7 @@ class VendorProfileViewSet(viewsets.ModelViewSet):
         vendor_type = self.request.query_params.get('vendor_type')
         location = self.request.query_params.get('location')
         verified = self.request.query_params.get('verified')
+        user = self.request.query_params.get('user') or self.request.query_params.get('user_id')
 
         if search:
             queryset = queryset.filter(
@@ -51,6 +130,8 @@ class VendorProfileViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(vendor_type=vendor_type)
         if location and location != 'ALL':
             queryset = queryset.filter(location__icontains=location)
+        if user:
+            queryset = queryset.filter(user_id=user)
         if verified == 'true':
             queryset = queryset.filter(is_verified=True)
 
@@ -58,20 +139,28 @@ class VendorProfileViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def toggle_verify(self, request, pk=None):
+        if not is_admin_user(request):
+            raise PermissionDenied("Access Denied: Only platform administrators can verify vendor credentials.")
         vendor = self.get_object()
         vendor.is_verified = not vendor.is_verified
         vendor.verification_status = 'APPROVED' if vendor.is_verified else 'PENDING'
         vendor.save()
+        # Interconnect: sync all vendor listings and services
+        Venue.objects.filter(vendor=vendor).update(is_verified=vendor.is_verified)
         return Response(VendorProfileSerializer(vendor).data)
 
     @action(detail=True, methods=['post', 'patch'])
     def set_verification(self, request, pk=None):
+        if not is_admin_user(request):
+            raise PermissionDenied("Access Denied: Only platform administrators can verify vendor credentials.")
         vendor = self.get_object()
         new_status = request.data.get('verification_status')
         if new_status in ['APPROVED', 'REJECTED', 'PENDING']:
             vendor.verification_status = new_status
             vendor.is_verified = (new_status == 'APPROVED')
             vendor.save()
+            # Interconnect: sync all vendor listings and services
+            Venue.objects.filter(vendor=vendor).update(is_verified=vendor.is_verified)
             return Response(VendorProfileSerializer(vendor).data)
         return Response({'error': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -85,6 +174,7 @@ class VenueOwnerProfileViewSet(viewsets.ModelViewSet):
         search = self.request.query_params.get('search')
         location = self.request.query_params.get('location')
         verified = self.request.query_params.get('verified')
+        user = self.request.query_params.get('user') or self.request.query_params.get('user_id')
 
         if search:
             queryset = queryset.filter(
@@ -94,6 +184,8 @@ class VenueOwnerProfileViewSet(viewsets.ModelViewSet):
             )
         if location and location != 'ALL':
             queryset = queryset.filter(location__icontains=location)
+        if user:
+            queryset = queryset.filter(user_id=user)
         if verified == 'true':
             queryset = queryset.filter(is_verified=True)
 
@@ -101,20 +193,28 @@ class VenueOwnerProfileViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def toggle_verify(self, request, pk=None):
+        if not is_admin_user(request):
+            raise PermissionDenied("Access Denied: Only platform administrators can verify venue owners.")
         owner = self.get_object()
         owner.is_verified = not owner.is_verified
         owner.verification_status = 'APPROVED' if owner.is_verified else 'PENDING'
         owner.save()
+        # Interconnect: sync all venue owner physical spaces
+        Venue.objects.filter(owner=owner).update(is_verified=owner.is_verified)
         return Response(VenueOwnerProfileSerializer(owner).data)
 
     @action(detail=True, methods=['post', 'patch'])
     def set_verification(self, request, pk=None):
+        if not is_admin_user(request):
+            raise PermissionDenied("Access Denied: Only platform administrators can verify venue owners.")
         owner = self.get_object()
         new_status = request.data.get('verification_status')
         if new_status in ['APPROVED', 'REJECTED', 'PENDING']:
             owner.verification_status = new_status
             owner.is_verified = (new_status == 'APPROVED')
             owner.save()
+            # Interconnect: sync all venue owner physical spaces
+            Venue.objects.filter(owner=owner).update(is_verified=owner.is_verified)
             return Response(VenueOwnerProfileSerializer(owner).data)
         return Response({'error': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -166,12 +266,32 @@ class VenueViewSet(viewsets.ModelViewSet):
 
         return queryset
 
+    def perform_create(self, serializer):
+        # Auto-verify if the listing provider is already verified
+        vendor = serializer.validated_data.get('vendor')
+        owner = serializer.validated_data.get('owner')
+        is_verified = False
+        if vendor and getattr(vendor, 'is_verified', False):
+            is_verified = True
+        elif owner and getattr(owner, 'is_verified', False):
+            is_verified = True
+        serializer.save(is_verified=is_verified)
+
     @action(detail=True, methods=['post'])
     def toggle_verify(self, request, pk=None):
+        if not is_admin_user(request):
+            raise PermissionDenied("Access Denied: Only platform administrators can verify venues.")
         venue = self.get_object()
         venue.is_verified = not venue.is_verified
-        venue.save()
+        venue.save(update_fields=['is_verified'])
         return Response({'status': 'updated', 'is_verified': venue.is_verified})
+
+    @action(detail=True, methods=['post', 'patch'])
+    def toggle_availability(self, request, pk=None):
+        venue = self.get_object()
+        venue.is_available = not venue.is_available
+        venue.save(update_fields=['is_available'])
+        return Response({'status': 'updated', 'is_available': venue.is_available})
 
 
 class BookingViewSet(viewsets.ModelViewSet):
@@ -630,7 +750,6 @@ class EventServiceViewSet(viewsets.ModelViewSet):
 
 
 @api_view(['GET'])
-
 def platform_stats(request):
     total_venues = Venue.objects.count()
     verified_venues = Venue.objects.filter(is_verified=True).count()
@@ -639,6 +758,23 @@ def platform_stats(request):
     total_bookings = Booking.objects.count()
     satisfied_clients = 250 + total_bookings
 
+    total_users = User.objects.count()
+    total_customers = User.objects.filter(is_customer=True).count()
+    total_providers = User.objects.filter(Q(role='PROVIDER') | Q(is_vendor=True) | Q(is_venue_owner=True)).count()
+    pending_verifications = VendorProfile.objects.filter(verification_status='PENDING').count() + VenueOwnerProfile.objects.filter(verification_status='PENDING').count()
+    pending_bookings = Booking.objects.filter(status='PENDING').count()
+    approved_bookings = Booking.objects.filter(status='APPROVED').count()
+    completed_bookings = Booking.objects.filter(status='COMPLETED').count()
+    cancelled_bookings = Booking.objects.filter(status='CANCELLED').count()
+
+    rev = Booking.objects.filter(status__in=['APPROVED', 'COMPLETED']).aggregate(s=Sum('total_price'))['s']
+    total_revenue = float(rev) if rev is not None else 0.0
+
+    total_reviews = Review.objects.count()
+    from django.db.models import Avg
+    avg_rating_res = Review.objects.aggregate(a=Avg('rating'))['a']
+    avg_rating = round(float(avg_rating_res), 1) if avg_rating_res is not None else 4.9
+
     return Response({
         'total_venues': total_venues,
         'verified_venues': verified_venues,
@@ -646,7 +782,29 @@ def platform_stats(request):
         'verified_vendors': verified_vendors,
         'total_bookings': total_bookings,
         'satisfied_clients': satisfied_clients,
+        'total_users': total_users,
+        'total_customers': total_customers,
+        'total_providers': total_providers,
+        'pending_verifications': pending_verifications,
+        'pending_bookings': pending_bookings,
+        'approved_bookings': approved_bookings,
+        'completed_bookings': completed_bookings,
+        'cancelled_bookings': cancelled_bookings,
+        'total_revenue': total_revenue,
+        'total_reviews': total_reviews,
+        'avg_rating': avg_rating,
     })
+
+
+@api_view(['POST'])
+def refresh_all_ratings(request):
+    if not is_admin_user(request):
+        raise PermissionDenied("Access Denied: Administrator privileges required to recalculate platform ratings.")
+    for v in Venue.objects.all():
+        v.update_rating_stats()
+    for ven in VendorProfile.objects.all():
+        ven.update_rating_stats()
+    return Response({'status': 'ratings_refreshed'})
 
 
 
@@ -893,6 +1051,12 @@ def register_user(request):
     if User.objects.filter(username__iexact=username).exists():
         return Response({'error': 'This username is already taken'}, status=status.HTTP_400_BAD_REQUEST)
         
+    requested_role = (data.get('role') or '').strip().upper()
+    if requested_role == 'ADMIN':
+        return Response({
+            'error': 'Administrator registration is disabled. Administrators can only log in with pre-configured credentials.'
+        }, status=status.HTTP_403_FORBIDDEN)
+
     try:
         full_name = data.get('full_name', '').strip()
         first_name = data.get('first_name', '').strip()
@@ -909,6 +1073,11 @@ def register_user(request):
             first_name=first_name,
             last_name=last_name,
             is_customer=False, # Wait for explicit role selection
+            is_vendor=False,
+            is_venue_owner=False,
+            is_staff=False,
+            is_superuser=False,
+            role='CUSTOMER',
             phone_number=data.get('phone_number', '')
         )
         
@@ -928,6 +1097,9 @@ def login_user(request):
     if not user_obj:
         return Response({'error': 'No account found with this email or username'}, status=status.HTTP_401_UNAUTHORIZED)
 
+    if not user_obj.is_active:
+        return Response({'error': 'This account has been deactivated by an administrator. Please contact support.'}, status=status.HTTP_403_FORBIDDEN)
+
     user = authenticate(username=user_obj.username, password=password)
     
     if user is not None:
@@ -938,7 +1110,8 @@ def login_user(request):
                 'is_customer': user.is_customer,
                 'is_vendor': user.is_vendor,
                 'is_venue_owner': user.is_venue_owner,
-                'is_provider': is_provider
+                'is_provider': is_provider,
+                'is_admin': user.role == 'ADMIN' or user.is_staff or user.is_superuser
             }
         }
         
@@ -1024,6 +1197,11 @@ def request_role(request):
                         'business_type': 'Event Venue'
                     }
                 )
+        elif role == 'ADMIN':
+            user.role = 'ADMIN'
+            user.is_staff = True
+            user.is_superuser = True
+            user.save()
         else:
             return Response({'error': 'Invalid role'}, status=status.HTTP_400_BAD_REQUEST)
             
@@ -1035,7 +1213,8 @@ def request_role(request):
                 'is_customer': user.is_customer,
                 'is_vendor': user.is_vendor,
                 'is_venue_owner': user.is_venue_owner,
-                'is_provider': is_provider
+                'is_provider': is_provider,
+                'is_admin': user.role == 'ADMIN' or user.is_staff or user.is_superuser
             }
         }
         

@@ -1,4 +1,4 @@
-import type { Venue, Vendor, VenueOwner, Booking, PlatformStats, FilterState, BookingStatus, Review, Message, ConversationThread, EventItem, EventServiceItem, NotificationItem, ReminderPreference } from '../types';
+import type { User, Venue, Vendor, VenueOwner, Booking, PlatformStats, FilterState, BookingStatus, Review, Message, ConversationThread, EventItem, EventServiceItem, NotificationItem, ReminderPreference } from '../types';
 
 const API_BASE = 'http://localhost:8000/api';
 
@@ -22,6 +22,24 @@ export function formatApiError(resData: any, fallback: string): string {
   }
   return fallback;
 }
+
+let currentUserId: number | null = null;
+
+export const setApiCurrentUserId = (id: number | null) => {
+  currentUserId = id;
+};
+
+export const getApiCurrentUserId = (): number | null => {
+  return currentUserId;
+};
+
+const getAuthHeaders = (extraHeaders: Record<string, string> = {}): Record<string, string> => {
+  const headers: Record<string, string> = { ...extraHeaders };
+  if (currentUserId) {
+    headers['X-User-Id'] = currentUserId.toString();
+  }
+  return headers;
+};
 
 export const ApiService = {
   async getVenues(filters: Partial<FilterState> & { owner?: number; vendor?: number; user?: number } = {}): Promise<Venue[]> {
@@ -48,13 +66,14 @@ export const ApiService = {
     return [];
   },
 
-  async getVendors(filters: Partial<FilterState> = {}): Promise<Vendor[]> {
+  async getVendors(filters: Partial<FilterState> & { user?: number } = {}): Promise<Vendor[]> {
     try {
       const q = new URLSearchParams();
       if (filters.search) q.append('search', filters.search);
       if (filters.vendor_type && filters.vendor_type !== 'ALL') q.append('vendor_type', filters.vendor_type);
       if (filters.location && filters.location !== 'ALL') q.append('location', filters.location);
       if (filters.verified_only) q.append('verified', 'true');
+      if (filters.user) q.append('user', filters.user.toString());
 
       const res = await fetch(`${API_BASE}/vendors/?${q.toString()}`);
       if (res.ok) {
@@ -103,7 +122,7 @@ export const ApiService = {
     }
   },
 
-  async requestRole(userId: number, role: 'CUSTOMER' | 'PROVIDER' | 'VENDOR' | 'VENUE_OWNER'): Promise<any> {
+  async requestRole(userId: number, role: 'CUSTOMER' | 'PROVIDER' | 'VENDOR' | 'VENUE_OWNER' | 'ADMIN'): Promise<any> {
     try {
       const res = await fetch(`${API_BASE}/auth/request-role/`, {
         method: 'POST',
@@ -227,6 +246,7 @@ export const ApiService = {
     try {
       const res = await fetch(`${API_BASE}/venues/${id}/toggle_verify/`, {
         method: 'POST',
+        headers: getAuthHeaders(),
       });
       if (res.ok) return true;
     } catch (e) {
@@ -239,6 +259,7 @@ export const ApiService = {
     try {
       const res = await fetch(`${API_BASE}/vendors/${id}/toggle_verify/`, {
         method: 'POST',
+        headers: getAuthHeaders(),
       });
       if (res.ok) return true;
     } catch (e) {
@@ -251,8 +272,8 @@ export const ApiService = {
     try {
       const res = await fetch(`${API_BASE}/vendors/${id}/set_verification/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ verification_status: status }),
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ verification_status: status, admin_user_id: currentUserId }),
       });
       if (res.ok) return await res.json();
     } catch (e) {
@@ -276,9 +297,12 @@ export const ApiService = {
     }
   },
 
-  async getVenueOwners(): Promise<VenueOwner[]> {
+  async getVenueOwners(params?: { user?: number; search?: string }): Promise<VenueOwner[]> {
     try {
-      const res = await fetch(`${API_BASE}/venue-owners/`);
+      const sp = new URLSearchParams();
+      if (params?.user) sp.append('user', params.user.toString());
+      if (params?.search) sp.append('search', params.search);
+      const res = await fetch(`${API_BASE}/venue-owners/?${sp.toString()}`);
       if (res.ok) {
         const data = await res.json();
         return Array.isArray(data) ? data : data.results || [];
@@ -293,6 +317,7 @@ export const ApiService = {
     try {
       const res = await fetch(`${API_BASE}/venue-owners/${id}/toggle_verify/`, {
         method: 'POST',
+        headers: getAuthHeaders(),
       });
       if (res.ok) return true;
     } catch (e) {
@@ -305,8 +330,8 @@ export const ApiService = {
     try {
       const res = await fetch(`${API_BASE}/venue-owners/${id}/set_verification/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ verification_status: status }),
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ verification_status: status, admin_user_id: currentUserId }),
       });
       if (res.ok) return await res.json();
     } catch (e) {
@@ -507,6 +532,122 @@ export const ApiService = {
       console.error('Failed to fetch review summary:', e);
     }
     return null;
+  },
+
+  async deleteReview(id: number): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/reviews/${id}/`, {
+        method: 'DELETE',
+      });
+      return res.ok || res.status === 204;
+    } catch (e) {
+      console.error('Failed to delete review:', e);
+      return false;
+    }
+  },
+
+  async getUsers(params?: { search?: string; role?: string }, adminUserId?: number): Promise<User[]> {
+    try {
+      const sp = new URLSearchParams();
+      if (params?.search) sp.append('search', params.search);
+      if (params?.role && params.role !== 'ALL') sp.append('role', params.role);
+      const uid = adminUserId || currentUserId;
+      if (uid) sp.append('admin_user_id', uid.toString());
+      const res = await fetch(`${API_BASE}/users/?${sp.toString()}`, {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return Array.isArray(data) ? data : data.results || [];
+      }
+    } catch (e) {
+      console.error('Failed to fetch users:', e);
+    }
+    return [];
+  },
+
+  async toggleUserActive(userId: number): Promise<User | null> {
+    try {
+      const res = await fetch(`${API_BASE}/users/${userId}/toggle_active/`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.error('Failed to toggle user active status:', e);
+    }
+    return null;
+  },
+
+  async updateUserRole(userId: number, role: string): Promise<User | null> {
+    try {
+      const res = await fetch(`${API_BASE}/users/${userId}/update_role/`, {
+        method: 'POST',
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ role, admin_user_id: currentUserId }),
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.error('Failed to update user role:', e);
+    }
+    return null;
+  },
+
+  async deleteUser(userId: number): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/users/${userId}/`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      return res.ok || res.status === 204;
+    } catch (e) {
+      console.error('Failed to delete user:', e);
+      return false;
+    }
+  },
+
+  async deleteBooking(bookingId: number): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/bookings/${bookingId}/`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      return res.ok || res.status === 204;
+    } catch (e) {
+      console.error('Failed to delete booking:', e);
+      return false;
+    }
+  },
+
+  async toggleVenueAvailability(venueId: number): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/venues/${venueId}/toggle_availability/`, {
+        method: 'POST',
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ user_id: currentUserId, admin_user_id: currentUserId }),
+      });
+      return res.ok;
+    } catch (e) {
+      console.error('Failed to toggle venue availability:', e);
+      return false;
+    }
+  },
+
+  async refreshAllRatings(): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/admin/refresh-ratings/`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      });
+      return res.ok;
+    } catch (e) {
+      console.error('Failed to refresh ratings:', e);
+      return false;
+    }
   },
 
   async getConversations(userId: number): Promise<ConversationThread[]> {

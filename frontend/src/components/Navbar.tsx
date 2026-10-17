@@ -10,7 +10,7 @@ interface NavbarProps {
   currentUser?: any;
   onLoginClick?: () => void;
   onRegisterClick?: () => void;
-  onRequestRole?: (role: 'CUSTOMER' | 'VENDOR' | 'VENUE_OWNER' | 'PROVIDER') => void;
+  onRequestRole?: (role: 'CUSTOMER' | 'VENDOR' | 'VENUE_OWNER' | 'PROVIDER' | 'ADMIN') => void;
   onLogoutClick?: () => void;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
@@ -146,74 +146,112 @@ export const Navbar: React.FC<NavbarProps> = ({
                   display: 'flex',
                   flexDirection: 'column'
                 }}>
-                  <button 
-                    onClick={() => { setShowAccountMenu(false); setShowProfileModal(true); setProfileTab('roles'); }}
-                    style={{ width: '100%', textAlign: 'left', padding: '12px 16px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', fontSize: '0.9rem', color: '#1e293b' }}
-                  >
-                    <User size={18} color="#0F8F7A" /> My Profile
-                  </button>
+                  {activeRole === 'ADMIN' || activeTab === 'admin-dashboard' ? (
+                    <>
+                      <div style={{ padding: '12px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0d8a73', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Administrator Mode</div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {currentUser?.email || 'admin@locyfy.com'}
+                        </div>
+                      </div>
 
-                  <button 
-                    onClick={() => { setShowAccountMenu(false); setActiveTab('my-bookings'); setActiveRole('CUSTOMER'); }}
-                    style={{ 
-                      width: '100%', 
-                      textAlign: 'left', 
-                      padding: '12px 16px', 
-                      background: activeRole === 'CUSTOMER' && activeTab === 'my-bookings' ? '#f0fdfa' : 'none', 
-                      border: 'none', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '12px', 
-                      cursor: 'pointer', 
-                      fontSize: '0.9rem', 
-                      color: activeRole === 'CUSTOMER' && activeTab === 'my-bookings' ? '#0d8a73' : '#1e293b',
-                      fontWeight: activeRole === 'CUSTOMER' && activeTab === 'my-bookings' ? 700 : 500,
-                    }}
-                  >
-                    <Calendar size={18} color="#0d8a73" /> Customer Dashboard
-                  </button>
+                      <button 
+                        onClick={() => { setShowAccountMenu(false); setActiveTab('admin-dashboard'); }}
+                        style={{ 
+                          width: '100%', 
+                          textAlign: 'left', 
+                          padding: '12px 16px', 
+                          background: activeTab === 'admin-dashboard' ? '#f0fdfa' : 'none', 
+                          border: 'none', 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '12px', 
+                          cursor: 'pointer', 
+                          fontSize: '0.9rem', 
+                          color: activeTab === 'admin-dashboard' ? '#0d8a73' : '#1e293b',
+                          fontWeight: activeTab === 'admin-dashboard' ? 700 : 500,
+                        }}
+                      >
+                        <ShieldCheck size={18} color="#0d8a73" /> Admin Dashboard
+                      </button>
 
+                      <button 
+                        onClick={() => { setShowAccountMenu(false); setShowProfileModal(true); setProfileTab('roles'); }}
+                        style={{ width: '100%', textAlign: 'left', padding: '12px 16px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', fontSize: '0.9rem', color: '#1e293b' }}
+                      >
+                        <User size={18} color="#0F8F7A" /> Admin Profile
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button 
+                        onClick={() => { setShowAccountMenu(false); setShowProfileModal(true); setProfileTab('personal'); }}
+                        style={{ width: '100%', textAlign: 'left', padding: '12px 16px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', fontSize: '0.9rem', color: '#1e293b' }}
+                      >
+                        <User size={18} color="#0F8F7A" /> My Profile
+                      </button>
 
+                      <button 
+                        onClick={() => { setShowAccountMenu(false); setActiveTab('my-bookings'); setActiveRole('CUSTOMER'); }}
+                        style={{ 
+                          width: '100%', 
+                          textAlign: 'left', 
+                          padding: '12px 16px', 
+                          background: activeRole === 'CUSTOMER' && activeTab === 'my-bookings' ? '#f0fdfa' : 'none', 
+                          border: 'none', 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '12px', 
+                          cursor: 'pointer', 
+                          fontSize: '0.9rem', 
+                          color: activeRole === 'CUSTOMER' && activeTab === 'my-bookings' ? '#0d8a73' : '#1e293b',
+                          fontWeight: activeRole === 'CUSTOMER' && activeTab === 'my-bookings' ? 700 : 500,
+                        }}
+                      >
+                        <Calendar size={18} color="#0d8a73" /> Customer Dashboard
+                      </button>
 
-                  <button 
-                    onClick={() => { 
-                      setShowAccountMenu(false); 
-                      const isAlreadyProvider = Boolean(
-                        currentUser?.is_provider || 
-                        currentUser?.is_vendor || 
-                        currentUser?.is_venue_owner || 
-                        currentUser?.role === 'PROVIDER'
-                      );
-                      if (isAlreadyProvider) {
-                        setActiveRole('PROVIDER');
-                        setActiveTab('provider-dashboard');
-                      } else {
-                        // First-time customer activating vendor dashboard
-                        if (onRequestRole) {
-                          onRequestRole('PROVIDER');
-                        } else {
-                          setActiveRole('PROVIDER');
-                          setActiveTab('provider-dashboard');
-                        }
-                      }
-                    }}
-                    style={{ 
-                      width: '100%', 
-                      textAlign: 'left', 
-                      padding: '12px 16px', 
-                      background: activeRole === 'PROVIDER' && activeTab === 'provider-dashboard' ? '#f0fdfa' : 'none', 
-                      border: 'none', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '12px', 
-                      cursor: 'pointer', 
-                      fontSize: '0.9rem', 
-                      color: activeRole === 'PROVIDER' && activeTab === 'provider-dashboard' ? '#0d8a73' : '#1e293b', 
-                      fontWeight: activeRole === 'PROVIDER' && activeTab === 'provider-dashboard' ? 700 : 500
-                    }}
-                  >
-                    <Building2 size={18} color="#0d8a73" /> Vendor Dashboard
-                  </button>
+                      <button 
+                        onClick={() => { 
+                          setShowAccountMenu(false); 
+                          const isAlreadyProvider = Boolean(
+                            currentUser?.is_provider || 
+                            currentUser?.is_vendor || 
+                            currentUser?.is_venue_owner || 
+                            currentUser?.role === 'PROVIDER'
+                          );
+                          if (isAlreadyProvider) {
+                            setActiveRole('PROVIDER');
+                            setActiveTab('provider-dashboard');
+                          } else {
+                            // First-time customer activating vendor dashboard
+                            if (onRequestRole) {
+                              onRequestRole('PROVIDER');
+                            } else {
+                              setActiveRole('PROVIDER');
+                              setActiveTab('provider-dashboard');
+                            }
+                          }
+                        }}
+                        style={{ 
+                          width: '100%', 
+                          textAlign: 'left', 
+                          padding: '12px 16px', 
+                          background: activeRole === 'PROVIDER' && activeTab === 'provider-dashboard' ? '#f0fdfa' : 'none', 
+                          border: 'none', 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '12px', 
+                          cursor: 'pointer', 
+                          fontSize: '0.9rem', 
+                          color: activeRole === 'PROVIDER' && activeTab === 'provider-dashboard' ? '#0d8a73' : '#1e293b', 
+                          fontWeight: activeRole === 'PROVIDER' && activeTab === 'provider-dashboard' ? 700 : 500
+                        }}
+                      >
+                        <Building2 size={18} color="#0d8a73" /> Vendor Dashboard
+                      </button>
+                    </>
+                  )}
 
                   <div style={{ borderTop: '1px solid #e2e8f0', margin: '4px 0' }}></div>
                   
@@ -243,13 +281,28 @@ export const Navbar: React.FC<NavbarProps> = ({
             </>
           )}
 
-          {activeRole === 'ADMIN' && (
+          {Boolean(currentUser && (currentUser?.role === 'ADMIN' || currentUser?.is_staff || currentUser?.is_superuser)) && (
             <button
-              className={activeTab === 'admin-dashboard' ? 'btn-primary' : 'btn-secondary'}
-              onClick={() => setActiveTab('admin-dashboard')}
-              style={{ padding: '8px 16px', fontSize: '0.88rem', background: '#0d8a73', color: '#fff', border: 'none', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 600 }}
+              onClick={() => {
+                setActiveRole('ADMIN');
+                setActiveTab('admin-dashboard');
+              }}
+              style={{
+                padding: '8px 16px',
+                fontSize: '0.88rem',
+                background: activeTab === 'admin-dashboard' ? '#065f46' : '#0d8a73',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                cursor: 'pointer',
+                fontWeight: 600,
+                boxShadow: '0 2px 4px rgba(13, 138, 115, 0.25)',
+              }}
             >
-              <ShieldCheck size={16} /> Admin Verification
+              <ShieldCheck size={16} /> Admin Panel
             </button>
           )}
         </div>
@@ -276,50 +329,67 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <div>
                   <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0f172a', margin: '0 0 12px' }}>Current Roles</h3>
                   
-                  {currentUser?.is_customer && (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', marginBottom: '24px' }}>
+                  {currentUser?.role === 'ADMIN' ? (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', border: '1px solid #0d8a73', borderRadius: '12px', marginBottom: '16px', background: '#f0fdfa' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#0F8F7A', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><User size={20} color="#fff" /></div>
+                        <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#0d8a73', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <ShieldCheck size={20} color="#fff" />
+                        </div>
                         <div>
-                          <div style={{ fontWeight: 700, color: '#0f172a' }}>Customer</div>
-                          <div style={{ fontSize: '0.8rem', color: '#64748b' }}>You can book services and venues.</div>
+                          <div style={{ fontWeight: 700, color: '#0f172a' }}>Platform Administrator</div>
+                          <div style={{ fontSize: '0.8rem', color: '#64748b' }}>Full administrative capabilities, platform moderation & system operations.</div>
                         </div>
                       </div>
-                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0F8F7A', background: '#f0fdfa', padding: '4px 8px', borderRadius: '4px' }}>Active</div>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0d8a73', background: '#ccfbf1', padding: '4px 8px', borderRadius: '4px' }}>Active</div>
                     </div>
-                  )}
-
-                  {(currentUser?.is_provider || currentUser?.is_vendor || currentUser?.is_venue_owner || currentUser?.role === 'PROVIDER') && (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', marginBottom: '16px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#0d8a73', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Building2 size={20} color="#fff" /></div>
-                        <div>
-                          <div style={{ fontWeight: 700, color: '#0f172a' }}>Business Provider</div>
-                          <div style={{ fontSize: '0.8rem', color: '#64748b' }}>You can list physical spaces and offer services.</div>
-                        </div>
-                      </div>
-                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0d8a73', background: '#f0fdfa', padding: '4px 8px', borderRadius: '4px' }}>Active</div>
-                    </div>
-                  )}
-
-                  {!(currentUser?.is_provider || currentUser?.is_vendor || currentUser?.is_venue_owner || currentUser?.role === 'PROVIDER') && (
+                  ) : (
                     <>
-                      <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>Expand Your Capabilities</h3>
-                      <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 12px' }}>Want to list physical event spaces or offer professional services?</p>
-                      
-                      <button 
-                        onClick={() => { onRequestRole?.('PROVIDER'); setShowProfileModal(false); }}
-                        style={{ width: '100%', textAlign: 'left', padding: '16px', background: '#fff', border: '1px solid #0d8a73', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', transition: 'all 0.15s ease' }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#ccfbf1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Building2 size={20} color="#0d8a73" /></div>
-                          <div>
-                            <div style={{ fontWeight: 700, color: '#0d8a73' }}>Activate Business Provider Account</div>
-                            <div style={{ fontSize: '0.78rem', color: '#64748b' }}>List event venues, banquet halls, or offer catering/photography services</div>
+                      {currentUser?.is_customer && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', marginBottom: '16px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#0F8F7A', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><User size={20} color="#fff" /></div>
+                            <div>
+                              <div style={{ fontWeight: 700, color: '#0f172a' }}>Customer</div>
+                              <div style={{ fontSize: '0.8rem', color: '#64748b' }}>You can book services and venues.</div>
+                            </div>
                           </div>
+                          <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0F8F7A', background: '#f0fdfa', padding: '4px 8px', borderRadius: '4px' }}>Active</div>
                         </div>
-                        <ChevronRight size={20} color="#0d8a73" />
-                      </button>
+                      )}
+
+                      {(currentUser?.is_provider || currentUser?.is_vendor || currentUser?.is_venue_owner || currentUser?.role === 'PROVIDER') && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', marginBottom: '16px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#0d8a73', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Building2 size={20} color="#fff" /></div>
+                            <div>
+                              <div style={{ fontWeight: 700, color: '#0f172a' }}>Business Provider</div>
+                              <div style={{ fontSize: '0.8rem', color: '#64748b' }}>You can list physical spaces and offer services.</div>
+                            </div>
+                          </div>
+                          <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0d8a73', background: '#f0fdfa', padding: '4px 8px', borderRadius: '4px' }}>Active</div>
+                        </div>
+                      )}
+
+                      {!(currentUser?.is_provider || currentUser?.is_vendor || currentUser?.is_venue_owner || currentUser?.role === 'PROVIDER') && (
+                        <>
+                          <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>Expand Your Capabilities</h3>
+                          <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 12px' }}>Want to list physical event spaces or offer professional services?</p>
+                          
+                          <button 
+                            onClick={() => { onRequestRole?.('PROVIDER'); setShowProfileModal(false); }}
+                            style={{ width: '100%', textAlign: 'left', padding: '16px', background: '#fff', border: '1px solid #0d8a73', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', transition: 'all 0.15s ease' }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                              <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#ccfbf1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Building2 size={20} color="#0d8a73" /></div>
+                              <div>
+                                <div style={{ fontWeight: 700, color: '#0d8a73' }}>Activate Business Provider Account</div>
+                                <div style={{ fontSize: '0.78rem', color: '#64748b' }}>List event venues, banquet halls, or offer catering/photography services</div>
+                              </div>
+                            </div>
+                            <ChevronRight size={20} color="#0d8a73" />
+                          </button>
+                        </>
+                      )}
                     </>
                   )}
                 </div>
