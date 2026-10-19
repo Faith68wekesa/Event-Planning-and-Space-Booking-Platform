@@ -42,7 +42,7 @@ const getAuthHeaders = (extraHeaders: Record<string, string> = {}): Record<strin
 };
 
 export const ApiService = {
-  async getVenues(filters: Partial<FilterState> & { owner?: number; vendor?: number; user?: number } = {}): Promise<Venue[]> {
+  async getVenues(filters: Partial<FilterState> & { owner?: number; vendor?: number; user?: number; all_status?: boolean } = {}): Promise<Venue[]> {
     try {
       const params = new URLSearchParams();
       if (filters.search) params.append('search', filters.search);
@@ -54,8 +54,11 @@ export const ApiService = {
       if (filters.owner) params.append('owner', filters.owner.toString());
       if (filters.vendor) params.append('vendor', filters.vendor.toString());
       if (filters.user) params.append('user', filters.user.toString());
+      if (filters.all_status) params.append('all_status', 'true');
 
-      const res = await fetch(`${API_BASE}/venues/?${params.toString()}`);
+      const res = await fetch(`${API_BASE}/venues/?${params.toString()}`, {
+        headers: getAuthHeaders(),
+      });
       if (res.ok) {
         const data = await res.json();
         return Array.isArray(data) ? data : data.results || [];
@@ -66,7 +69,7 @@ export const ApiService = {
     return [];
   },
 
-  async getVendors(filters: Partial<FilterState> & { user?: number } = {}): Promise<Vendor[]> {
+  async getVendors(filters: Partial<FilterState> & { user?: number; all_status?: boolean } = {}): Promise<Vendor[]> {
     try {
       const q = new URLSearchParams();
       if (filters.search) q.append('search', filters.search);
@@ -74,8 +77,11 @@ export const ApiService = {
       if (filters.location && filters.location !== 'ALL') q.append('location', filters.location);
       if (filters.verified_only) q.append('verified', 'true');
       if (filters.user) q.append('user', filters.user.toString());
+      if (filters.all_status) q.append('all_status', 'true');
 
-      const res = await fetch(`${API_BASE}/vendors/?${q.toString()}`);
+      const res = await fetch(`${API_BASE}/vendors/?${q.toString()}`, {
+        headers: getAuthHeaders(),
+      });
       if (res.ok) {
         const data = await res.json();
         return data.results || data;
@@ -226,18 +232,47 @@ export const ApiService = {
     throw new Error(parsedErr);
   },
 
-  async updateBookingStatus(id: number, status: BookingStatus): Promise<{ success: boolean; data?: any; error?: string }> {
+  async updateBookingStatus(id: number, status: BookingStatus, extra: { reason?: string } = {}): Promise<{ success: boolean; data?: any; error?: string }> {
     try {
       const res = await fetch(`${API_BASE}/bookings/${id}/update_status/`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ status, ...extra }),
       });
       const data = await res.json();
       if (res.ok) return { success: true, data };
       return { success: false, error: data.error || formatApiError(data, 'Failed to update status.') };
     } catch (e: any) {
       console.error("Failed to update status", e);
+      return { success: false, error: e.message || 'Network error occurred.' };
+    }
+  },
+
+  async approveVenue(id: number): Promise<{ success: boolean; data?: Venue; error?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/venues/${id}/approve/`, {
+        method: 'POST',
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      });
+      const data = await res.json();
+      if (res.ok) return { success: true, data };
+      return { success: false, error: data.error || 'Failed to approve listing.' };
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Network error occurred.' };
+    }
+  },
+
+  async rejectVenue(id: number, reason: string): Promise<{ success: boolean; data?: Venue; error?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/venues/${id}/reject/`, {
+        method: 'POST',
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ reason }),
+      });
+      const data = await res.json();
+      if (res.ok) return { success: true, data };
+      return { success: false, error: data.error || 'Failed to reject listing.' };
+    } catch (e: any) {
       return { success: false, error: e.message || 'Network error occurred.' };
     }
   },

@@ -91,9 +91,10 @@ class VenueSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'vendor', 'vendor_name', 'owner', 'owner_name', 'owner_user_id', 'title', 'description', 'category', 
             'category_display', 'location', 'address', 'capacity', 'price_per_day', 
-            'price_per_hour', 'amenities', 'image_url', 'is_verified', 'is_available', 
-            'rating', 'review_count', 'created_at'
+            'price_per_hour', 'amenities', 'image_url', 'is_verified', 'approval_status', 'rejection_reason',
+            'cancellation_policy', 'is_available', 'rating', 'review_count', 'created_at', 'updated_at'
         ]
+        read_only_fields = ['is_verified', 'rating', 'review_count', 'created_at', 'updated_at']
 
 
 class ReviewSerializer(serializers.ModelSerializer):
@@ -154,6 +155,7 @@ class BookingSerializer(serializers.ModelSerializer):
             'id', 'customer', 'customer_name', 'customer_email', 'venue', 'venue_details', 
             'vendor', 'vendor_details', 'provider_user_id', 'event_title', 'event_type', 'event_date', 
             'end_date', 'guest_count', 'total_price', 'status', 'notes', 
+            'rejection_reason', 'cancelled_at', 'cancelled_by', 'cancellation_reason',
             'has_reviewed', 'review',
             'created_at', 'updated_at'
         ]

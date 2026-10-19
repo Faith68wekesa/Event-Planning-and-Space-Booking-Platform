@@ -29,7 +29,8 @@ class BookingCapacityValidationTestCase(TestCase):
         self.owner_profile = VenueOwnerProfile.objects.create(
             user=self.provider_user,
             business_name='Sunset Venues Ltd',
-            is_verified=True
+            is_verified=True,
+            verification_status='APPROVED'
         )
 
         # Create venue with capacity of 100
@@ -40,7 +41,9 @@ class BookingCapacityValidationTestCase(TestCase):
             location='Nairobi',
             capacity=100,
             price_per_day=50000,
-            is_verified=True
+            is_verified=True,
+            approval_status='APPROVED',
+            is_available=True
         )
 
         # Provider availability settings

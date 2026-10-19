@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { Venue, Vendor, Booking, User } from '../types';
 import { ApiService } from '../services/api';
-import { X, ShieldCheck, MapPin, Star, Users } from 'lucide-react';
+import { X, ShieldCheck, MapPin, Star, Users, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface BookingModalProps {
@@ -274,6 +274,29 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 <label style={labelStyle}>Phone Number</label>
                 <input type="tel" required value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} style={inputStyle} />
               </div>
+            </div>
+
+            {/* Cancellation Policy Banner */}
+            <div style={{
+              background: '#f8fafc',
+              border: '1px solid #cbd5e1',
+              borderRadius: '10px',
+              padding: '14px 16px',
+              marginBottom: '24px',
+              fontSize: '0.85rem',
+              color: '#334155'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>
+                <Clock size={16} color="#0d8a73" />
+                <span>Cancellation Policy: {venue?.cancellation_policy === 'STRICT' ? 'Strict (7-Day Notice)' : venue?.cancellation_policy === 'MODERATE' ? 'Moderate (3-Day Notice)' : 'Flexible (24-Hour Notice)'}</span>
+              </div>
+              <p style={{ margin: 0, lineHeight: 1.4, color: '#475569' }}>
+                {venue?.cancellation_policy === 'STRICT'
+                  ? 'Confirmed bookings can be cancelled by the customer up to 7 days before the event date. Late cancellations are not permitted.'
+                  : venue?.cancellation_policy === 'MODERATE'
+                  ? 'Confirmed bookings can be cancelled by the customer up to 3 days before the event date. Late cancellations are not permitted.'
+                  : 'Confirmed bookings can be cancelled by the customer up to 24 hours before the event date. Pending requests may be cancelled at any time before host acceptance.'}
+              </p>
             </div>
 
             {/* Actions */}

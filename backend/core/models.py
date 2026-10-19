@@ -130,6 +130,16 @@ class Venue(models.Model):
         ('PLANNING', 'Event Planning & Coordination'),
         ('SOUND', 'Sound & Lighting Equipment'),
     ]
+    APPROVAL_STATUS_CHOICES = [
+        ('PENDING', 'Pending Approval'),
+        ('APPROVED', 'Approved'),
+        ('REJECTED', 'Rejected'),
+    ]
+    CANCELLATION_POLICY_CHOICES = [
+        ('FLEXIBLE', 'Flexible - Full cancellation up to 24 hours before event'),
+        ('MODERATE', 'Moderate - Full cancellation up to 3 days before event'),
+        ('STRICT', 'Strict - Full cancellation up to 7 days before event'),
+    ]
     vendor = models.ForeignKey(VendorProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='venues')
     owner = models.ForeignKey(VenueOwnerProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='venues')
     title = models.CharField(max_length=200)
@@ -143,14 +153,20 @@ class Venue(models.Model):
     amenities = models.JSONField(default=list, help_text="List of amenity strings")
     image_url = models.URLField(max_length=500, blank=True, null=True)
     is_verified = models.BooleanField(default=False)
+    approval_status = models.CharField(max_length=20, choices=APPROVAL_STATUS_CHOICES, default='PENDING')
+    rejection_reason = models.TextField(blank=True, null=True)
+    cancellation_policy = models.CharField(max_length=20, choices=CANCELLATION_POLICY_CHOICES, default='FLEXIBLE')
     is_available = models.BooleanField(default=True)
     rating = models.FloatField(default=4.9)
     review_count = models.IntegerField(default=24)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
         if self.image_url:
             self.image_url = self.clean_image_url(self.image_url)
+        # Keep is_verified in sync with approval_status
+        self.is_verified = (self.approval_status == 'APPROVED')
         super().save(*args, **kwargs)
         if self.vendor:
             from django.db.models import Min
@@ -212,14 +228,24 @@ class Venue(models.Model):
         self.review_count = stats['cnt']
         self.save(update_fields=['rating', 'review_count'])
 
+    @property
+    def is_publicly_visible(self):
+        return self.approval_status == 'APPROVED' and self.is_available
+
 
 class Booking(models.Model):
     STATUS_CHOICES = [
         ('PENDING', 'Pending Approval'),
-        ('APPROVED', 'Approved'),
+        ('APPROVED', 'Confirmed'),
         ('REJECTED', 'Rejected'),
         ('CANCELLED', 'Cancelled'),
         ('COMPLETED', 'Completed'),
+    ]
+    CANCELLATION_PARTY_CHOICES = [
+        ('CUSTOMER', 'Customer'),
+        ('PROVIDER', 'Provider'),
+        ('ADMIN', 'Administrator'),
+        ('SYSTEM', 'System'),
     ]
     customer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='bookings')
     venue = models.ForeignKey(Venue, on_delete=models.SET_NULL, null=True, blank=True, related_name='bookings')
@@ -232,6 +258,10 @@ class Booking(models.Model):
     total_price = models.DecimalField(max_digits=10, decimal_places=2)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     notes = models.TextField(blank=True, null=True)
+    rejection_reason = models.TextField(blank=True, null=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancelled_by = models.CharField(max_length=20, choices=CANCELLATION_PARTY_CHOICES, null=True, blank=True)
+    cancellation_reason = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

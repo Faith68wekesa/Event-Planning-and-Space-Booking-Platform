@@ -118,8 +118,8 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
     fetchDashboardData();
   }, [fetchDashboardData]);
 
-  const handleUpdateStatus = async (id: number, status: BookingStatus) => {
-    const res = await ApiService.updateBookingStatus(id, status);
+  const handleUpdateStatus = async (id: number, status: BookingStatus, extra?: { reason?: string }) => {
+    const res = await ApiService.updateBookingStatus(id, status, extra);
     if (res.success) {
       toast.success(`Booking ${status.toLowerCase()}!`);
       fetchDashboardData();

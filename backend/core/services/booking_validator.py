@@ -75,6 +75,18 @@ class BookingCapacityValidator:
         if guest_count < 1:
             raise ValidationError("Guest count must be at least 1.")
 
+        # Check listing approval and active status
+        if venue:
+            if venue.approval_status != 'APPROVED' or not venue.is_verified:
+                raise ValidationError("This venue is currently pending administrator verification and cannot accept bookings.")
+            if not venue.is_available:
+                raise ValidationError("This venue is currently marked as unavailable or inactive.")
+            if venue.owner and venue.owner.verification_status != 'APPROVED':
+                raise ValidationError("The venue owner account is not verified.")
+        if vendor:
+            if vendor.verification_status != 'APPROVED' or not vendor.is_verified:
+                raise ValidationError("This service provider is currently pending administrator verification and cannot accept bookings.")
+
         # Determine the provider user and settings
         provider_user = None
         if venue:

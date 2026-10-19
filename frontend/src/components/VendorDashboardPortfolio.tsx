@@ -10,24 +10,28 @@ interface PortfolioProps {
 export const VendorDashboardPortfolio: React.FC<PortfolioProps> = ({ venues, onAddClick }) => {
   const [filter, setFilter] = useState<'ALL' | 'APPROVED' | 'PENDING' | 'DRAFT' | 'CHANGES_REQUIRED'>('ALL');
 
+  const isApproved = (v: Venue) => v.approval_status === 'APPROVED' || v.verification_status === 'APPROVED';
+  const isPending = (v: Venue) => v.approval_status === 'PENDING' || v.verification_status === 'PENDING';
+  const isRejected = (v: Venue) => v.approval_status === 'REJECTED' || v.verification_status === 'REJECTED';
+
   const filteredVenues = venues.filter(v => {
     if (filter === 'ALL') return true;
-    if (filter === 'APPROVED') return v.verification_status === 'APPROVED';
-    if (filter === 'PENDING') return v.verification_status === 'PENDING';
-    if (filter === 'CHANGES_REQUIRED') return v.verification_status === 'REJECTED';
-    if (filter === 'DRAFT') return v.verification_status === 'DRAFT' || !v.verification_status;
+    if (filter === 'APPROVED') return isApproved(v);
+    if (filter === 'PENDING') return isPending(v);
+    if (filter === 'CHANGES_REQUIRED') return isRejected(v);
+    if (filter === 'DRAFT') return (!v.approval_status && !v.verification_status) || v.verification_status === 'DRAFT';
     return true;
   });
 
   const getStatusDisplay = (venue: Venue) => {
-    if (venue.verification_status === 'APPROVED') {
-      return <span style={{ color: '#16a34a', fontWeight: 600 }}>✓ Published</span>;
+    if (isApproved(venue)) {
+      return <span style={{ color: '#16a34a', fontWeight: 600 }}>✓ Published & Approved</span>;
     }
-    if (venue.verification_status === 'PENDING') {
-      return <span style={{ color: '#d97706', fontWeight: 600 }}>⏳ Pending</span>;
+    if (isPending(venue)) {
+      return <span style={{ color: '#d97706', fontWeight: 600 }}>⏳ Pending Admin Review</span>;
     }
-    if (venue.verification_status === 'REJECTED') {
-      return <span style={{ color: '#dc2626', fontWeight: 600 }}>❌ Changes Required</span>;
+    if (isRejected(venue)) {
+      return <span style={{ color: '#dc2626', fontWeight: 600 }}>❌ Revisions Needed</span>;
     }
     return <span style={{ color: '#64748b', fontWeight: 600 }}>⚪ Draft</span>;
   };
@@ -35,10 +39,10 @@ export const VendorDashboardPortfolio: React.FC<PortfolioProps> = ({ venues, onA
   const getCounts = () => {
     return {
       ALL: venues.length,
-      APPROVED: venues.filter(v => v.verification_status === 'APPROVED').length,
-      PENDING: venues.filter(v => v.verification_status === 'PENDING').length,
-      DRAFT: venues.filter(v => v.verification_status === 'DRAFT' || !v.verification_status).length,
-      CHANGES_REQUIRED: venues.filter(v => v.verification_status === 'REJECTED').length,
+      APPROVED: venues.filter(isApproved).length,
+      PENDING: venues.filter(isPending).length,
+      DRAFT: venues.filter(v => (!v.approval_status && !v.verification_status) || v.verification_status === 'DRAFT').length,
+      CHANGES_REQUIRED: venues.filter(isRejected).length,
     };
   };
   const counts = getCounts();
@@ -125,6 +129,12 @@ export const VendorDashboardPortfolio: React.FC<PortfolioProps> = ({ venues, onA
                     <Star size={16} fill="#f59e0b" /> {venue.rating || '4.8'}
                   </div>
                 </div>
+
+                {venue.approval_status === 'REJECTED' && venue.rejection_reason && (
+                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '8px 12px', marginBottom: '14px', fontSize: '0.8rem', color: '#991b1b' }}>
+                    <strong>Admin Feedback:</strong> {venue.rejection_reason}
+                  </div>
+                )}
 
                 <div style={{ marginTop: 'auto', borderTop: '1px solid #e2e8f0', paddingTop: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ fontSize: '0.85rem' }}>

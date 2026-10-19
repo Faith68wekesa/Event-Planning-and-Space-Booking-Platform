@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { Venue, Vendor, VenueOwner, VerificationStatus, User, Booking, Review, PlatformStats, BookingStatus } from '../types';
 import { 
-  ShieldCheck, AlertTriangle, Building2, UserCheck, 
+  ShieldCheck, Building2, UserCheck, 
   X, Eye, Clock, MapPin, ExternalLink,
   Users, Calendar, Star, Trash2, Edit3, RefreshCw,
   Search, CheckCircle2, ArrowUpRight, DollarSign,
@@ -13,7 +13,7 @@ import { toast } from 'react-hot-toast';
 interface AdminDashboardProps {
   venues: Venue[];
   vendors: Vendor[];
-  onToggleVerifyVenue: (id: number) => void;
+  onToggleVerifyVenue?: (id: number) => void;
   onToggleVerifyVendor: (id: number) => void;
   onRefreshVendors?: () => void;
   currentUser?: User | null;
@@ -46,7 +46,7 @@ type AdminTab = 'overview' | 'users' | 'bookings' | 'venues' | 'verifications' |
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   venues: propVenues,
   vendors: propVendors,
-  onToggleVerifyVenue,
+  onToggleVerifyVenue: _onToggleVerifyVenue,
   onToggleVerifyVendor,
   currentUser,
   onNavigateHome,
@@ -81,6 +81,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const [venueSearch, setVenueSearch] = useState('');
   const [venueCategoryFilter, setVenueCategoryFilter] = useState<string>('ALL');
+  const [venueApprovalFilter, setVenueApprovalFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('ALL');
+  const [inspectVenueModal, setInspectVenueModal] = useState<Venue | null>(null);
+  const [rejectVenueModal, setRejectVenueModal] = useState<Venue | null>(null);
+  const [venueRejectReason, setVenueRejectReason] = useState<string>('');
 
   const [reviewSearch, setReviewSearch] = useState('');
   const [reviewRatingFilter, setReviewRatingFilter] = useState<string>('ALL');
@@ -110,8 +114,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         ApiService.getBookings(),
         ApiService.getReviews(),
         ApiService.getVenueOwners(),
-        ApiService.getVendors(),
-        ApiService.getVenues()
+        ApiService.getVendors({ all_status: true }),
+        ApiService.getVenues({ all_status: true })
       ]);
 
       if (fetchedStats) setStats(fetchedStats);
@@ -490,6 +494,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const filteredVenues = venues.filter(v => {
     if (venueCategoryFilter !== 'ALL' && v.category !== venueCategoryFilter) return false;
+    const status = v.approval_status || (v.is_verified ? 'APPROVED' : 'PENDING');
+    if (venueApprovalFilter !== 'ALL' && status !== venueApprovalFilter) return false;
     if (venueSearch) {
       const q = venueSearch.toLowerCase();
       const matchTitle = (v.title || '').toLowerCase().includes(q);
@@ -1451,6 +1457,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <option value="BIRTHDAY">Private Parties & Birthdays</option>
                 <option value="OUTDOOR">Outdoor & Picnic</option>
               </select>
+
+              <select
+                value={venueApprovalFilter}
+                onChange={(e) => setVenueApprovalFilter(e.target.value as any)}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.85rem',
+                  outline: 'none',
+                  background: '#fff',
+                  fontWeight: 600,
+                  color: '#334155',
+                }}
+              >
+                <option value="ALL">All Approval Statuses</option>
+                <option value="PENDING">Pending Approval</option>
+                <option value="APPROVED">Approved & Live</option>
+                <option value="REJECTED">Rejected Listings</option>
+              </select>
             </div>
           </div>
 
@@ -1461,110 +1487,169 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <th style={{ padding: '12px 16px', fontWeight: 700 }}>Venue Listing</th>
                   <th style={{ padding: '12px 16px', fontWeight: 700 }}>Category & Location</th>
                   <th style={{ padding: '12px 16px', fontWeight: 700 }}>Capacity & Rate</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Rating</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Availability</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Verification</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 700, textAlign: 'right' }}>Actions</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Approval Status</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Live Visibility</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700, textAlign: 'right' }}>Admin Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredVenues.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={{ padding: '36px', textAlign: 'center', color: '#94a3b8' }}>
+                    <td colSpan={6} style={{ padding: '36px', textAlign: 'center', color: '#94a3b8' }}>
                       No venue listings match your criteria.
                     </td>
                   </tr>
                 ) : (
-                  filteredVenues.map(v => (
-                    <tr key={v.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '14px 16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <img
-                            src={v.image_url || 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&q=80&w=300'}
-                            alt={v.title}
-                            style={{ width: '48px', height: '48px', borderRadius: '10px', objectFit: 'cover' }}
-                          />
-                          <div>
-                            <div style={{ fontWeight: 700, color: '#1e293b' }}>{v.title}</div>
-                            <div style={{ fontSize: '0.78rem', color: '#64748b' }}>ID #{v.id}</div>
+                  filteredVenues.map(v => {
+                    const status = v.approval_status || (v.is_verified ? 'APPROVED' : 'PENDING');
+                    return (
+                      <tr key={v.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '14px 16px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <img
+                              src={v.image_url || 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&q=80&w=300'}
+                              alt={v.title}
+                              style={{ width: '48px', height: '48px', borderRadius: '10px', objectFit: 'cover' }}
+                            />
+                            <div>
+                              <div style={{ fontWeight: 700, color: '#1e293b' }}>{v.title}</div>
+                              <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                                ID #{v.id} • {v.owner_name || v.vendor_name || 'Provider'}
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </td>
-                      <td style={{ padding: '14px 16px' }}>
-                        <div style={{ color: '#1e293b', fontWeight: 600 }}>{v.category_display || v.category}</div>
-                        <div style={{ fontSize: '0.78rem', color: '#64748b' }}>{v.location}</div>
-                      </td>
-                      <td style={{ padding: '14px 16px' }}>
-                        <div style={{ fontWeight: 700, color: '#0d8a73' }}>KES {Number(v.price_per_day).toLocaleString()}/day</div>
-                        <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Up to {v.capacity} guests</div>
-                      </td>
-                      <td style={{ padding: '14px 16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 700, color: '#1e293b' }}>
-                          <Star size={14} fill="#f59e0b" color="#f59e0b" />
-                          {v.rating ? v.rating.toFixed(1) : '5.0'}
-                          <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 400 }}>({v.review_count || 0})</span>
-                        </div>
-                      </td>
-                      <td style={{ padding: '14px 16px' }}>
-                        <button
-                          onClick={() => handleToggleVenueAvailability(v.id)}
-                          style={{
-                            padding: '4px 10px',
-                            borderRadius: '999px',
-                            border: 'none',
-                            fontSize: '0.75rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            background: v.is_available !== false ? '#ecfdf5' : '#fee2e2',
-                            color: v.is_available !== false ? '#059669' : '#dc2626',
-                          }}
-                        >
-                          {v.is_available !== false ? 'Available' : 'Unavailable'}
-                        </button>
-                      </td>
-                      <td style={{ padding: '14px 16px' }}>
-                        <button
-                          onClick={async () => {
-                            setVenues(prev => prev.map(item => item.id === v.id ? { ...item, is_verified: !item.is_verified } : item));
-                            await onToggleVerifyVenue(v.id);
-                            onDataChange?.();
-                          }}
-                          style={{
+                        </td>
+                        <td style={{ padding: '14px 16px' }}>
+                          <div style={{ color: '#1e293b', fontWeight: 600 }}>{v.category_display || v.category}</div>
+                          <div style={{ fontSize: '0.78rem', color: '#64748b' }}>{v.location}</div>
+                        </td>
+                        <td style={{ padding: '14px 16px' }}>
+                          <div style={{ fontWeight: 700, color: '#0d8a73' }}>KES {Number(v.price_per_day).toLocaleString()}/day</div>
+                          <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Up to {v.capacity} guests</div>
+                        </td>
+                        <td style={{ padding: '14px 16px' }}>
+                          <span style={{
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '4px',
                             padding: '4px 10px',
                             borderRadius: '999px',
-                            border: 'none',
                             fontSize: '0.75rem',
                             fontWeight: 700,
-                            cursor: 'pointer',
-                            background: v.is_verified ? '#ecfdf5' : '#fef3c7',
-                            color: v.is_verified ? '#059669' : '#b45309',
-                          }}
-                        >
-                          {v.is_verified ? <ShieldCheck size={12} /> : <AlertTriangle size={12} />}
-                          {v.is_verified ? 'Verified' : 'Unverified'}
-                        </button>
-                      </td>
-                      <td style={{ padding: '14px 16px', textAlign: 'right' }}>
-                        <button
-                          onClick={() => setDeleteConfirm({ type: 'venue', id: v.id, title: v.title })}
-                          title="Delete Venue"
-                          style={{
-                            padding: '6px 8px',
-                            borderRadius: '6px',
-                            border: '1px solid #fecdd3',
-                            background: '#fff',
-                            color: '#ef4444',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                            background: status === 'APPROVED' ? '#ecfdf5' : status === 'REJECTED' ? '#fee2e2' : '#fef3c7',
+                            color: status === 'APPROVED' ? '#059669' : status === 'REJECTED' ? '#dc2626' : '#b45309',
+                          }}>
+                            {status === 'APPROVED' ? <CheckCircle2 size={12} /> : status === 'REJECTED' ? <X size={12} /> : <Clock size={12} />}
+                            {status}
+                          </span>
+                          {status === 'REJECTED' && v.rejection_reason && (
+                            <div style={{ fontSize: '0.72rem', color: '#dc2626', marginTop: '2px', maxWidth: '200px' }}>
+                              Reason: {v.rejection_reason}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ padding: '14px 16px' }}>
+                          <button
+                            onClick={() => handleToggleVenueAvailability(v.id)}
+                            style={{
+                              padding: '4px 10px',
+                              borderRadius: '999px',
+                              border: 'none',
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              background: v.is_available !== false ? '#ecfdf5' : '#fee2e2',
+                              color: v.is_available !== false ? '#059669' : '#dc2626',
+                            }}
+                          >
+                            {v.is_available !== false ? 'Active' : 'Inactive'}
+                          </button>
+                        </td>
+                        <td style={{ padding: '14px 16px', textAlign: 'right' }}>
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                            <button
+                              onClick={() => setInspectVenueModal(v)}
+                              style={{
+                                padding: '6px 10px',
+                                borderRadius: '6px',
+                                border: '1px solid #cbd5e1',
+                                background: '#fff',
+                                color: '#475569',
+                                fontSize: '0.78rem',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Inspect
+                            </button>
+
+                            {status !== 'APPROVED' && (
+                              <button
+                                onClick={async () => {
+                                  const res = await ApiService.approveVenue(v.id);
+                                  if (res.success) {
+                                    setVenues(prev => prev.map(item => item.id === v.id ? { ...item, approval_status: 'APPROVED', is_verified: true, rejection_reason: undefined } : item));
+                                    toast.success(`Venue '${v.title}' has been approved and is now live.`);
+                                    onDataChange?.();
+                                  } else {
+                                    toast.error(res.error || 'Failed to approve listing.');
+                                  }
+                                }}
+                                style={{
+                                  padding: '6px 10px',
+                                  borderRadius: '6px',
+                                  border: 'none',
+                                  background: '#059669',
+                                  color: '#fff',
+                                  fontSize: '0.78rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Approve
+                              </button>
+                            )}
+
+                            {status !== 'REJECTED' && (
+                              <button
+                                onClick={() => {
+                                  setRejectVenueModal(v);
+                                  setVenueRejectReason('');
+                                }}
+                                style={{
+                                  padding: '6px 10px',
+                                  borderRadius: '6px',
+                                  border: 'none',
+                                  background: '#ef4444',
+                                  color: '#fff',
+                                  fontSize: '0.78rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Reject
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => setDeleteConfirm({ type: 'venue', id: v.id, title: v.title })}
+                              title="Delete Venue"
+                              style={{
+                                padding: '6px 8px',
+                                borderRadius: '6px',
+                                border: '1px solid #fecdd3',
+                                background: '#fff',
+                                color: '#ef4444',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -2252,6 +2337,216 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#ef4444', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
               >
                 Delete Permanently
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* MODAL 5: Inspect Venue Listing Modal */}
+      {inspectVenueModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(15, 23, 42, 0.7)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1100,
+          padding: '20px',
+        }}>
+          <div style={{
+            background: '#fff',
+            borderRadius: '16px',
+            maxWidth: '580px',
+            width: '100%',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+            display: 'flex',
+            flexDirection: 'column',
+          }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
+              <div>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: '#0d8a73' }}>
+                  Listing Inspection #{inspectVenueModal.id}
+                </span>
+                <h3 style={{ margin: '2px 0 0', fontSize: '1.25rem', fontWeight: 800, color: '#1e293b' }}>
+                  {inspectVenueModal.title}
+                </h3>
+              </div>
+              <button onClick={() => setInspectVenueModal(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '0.9rem' }}>
+              {inspectVenueModal.image_url && (
+                <div style={{ textAlign: 'center', marginBottom: '8px' }}>
+                  <img
+                    src={inspectVenueModal.image_url}
+                    alt={inspectVenueModal.title}
+                    style={{ maxHeight: '200px', width: '100%', borderRadius: '10px', objectFit: 'cover' }}
+                  />
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Category</span>
+                  <strong style={{ color: '#1e293b' }}>{inspectVenueModal.category_display || inspectVenueModal.category}</strong>
+                </div>
+                <div>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Location</span>
+                  <strong style={{ color: '#1e293b' }}>{inspectVenueModal.location}</strong>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Daily Rental Rate</span>
+                  <strong style={{ color: '#0d8a73', fontSize: '1.05rem' }}>KES {Number(inspectVenueModal.price_per_day).toLocaleString()}</strong>
+                </div>
+                <div>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Guest Capacity</span>
+                  <strong style={{ color: '#1e293b' }}>{inspectVenueModal.capacity} Attendees</strong>
+                </div>
+              </div>
+
+              {inspectVenueModal.cancellation_policy && (
+                <div>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Cancellation Policy</span>
+                  <strong style={{ color: '#334155' }}>{inspectVenueModal.cancellation_policy}</strong>
+                </div>
+              )}
+
+              {inspectVenueModal.description && (
+                <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>Listing Description</span>
+                  <p style={{ margin: 0, color: '#334155', lineHeight: 1.5, fontSize: '0.85rem' }}>
+                    {inspectVenueModal.description}
+                  </p>
+                </div>
+              )}
+
+              {inspectVenueModal.rejection_reason && (
+                <div style={{ background: '#fee2e2', padding: '12px 14px', borderRadius: '8px', border: '1px solid #fecaca' }}>
+                  <span style={{ fontSize: '0.75rem', color: '#991b1b', fontWeight: 700, display: 'block', marginBottom: '4px' }}>Previous Rejection Reason</span>
+                  <p style={{ margin: 0, color: '#b91c1c', fontSize: '0.85rem' }}>
+                    {inspectVenueModal.rejection_reason}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px', background: '#f8fafc', borderBottomLeftRadius: '16px', borderBottomRightRadius: '16px' }}>
+              <button
+                onClick={() => setInspectVenueModal(null)}
+                style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
+              >
+                Close
+              </button>
+              {inspectVenueModal.approval_status !== 'APPROVED' && (
+                <button
+                  onClick={async () => {
+                    const res = await ApiService.approveVenue(inspectVenueModal.id);
+                    if (res.success) {
+                      setVenues(prev => prev.map(item => item.id === inspectVenueModal.id ? { ...item, approval_status: 'APPROVED', is_verified: true, rejection_reason: undefined } : item));
+                      toast.success(`Venue '${inspectVenueModal.title}' approved!`);
+                      setInspectVenueModal(null);
+                      onDataChange?.();
+                    } else {
+                      toast.error(res.error || 'Failed to approve listing.');
+                    }
+                  }}
+                  style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#059669', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Approve Listing
+                </button>
+              )}
+              {inspectVenueModal.approval_status !== 'REJECTED' && (
+                <button
+                  onClick={() => {
+                    const target = inspectVenueModal;
+                    setInspectVenueModal(null);
+                    setRejectVenueModal(target);
+                    setVenueRejectReason('');
+                  }}
+                  style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#ef4444', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Reject Listing
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 6: Reject Venue with Reason Modal */}
+      {rejectVenueModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(15, 23, 42, 0.7)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1200,
+          padding: '20px',
+        }}>
+          <div style={{ background: '#fff', borderRadius: '16px', maxWidth: '480px', width: '100%', padding: '24px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+            <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: '#fee2e2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+              <AlertCircle size={24} />
+            </div>
+            <h3 style={{ margin: '0 0 8px', fontSize: '1.2rem', fontWeight: 800, color: '#1e293b' }}>
+              Reject Listing: {rejectVenueModal.title}
+            </h3>
+            <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: '#64748b' }}>
+              Please provide a specific reason explaining what requirements were not met so the host can address them.
+            </p>
+
+            <textarea
+              rows={4}
+              placeholder="e.g. Inadequate pricing clarity, incorrect location details, or poor image quality..."
+              value={venueRejectReason}
+              onChange={(e) => setVenueRejectReason(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '12px',
+                borderRadius: '8px',
+                border: '1.5px solid #cbd5e1',
+                fontSize: '0.88rem',
+                outline: 'none',
+                boxSizing: 'border-box',
+                fontFamily: 'inherit',
+                marginBottom: '20px',
+                resize: 'vertical',
+              }}
+            />
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                onClick={() => setRejectVenueModal(null)}
+                style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const res = await ApiService.rejectVenue(rejectVenueModal.id, venueRejectReason.trim() || 'Listing does not satisfy verification standards.');
+                  if (res.success) {
+                    setVenues(prev => prev.map(item => item.id === rejectVenueModal.id ? { ...item, approval_status: 'REJECTED', is_verified: false, rejection_reason: venueRejectReason.trim() } : item));
+                    toast.success(`Listing '${rejectVenueModal.title}' has been rejected.`);
+                    setRejectVenueModal(null);
+                    onDataChange?.();
+                  } else {
+                    toast.error(res.error || 'Failed to reject listing.');
+                  }
+                }}
+                style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#ef4444', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+              >
+                Confirm Rejection
               </button>
             </div>
           </div>

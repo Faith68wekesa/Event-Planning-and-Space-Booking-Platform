@@ -509,16 +509,34 @@ export const VenueModal: React.FC<VenueModalProps> = ({ venue, currentUser, onCl
             >
               <MessageCircle size={18} /> Message Owner
             </button>
-            <button
-              className="btn-primary"
-              onClick={() => {
-                onClose();
-                onBook(venue);
-              }}
-              style={{ padding: '10px 22px', fontSize: '0.95rem' }}
-            >
-              Send Booking Request <ArrowRight size={18} />
-            </button>
+            {venue.approval_status === 'APPROVED' && venue.is_available ? (
+              <button
+                className="btn-primary"
+                onClick={() => {
+                  onClose();
+                  onBook(venue);
+                }}
+                style={{ padding: '10px 22px', fontSize: '0.95rem' }}
+              >
+                Send Booking Request <ArrowRight size={18} />
+              </button>
+            ) : (
+              <button
+                disabled
+                style={{
+                  padding: '10px 22px',
+                  fontSize: '0.95rem',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: '#e2e8f0',
+                  color: '#94a3b8',
+                  fontWeight: 700,
+                  cursor: 'not-allowed'
+                }}
+              >
+                {venue.approval_status !== 'APPROVED' ? 'Listing Pending Verification' : 'Currently Unavailable'}
+              </button>
+            )}
           </div>
         </div>
 

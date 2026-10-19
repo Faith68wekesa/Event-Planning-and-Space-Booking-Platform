@@ -467,16 +467,34 @@ export const VendorModal: React.FC<VendorModalProps> = ({ vendor, currentUser, o
             >
               <MessageCircle size={18} /> Message Vendor
             </button>
-            <button
-              className="btn-primary"
-              onClick={() => {
-                onClose();
-                onBook(vendor);
-              }}
-              style={{ padding: '10px 22px', fontSize: '0.95rem' }}
-            >
-              Send Booking Request <ArrowRight size={18} />
-            </button>
+            {vendor.is_verified || vendor.verification_status === 'APPROVED' ? (
+              <button
+                className="btn-primary"
+                onClick={() => {
+                  onClose();
+                  onBook(vendor);
+                }}
+                style={{ padding: '10px 22px', fontSize: '0.95rem' }}
+              >
+                Send Booking Request <ArrowRight size={18} />
+              </button>
+            ) : (
+              <button
+                disabled
+                style={{
+                  padding: '10px 22px',
+                  fontSize: '0.95rem',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: '#e2e8f0',
+                  color: '#94a3b8',
+                  fontWeight: 700,
+                  cursor: 'not-allowed'
+                }}
+              >
+                Vendor Pending Verification
+              </button>
+            )}
           </div>
         </div>
 

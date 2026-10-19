@@ -118,11 +118,13 @@ export const App: React.FC = () => {
     setActiveTab('my-bookings');
   };
 
-  const handleCancelBooking = async (id: number) => {
-    const ok = await ApiService.updateBookingStatus(id, 'CANCELLED');
-    if (ok) {
-      setBookings((prev) => prev.map((b) => (b.id === id ? { ...b, status: 'CANCELLED' } : b)));
+  const handleCancelBooking = async (id: number, reason?: string): Promise<{ success: boolean; error?: string }> => {
+    const res = await ApiService.updateBookingStatus(id, 'CANCELLED', { reason });
+    if (res.success) {
+      setBookings((prev) => prev.map((b) => (b.id === id ? { ...b, status: 'CANCELLED', cancellation_reason: reason } : b)));
+      return { success: true };
     }
+    return { success: false, error: res.error || 'Failed to cancel booking.' };
   };
 
   const handleToggleVerifyVenue = async (id: number) => {

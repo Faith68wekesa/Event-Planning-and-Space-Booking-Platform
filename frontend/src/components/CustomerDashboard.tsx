@@ -45,7 +45,7 @@ interface CustomerDashboardProps {
 export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
   bookings = [],
   currentUser,
-  onCancelBooking,
+  onCancelBooking: _onCancelBooking,
   onNavigate,
   onLogout,
   onRequestRole,
@@ -141,6 +141,11 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [bookingFilterStatus, setBookingFilterStatus] = useState<string>('ALL');
 
+  // Customer Cancellation Modal state
+  const [cancellingBooking, setCancellingBooking] = useState<any | null>(null);
+  const [cancellationReason, setCancellationReason] = useState<string>('');
+  const [isSubmittingCancel, setIsSubmittingCancel] = useState<boolean>(false);
+
   // Sync notifications from backend
   const syncNotifications = useCallback(async () => {
     if (!currentUser?.id) return;
@@ -194,6 +199,29 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
       if (showIndicator) setIsRefreshingBookings(false);
     }
   }, [currentUser?.id]);
+
+  const handleConfirmCancellation = async () => {
+    if (!cancellingBooking) return;
+    setIsSubmittingCancel(true);
+    try {
+      const res = await ApiService.updateBookingStatus(cancellingBooking.id, 'CANCELLED', {
+        reason: cancellationReason.trim() || 'Cancelled by customer'
+      });
+      if (res.success) {
+        toast.success('Booking cancelled successfully.');
+        setCancellingBooking(null);
+        setCancellationReason('');
+        setSelectedBookingDetails(null);
+        syncBookings(true);
+      } else {
+        toast.error(res.error || 'Failed to cancel booking.');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error processing cancellation.');
+    } finally {
+      setIsSubmittingCancel(false);
+    }
+  };
 
   // Refetch when switching tabs or when window regains focus
   useEffect(() => {
@@ -1571,7 +1599,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                         >
                           <MessageSquare size={13} /> Chat Host
                         </button>
-                        {b.status === 'Pending' && (
+                        {(b.status === 'Pending' || b.status === 'Confirmed') && (
                           <button
                             style={{
                               background: '#fee2e2',
@@ -1584,10 +1612,8 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                               cursor: 'pointer',
                             }}
                             onClick={() => {
-                              if (window.confirm('Are you sure you want to cancel this booking request?')) {
-                                onCancelBooking(b.id);
-                                toast.success('Booking cancelled.');
-                              }
+                              setCancellingBooking(b.rawBooking || b);
+                              setCancellationReason('');
                             }}
                           >
                             Cancel
@@ -2435,10 +2461,29 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                     <span style={{ color: '#334155' }}>{selectedBookingDetails.notes}</span>
                   </div>
                 )}
+
+                {selectedBookingDetails.rawBooking?.cancellation_reason && (
+                  <div style={{ marginTop: '12px', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', fontSize: '0.84rem' }}>
+                    <span style={{ color: '#991b1b', fontWeight: 700, display: 'block' }}>Cancellation Reason</span>
+                    <span style={{ color: '#b91c1c' }}>{selectedBookingDetails.rawBooking.cancellation_reason}</span>
+                    {selectedBookingDetails.rawBooking.cancelled_by && (
+                      <span style={{ display: 'block', fontSize: '0.75rem', color: '#7f1d1d', marginTop: '2px' }}>
+                        Cancelled by: {selectedBookingDetails.rawBooking.cancelled_by}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {selectedBookingDetails.rawBooking?.rejection_reason && (
+                  <div style={{ marginTop: '12px', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', fontSize: '0.84rem' }}>
+                    <span style={{ color: '#991b1b', fontWeight: 700, display: 'block' }}>Decline Reason from Host</span>
+                    <span style={{ color: '#b91c1c' }}>{selectedBookingDetails.rawBooking.rejection_reason}</span>
+                  </div>
+                )}
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                {selectedBookingDetails.status === 'Pending' && (
+                {(selectedBookingDetails.status === 'Pending' || selectedBookingDetails.status === 'Confirmed') && (
                   <button
                     style={{
                       padding: '8px 18px',
@@ -2451,11 +2496,10 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                       fontSize: '0.85rem',
                     }}
                     onClick={() => {
-                      if (window.confirm('Cancel this booking request?')) {
-                        onCancelBooking(selectedBookingDetails.id);
-                        setSelectedBookingDetails(null);
-                        toast.success('Booking cancelled.');
-                      }
+                      const raw = selectedBookingDetails.rawBooking || selectedBookingDetails;
+                      setSelectedBookingDetails(null);
+                      setCancellingBooking(raw);
+                      setCancellationReason('');
                     }}
                   >
                     Cancel Booking
@@ -2471,6 +2515,148 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                   <MessageSquare size={16} /> Contact Host
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Booking Cancellation Modal */}
+      {cancellingBooking && (
+        <div
+          className="modal-overlay"
+          onClick={() => {
+            if (!isSubmittingCancel) {
+              setCancellingBooking(null);
+              setCancellationReason('');
+            }
+          }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.75)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1100,
+            padding: '16px',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#ffffff',
+              borderRadius: '16px',
+              maxWidth: '520px',
+              width: '100%',
+              padding: '24px',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#dc2626' }}>
+                <AlertTriangle size={22} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
+                  Cancel Booking Reservation
+                </h3>
+                <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                  Booking ID #{cancellingBooking.id} · {cancellingBooking.event_title || 'Reservation'}
+                </span>
+              </div>
+            </div>
+
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px', marginBottom: '16px', fontSize: '0.88rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <span style={{ color: '#64748b' }}>Scheduled Event Date:</span>
+                <strong style={{ color: '#0f172a' }}>{cancellingBooking.event_date}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <span style={{ color: '#64748b' }}>Current Status:</span>
+                <strong style={{ color: cancellingBooking.status === 'APPROVED' ? '#059669' : '#d97706' }}>
+                  {cancellingBooking.status === 'APPROVED' ? 'Confirmed' : 'Pending Request'}
+                </strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#64748b' }}>Cancellation Policy:</span>
+                <strong style={{ color: '#0d8a73' }}>
+                  {cancellingBooking.venue_details?.cancellation_policy === 'STRICT'
+                    ? 'Strict (Cancel ≥ 7 days before event)'
+                    : cancellingBooking.venue_details?.cancellation_policy === 'MODERATE'
+                    ? 'Moderate (Cancel ≥ 3 days before event)'
+                    : 'Flexible (Cancel ≥ 24h before event)'}
+                </strong>
+              </div>
+            </div>
+
+            <p style={{ fontSize: '0.86rem', color: '#475569', lineHeight: 1.5, margin: '0 0 16px 0' }}>
+              Please review the cancellation policy above. Confirmed bookings cancelled after the designated notice deadline cannot be processed automatically.
+            </p>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                Reason for Cancellation (Required):
+              </label>
+              <textarea
+                rows={3}
+                placeholder="Please state why you are cancelling this booking..."
+                value={cancellationReason}
+                onChange={(e) => setCancellationReason(e.target.value)}
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.9rem',
+                  fontFamily: 'inherit',
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                disabled={isSubmittingCancel}
+                onClick={() => {
+                  setCancellingBooking(null);
+                  setCancellationReason('');
+                }}
+                style={{
+                  padding: '10px 16px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  background: '#ffffff',
+                  fontWeight: 600,
+                  fontSize: '0.88rem',
+                  cursor: isSubmittingCancel ? 'not-allowed' : 'pointer',
+                  color: '#475569',
+                }}
+              >
+                Keep Booking
+              </button>
+              <button
+                type="button"
+                disabled={isSubmittingCancel || !cancellationReason.trim()}
+                onClick={handleConfirmCancellation}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: isSubmittingCancel || !cancellationReason.trim() ? '#fca5a5' : '#dc2626',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  fontSize: '0.88rem',
+                  cursor: isSubmittingCancel || !cancellationReason.trim() ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                {isSubmittingCancel ? 'Cancelling...' : 'Confirm Cancellation'}
+              </button>
             </div>
           </div>
         </div>

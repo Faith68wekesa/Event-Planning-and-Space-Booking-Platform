@@ -1411,6 +1411,18 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                           💬 Notes: {b.notes}
                         </div>
                       )}
+
+                      {b.cancellation_reason && (
+                        <div style={{ marginTop: '8px', padding: '6px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', fontSize: '0.8rem', color: '#991b1b' }}>
+                          <strong>Cancelled:</strong> {b.cancellation_reason} {b.cancelled_by ? `(by ${b.cancelled_by})` : ''}
+                        </div>
+                      )}
+
+                      {b.rejection_reason && (
+                        <div style={{ marginTop: '8px', padding: '6px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', fontSize: '0.8rem', color: '#991b1b' }}>
+                          <strong>Declined Reason:</strong> {b.rejection_reason}
+                        </div>
+                      )}
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>

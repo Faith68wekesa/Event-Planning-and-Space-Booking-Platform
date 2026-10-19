@@ -143,11 +143,15 @@ export interface Venue {
   amenities: string[];
   image_url: string;
   is_verified: boolean;
+  approval_status?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  rejection_reason?: string;
+  cancellation_policy?: 'FLEXIBLE' | 'MODERATE' | 'STRICT';
   verification_status?: VerificationStatus | 'DRAFT' | 'CHANGES_REQUIRED';
   is_available: boolean;
   rating: number;
   review_count: number;
   created_at?: string;
+  updated_at?: string;
 }
 
 export type BookingStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'COMPLETED';
@@ -170,9 +174,14 @@ export interface Booking {
   total_price: number;
   status: BookingStatus;
   notes?: string;
+  rejection_reason?: string;
+  cancelled_at?: string;
+  cancelled_by?: 'CUSTOMER' | 'PROVIDER' | 'ADMIN' | 'SYSTEM';
+  cancellation_reason?: string;
   has_reviewed?: boolean;
   review?: Review;
   created_at?: string;
+  updated_at?: string;
 }
 
 export interface Message {

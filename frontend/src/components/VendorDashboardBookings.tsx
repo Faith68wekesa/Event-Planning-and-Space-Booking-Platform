@@ -2,13 +2,18 @@ import React, { useState } from 'react';
 import type { Booking, BookingStatus } from '../types';
 
 
+import { CheckCircle2, XCircle } from 'lucide-react';
+
 interface BookingsProps {
   bookings: Booking[];
-  onUpdateStatus: (id: number, status: BookingStatus) => void;
+  onUpdateStatus: (id: number, status: BookingStatus, extra?: { reason?: string }) => void;
 }
 
-export const VendorDashboardBookings: React.FC<BookingsProps> = ({ bookings }) => {
+export const VendorDashboardBookings: React.FC<BookingsProps> = ({ bookings, onUpdateStatus }) => {
   const [filter, setFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'COMPLETED' | 'REJECTED'>('ALL');
+  const [rejectingBooking, setRejectingBooking] = useState<Booking | null>(null);
+  const [rejectionReason, setRejectionReason] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   const filteredBookings = bookings.filter(b => {
     if (filter === 'ALL') return true;
@@ -108,9 +113,35 @@ export const VendorDashboardBookings: React.FC<BookingsProps> = ({ bookings }) =
                         {getStatusDisplay(b.status)}
                       </td>
                       <td style={{ padding: '16px' }}>
-                        <button style={{ background: '#f1f5f9', color: '#334155', border: 'none', padding: '6px 12px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem' }}>
-                          View
-                        </button>
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                          {b.status === 'PENDING' && (
+                            <>
+                              <button
+                                onClick={() => onUpdateStatus(b.id, 'APPROVED')}
+                                style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                              >
+                                <CheckCircle2 size={13} /> Accept
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setRejectingBooking(b);
+                                  setRejectionReason('');
+                                }}
+                                style={{ background: '#fee2e2', color: '#dc2626', border: 'none', padding: '6px 10px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                              >
+                                <XCircle size={13} /> Decline
+                              </button>
+                            </>
+                          )}
+                          {b.status === 'APPROVED' && (
+                            <button
+                              onClick={() => onUpdateStatus(b.id, 'COMPLETED')}
+                              style={{ background: '#0d8a73', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem' }}
+                            >
+                              Complete
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -163,6 +194,133 @@ export const VendorDashboardBookings: React.FC<BookingsProps> = ({ bookings }) =
           </div>
         </div>
       </div>
+
+      {/* Decline Booking Modal */}
+      {rejectingBooking && (
+        <div
+          className="modal-overlay"
+          onClick={() => {
+            if (!isSubmitting) {
+              setRejectingBooking(null);
+              setRejectionReason('');
+            }
+          }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.75)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1100,
+            padding: '16px',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#ffffff',
+              borderRadius: '16px',
+              maxWidth: '480px',
+              width: '100%',
+              padding: '24px',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#dc2626' }}>
+                <XCircle size={22} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>
+                  Decline Service Booking
+                </h3>
+                <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                  Booking #{rejectingBooking.id} · {rejectingBooking.event_title}
+                </span>
+              </div>
+            </div>
+
+            <p style={{ fontSize: '0.88rem', color: '#475569', marginBottom: '16px', lineHeight: 1.5 }}>
+              Please specify a reason so the customer understands why your service is unavailable for their event.
+            </p>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                Decline Reason (Required):
+              </label>
+              <textarea
+                rows={3}
+                placeholder="e.g. Schedule already booked for another event on this day..."
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.9rem',
+                  fontFamily: 'inherit',
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={() => {
+                  setRejectingBooking(null);
+                  setRejectionReason('');
+                }}
+                style={{
+                  padding: '10px 16px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  background: '#ffffff',
+                  fontWeight: 600,
+                  fontSize: '0.88rem',
+                  cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                  color: '#475569',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isSubmitting || !rejectionReason.trim()}
+                onClick={async () => {
+                  setIsSubmitting(true);
+                  try {
+                    await onUpdateStatus(rejectingBooking.id, 'REJECTED', {
+                      reason: rejectionReason.trim()
+                    });
+                    setRejectingBooking(null);
+                    setRejectionReason('');
+                  } finally {
+                    setIsSubmitting(false);
+                  }
+                }}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: isSubmitting || !rejectionReason.trim() ? '#fca5a5' : '#dc2626',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  fontSize: '0.88rem',
+                  cursor: isSubmitting || !rejectionReason.trim() ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {isSubmitting ? 'Declining...' : 'Confirm Decline'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

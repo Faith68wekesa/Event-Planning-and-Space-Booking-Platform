@@ -114,11 +114,23 @@ class VendorProfileViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        search = self.request.query_params.get('search')
-        vendor_type = self.request.query_params.get('vendor_type')
-        location = self.request.query_params.get('location')
-        verified = self.request.query_params.get('verified')
-        user = self.request.query_params.get('user') or self.request.query_params.get('user_id')
+        params = self.request.query_params
+        search = params.get('search')
+        vendor_type = params.get('vendor_type')
+        location = params.get('location')
+        verified = params.get('verified')
+        user = params.get('user') or params.get('user_id')
+        all_status = params.get('all_status') == 'true'
+
+        is_admin = is_admin_user(self.request)
+
+        # Public queries only return approved & verified vendors
+        if is_admin and all_status:
+            pass
+        elif user:
+            pass  # Provider viewing their own account
+        else:
+            queryset = queryset.filter(is_verified=True, verification_status='APPROVED')
 
         if search:
             queryset = queryset.filter(
@@ -171,10 +183,21 @@ class VenueOwnerProfileViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        search = self.request.query_params.get('search')
-        location = self.request.query_params.get('location')
-        verified = self.request.query_params.get('verified')
-        user = self.request.query_params.get('user') or self.request.query_params.get('user_id')
+        params = self.request.query_params
+        search = params.get('search')
+        location = params.get('location')
+        verified = params.get('verified')
+        user = params.get('user') or params.get('user_id')
+        all_status = params.get('all_status') == 'true'
+
+        is_admin = is_admin_user(self.request)
+
+        if is_admin and all_status:
+            pass
+        elif user:
+            pass  # Owner inspecting their own profile
+        else:
+            queryset = queryset.filter(is_verified=True, verification_status='APPROVED')
 
         if search:
             queryset = queryset.filter(
@@ -225,15 +248,32 @@ class VenueViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        search = self.request.query_params.get('search')
-        category = self.request.query_params.get('category')
-        location = self.request.query_params.get('location')
-        max_price = self.request.query_params.get('max_price')
-        min_capacity = self.request.query_params.get('min_capacity')
-        verified = self.request.query_params.get('verified')
-        owner_id = self.request.query_params.get('owner')
-        vendor_id = self.request.query_params.get('vendor')
-        user_id = self.request.query_params.get('user')
+        params = self.request.query_params
+        search = params.get('search')
+        category = params.get('category')
+        location = params.get('location')
+        max_price = params.get('max_price')
+        min_capacity = params.get('min_capacity')
+        verified = params.get('verified')
+        owner_id = params.get('owner')
+        vendor_id = params.get('vendor')
+        user_id = params.get('user')
+        all_status = params.get('all_status') == 'true'
+
+        is_admin = is_admin_user(self.request)
+
+        # Filtering logic for public visibility vs provider/admin dashboard:
+        # If admin, or detail action (like approve/reject), or provider scoping is requested, allow finding listing
+        if is_admin:
+            pass  # Admin can inspect all statuses and execute actions
+        elif self.action in ['approve', 'reject', 'toggle_verify']:
+            pass
+        elif user_id or owner_id or vendor_id:
+            # Scoped to provider's dashboard
+            pass
+        else:
+            # PUBLIC CONSUMER ENDPOINT: Only approved, active/available listings
+            queryset = queryset.filter(approval_status='APPROVED', is_available=True)
 
         if search:
             queryset = queryset.filter(
@@ -262,33 +302,83 @@ class VenueViewSet(viewsets.ModelViewSet):
             except ValueError:
                 pass
         if verified == 'true':
-            queryset = queryset.filter(is_verified=True)
+            queryset = queryset.filter(is_verified=True, approval_status='APPROVED')
 
         return queryset
 
     def perform_create(self, serializer):
-        # Auto-verify if the listing provider is already verified
-        vendor = serializer.validated_data.get('vendor')
-        owner = serializer.validated_data.get('owner')
-        is_verified = False
-        if vendor and getattr(vendor, 'is_verified', False):
-            is_verified = True
-        elif owner and getattr(owner, 'is_verified', False):
-            is_verified = True
-        serializer.save(is_verified=is_verified)
+        # By default, ALL new venue/service listings must be pending approval
+        # Ordinary users/vendors cannot bypass approval.
+        serializer.save(approval_status='PENDING', is_verified=False)
+
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        # Non-admins cannot alter approval_status or is_verified directly
+        if not is_admin_user(self.request):
+            # Check if critical listing details changed (title, category, price, capacity)
+            validated = serializer.validated_data
+            critical_fields = ['title', 'category', 'price_per_day', 'capacity', 'image_url']
+            has_critical_changes = any(f in validated and validated[f] != getattr(instance, f) for f in critical_fields)
+            if has_critical_changes and instance.approval_status == 'APPROVED':
+                # Reset to PENDING for re-approval
+                serializer.save(approval_status='PENDING', is_verified=False)
+                return
+            else:
+                serializer.save(approval_status=instance.approval_status, is_verified=instance.is_verified)
+                return
+        serializer.save()
 
     @action(detail=True, methods=['post'])
     def toggle_verify(self, request, pk=None):
         if not is_admin_user(request):
             raise PermissionDenied("Access Denied: Only platform administrators can verify venues.")
         venue = self.get_object()
-        venue.is_verified = not venue.is_verified
-        venue.save(update_fields=['is_verified'])
-        return Response({'status': 'updated', 'is_verified': venue.is_verified})
+        if venue.approval_status == 'APPROVED':
+            venue.approval_status = 'PENDING'
+            venue.is_verified = False
+        else:
+            venue.approval_status = 'APPROVED'
+            venue.is_verified = True
+            venue.rejection_reason = None
+        venue.save(update_fields=['approval_status', 'is_verified', 'rejection_reason'])
+        return Response({'status': 'updated', 'approval_status': venue.approval_status, 'is_verified': venue.is_verified})
+
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        if not is_admin_user(request):
+            raise PermissionDenied("Access Denied: Only platform administrators can approve listings.")
+        venue = self.get_object()
+        venue.approval_status = 'APPROVED'
+        venue.is_verified = True
+        venue.rejection_reason = None
+        venue.save(update_fields=['approval_status', 'is_verified', 'rejection_reason'])
+        return Response(VenueSerializer(venue).data)
+
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        if not is_admin_user(request):
+            raise PermissionDenied("Access Denied: Only platform administrators can reject listings.")
+        venue = self.get_object()
+        reason = request.data.get('reason', '').strip() or 'Listing does not satisfy LOCYFY verification requirements.'
+        venue.approval_status = 'REJECTED'
+        venue.is_verified = False
+        venue.rejection_reason = reason
+        venue.save(update_fields=['approval_status', 'is_verified', 'rejection_reason'])
+        return Response(VenueSerializer(venue).data)
 
     @action(detail=True, methods=['post', 'patch'])
     def toggle_availability(self, request, pk=None):
         venue = self.get_object()
+        # Verify provider or admin
+        if request.user and request.user.is_authenticated and not request.user.is_staff:
+            provider_uid = None
+            if venue.owner and venue.owner.user_id:
+                provider_uid = venue.owner.user_id
+            elif venue.vendor and venue.vendor.user_id:
+                provider_uid = venue.vendor.user_id
+            if provider_uid and provider_uid != request.user.id:
+                raise PermissionDenied("You do not have permission to change this venue's availability.")
+
         venue.is_available = not venue.is_available
         venue.save(update_fields=['is_available'])
         return Response({'status': 'updated', 'is_available': venue.is_available})
@@ -319,6 +409,13 @@ class BookingViewSet(viewsets.ModelViewSet):
                 Q(venue__vendor__user_id=user_id) | 
                 Q(vendor__user_id=user_id)
             )
+        today = datetime.date.today()
+        # Automated status lifecycle: Confirmed bookings past event date automatically become COMPLETED
+        Booking.objects.filter(
+            status='APPROVED',
+            event_date__lt=today
+        ).update(status='COMPLETED')
+
         if status_param:
             queryset = queryset.filter(status=status_param)
 
@@ -348,33 +445,132 @@ class BookingViewSet(viewsets.ModelViewSet):
                 # Lock the booking record
                 booking = Booking.objects.select_for_update().get(pk=pk)
 
-                # Permission check: verify that user is authorized to update status if authenticated
-                if request.user and request.user.is_authenticated and not request.user.is_staff:
-                    provider_uid = None
-                    if booking.venue:
-                        if booking.venue.owner and booking.venue.owner.user_id:
-                            provider_uid = booking.venue.owner.user_id
-                        elif booking.venue.vendor and booking.venue.vendor.user_id:
-                            provider_uid = booking.venue.vendor.user_id
-                    elif booking.vendor and booking.vendor.user_id:
-                        provider_uid = booking.vendor.user_id
+                # 1. ENFORCE ALLOWED TRANSITION RULES
+                # PENDING -> APPROVED, REJECTED, CANCELLED
+                # APPROVED -> COMPLETED, CANCELLED
+                # REJECTED -> Final (cannot transition)
+                # CANCELLED -> Final (cannot transition)
+                # COMPLETED -> Final (cannot transition)
+                if booking.status == new_status:
+                    return Response(BookingSerializer(booking).data)
 
-                    # If this is provider accepting/rejecting, must be the provider or admin
+                if booking.status in ['REJECTED', 'CANCELLED', 'COMPLETED']:
+                    return Response(
+                        {'error': f"Cannot update status. Booking #{booking.id} is in final state '{booking.status}'."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                ALLOWED_TRANSITIONS = {
+                    'PENDING': ['APPROVED', 'REJECTED', 'CANCELLED'],
+                    'APPROVED': ['COMPLETED', 'CANCELLED'],
+                }
+
+                if new_status not in ALLOWED_TRANSITIONS.get(booking.status, []):
+                    return Response(
+                        {'error': f"Illegal status transition from '{booking.status}' to '{new_status}'."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                # Determine provider user ID
+                provider_uid = None
+                if booking.venue:
+                    if booking.venue.owner and booking.venue.owner.user_id:
+                        provider_uid = booking.venue.owner.user_id
+                    elif booking.venue.vendor and booking.venue.vendor.user_id:
+                        provider_uid = booking.venue.vendor.user_id
+                elif booking.vendor and booking.vendor.user_id:
+                    provider_uid = booking.vendor.user_id
+
+                # Resolve acting user (token or header)
+                acting_user_id = None
+                if request.user and request.user.is_authenticated:
+                    acting_user_id = request.user.id
+                else:
+                    header_uid = request.headers.get('X-User-Id') or request.headers.get('X-Admin-Id')
+                    if header_uid:
+                        try:
+                            acting_user_id = int(header_uid)
+                        except (ValueError, TypeError):
+                            pass
+
+                is_admin = is_admin_user(request)
+
+                # 2. ROLE PERMISSION ENFORCEMENT
+                if not is_admin:
                     if new_status in ['APPROVED', 'REJECTED']:
-                        if provider_uid and provider_uid != request.user.id:
+                        if not acting_user_id or (provider_uid and acting_user_id != provider_uid):
                             return Response(
-                                {'error': 'Permission denied. Only the listing provider can accept or reject this booking.'},
+                                {'error': 'Permission denied. Only the provider or an administrator can accept or decline this booking request.'},
                                 status=status.HTTP_403_FORBIDDEN
                             )
-                    # If customer is cancelling, must be the customer
                     elif new_status == 'CANCELLED':
-                        if booking.customer_id != request.user.id and (provider_uid and provider_uid != request.user.id):
+                        is_customer = (acting_user_id and acting_user_id == booking.customer_id)
+                        is_provider = (acting_user_id and acting_user_id == provider_uid)
+                        if not is_customer and not is_provider:
                             return Response(
-                                {'error': 'Permission denied. Only the customer or provider can cancel this booking.'},
+                                {'error': 'Permission denied. Only the customer or the provider can cancel this booking.'},
+                                status=status.HTTP_403_FORBIDDEN
+                            )
+                    elif new_status == 'COMPLETED':
+                        if not acting_user_id or (provider_uid and acting_user_id != provider_uid):
+                            return Response(
+                                {'error': 'Permission denied. Only the provider or an administrator can mark a booking as completed.'},
                                 status=status.HTTP_403_FORBIDDEN
                             )
 
-                # Revalidation upon Provider Acceptance (Pending -> Approved)
+                # 3. CANCELLATION POLICY ENFORCEMENT (When Customer cancels)
+                if new_status == 'CANCELLED':
+                    cancellation_reason = request.data.get('reason', '').strip() or request.data.get('cancellation_reason', '').strip()
+                    cancelling_party = 'ADMIN' if is_admin else ('CUSTOMER' if acting_user_id == booking.customer_id else 'PROVIDER')
+
+                    # If customer is cancelling a CONFIRMED booking, enforce cancellation deadline policy
+                    if booking.status == 'APPROVED' and cancelling_party == 'CUSTOMER':
+                        policy = 'FLEXIBLE'
+                        if booking.venue and booking.venue.cancellation_policy:
+                            policy = booking.venue.cancellation_policy
+
+                        today = datetime.date.today()
+                        days_until_event = (booking.event_date - today).days
+
+                        min_days_required = 1
+                        policy_name = "Flexible (24 hours)"
+                        if policy == 'MODERATE':
+                            min_days_required = 3
+                            policy_name = "Moderate (3 days)"
+                        elif policy == 'STRICT':
+                            min_days_required = 7
+                            policy_name = "Strict (7 days)"
+
+                        if days_until_event < min_days_required:
+                            return Response(
+                                {
+                                    'error': (
+                                        f"Cancellation deadline has passed under the {policy_name} cancellation policy. "
+                                        f"The event is in {max(0, days_until_event)} day(s), but at least {min_days_required} day(s) advance notice is required."
+                                    )
+                                },
+                                status=status.HTTP_400_BAD_REQUEST
+                            )
+
+                    booking.cancelled_at = timezone.now()
+                    booking.cancelled_by = cancelling_party
+                    booking.cancellation_reason = cancellation_reason
+
+                # 4. REJECTION REASON TRACKING
+                if new_status == 'REJECTED':
+                    rejection_reason = request.data.get('reason', '').strip() or request.data.get('rejection_reason', '').strip() or 'Provider is unavailable or unable to host this request.'
+                    booking.rejection_reason = rejection_reason
+
+                # 5. COMPLETION RULES: Cannot mark completed before event date
+                if new_status == 'COMPLETED':
+                    today = datetime.date.today()
+                    if booking.event_date > today and not is_admin:
+                        return Response(
+                            {'error': f"Cannot mark booking completed before the event date ({booking.event_date})."},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+
+                # 6. Revalidation upon Provider Acceptance (Pending -> Approved)
                 if new_status == 'APPROVED' and booking.status != 'APPROVED':
                     BookingCapacityValidator.validate_booking(
                         customer=booking.customer,

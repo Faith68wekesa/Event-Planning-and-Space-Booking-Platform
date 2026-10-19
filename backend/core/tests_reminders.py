@@ -3,8 +3,8 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework import status
-from .models import Event, EventService, Notification, ChecklistReminderLog, CustomerReminderPreference
-from .services.reminder_service import evaluate_and_generate_reminders
+from core.models import Event, EventService, Notification, ChecklistReminderLog, CustomerReminderPreference
+from core.services.reminder_service import evaluate_and_generate_reminders
 
 User = get_user_model()
 

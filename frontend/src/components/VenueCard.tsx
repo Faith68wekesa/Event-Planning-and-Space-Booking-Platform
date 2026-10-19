@@ -35,13 +35,13 @@ export const VenueCard: React.FC<VenueCardProps> = ({ venue, onSelect, onBook })
           display: 'flex',
           gap: '8px'
         }}>
-          {venue.is_verified ? (
+          {venue.approval_status === 'APPROVED' || venue.is_verified ? (
             <span className="badge-verified">
               <ShieldCheck size={14} /> Verified Venue
             </span>
           ) : (
-            <span className="badge-unverified">
-              Unverified Listing
+            <span className="badge-unverified" style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a' }}>
+              Pending Verification
             </span>
           )}
         </div>
@@ -140,13 +140,32 @@ export const VenueCard: React.FC<VenueCardProps> = ({ venue, onSelect, onBook })
               Details
             </button>
 
-            <button
-              className="btn-primary"
-              onClick={() => onBook(venue)}
-              style={{ padding: '8px 14px', fontSize: '0.82rem' }}
-            >
-              Book <ArrowRight size={14} />
-            </button>
+            {venue.approval_status === 'APPROVED' && venue.is_available ? (
+              <button
+                className="btn-primary"
+                onClick={() => onBook(venue)}
+                style={{ padding: '8px 14px', fontSize: '0.82rem' }}
+              >
+                Book <ArrowRight size={14} />
+              </button>
+            ) : (
+              <button
+                disabled
+                style={{
+                  padding: '8px 14px',
+                  fontSize: '0.82rem',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: '#e2e8f0',
+                  color: '#94a3b8',
+                  fontWeight: 600,
+                  cursor: 'not-allowed'
+                }}
+                title={venue.approval_status !== 'APPROVED' ? 'Pending Admin Approval' : 'Currently Unavailable'}
+              >
+                {venue.approval_status !== 'APPROVED' ? 'Pending Approval' : 'Unavailable'}
+              </button>
+            )}
           </div>
         </div>
       </div>

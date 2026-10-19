@@ -123,6 +123,11 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
     image_url: '',
   });
 
+  // Rejection modal state
+  const [rejectingBooking, setRejectingBooking] = useState<Booking | null>(null);
+  const [rejectionReason, setRejectionReason] = useState<string>('');
+  const [isSubmittingReject, setIsSubmittingReject] = useState<boolean>(false);
+
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
     try {
@@ -163,8 +168,8 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
     }
   }, [activeTab, selectedBookingChatId, bookings, fetchChatMessages]);
 
-  const handleUpdateBookingStatus = async (id: number, status: BookingStatus) => {
-    const res = await ApiService.updateBookingStatus(id, status);
+  const handleUpdateBookingStatus = async (id: number, status: BookingStatus, extra: { reason?: string } = {}) => {
+    const res = await ApiService.updateBookingStatus(id, status, extra);
     if (res.success) {
       toast.success(`Booking ${status.toLowerCase()}!`);
       fetchDashboardData();
@@ -173,11 +178,36 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
     }
   };
 
+  const handleConfirmReject = async () => {
+    if (!rejectingBooking) return;
+    setIsSubmittingReject(true);
+    try {
+      const res = await ApiService.updateBookingStatus(rejectingBooking.id, 'REJECTED', {
+        reason: rejectionReason.trim() || 'Declined by venue owner'
+      });
+      if (res.success) {
+        toast.success('Booking declined.');
+        setRejectingBooking(null);
+        setRejectionReason('');
+        fetchDashboardData();
+      } else {
+        toast.error(res.error || 'Failed to decline booking.');
+      }
+    } catch (e: any) {
+      toast.error(e.message || 'Error updating status.');
+    } finally {
+      setIsSubmittingReject(false);
+    }
+  };
+
   const handleDeleteVenue = async (venueId: number) => {
     if (window.confirm('Are you sure you want to remove this venue listing?')) {
       const ok = await ApiService.deleteVenue(venueId);
       if (ok) {
+        toast.success('Venue listing removed successfully.');
         fetchDashboardData();
+      } else {
+        toast.error('Failed to remove venue listing.');
       }
     }
   };
@@ -615,7 +645,11 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
                           position: 'absolute',
                           top: '12px',
                           right: '12px',
-                          background: venue.is_verified ? '#16a34a' : '#f59e0b',
+                          background: (venue.approval_status === 'APPROVED' || venue.is_verified)
+                            ? '#16a34a'
+                            : venue.approval_status === 'REJECTED'
+                            ? '#dc2626'
+                            : '#f59e0b',
                           color: '#fff',
                           padding: '4px 10px',
                           borderRadius: '6px',
@@ -626,13 +660,17 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
                           gap: '4px',
                         }}
                       >
-                        {venue.is_verified ? (
+                        {(venue.approval_status === 'APPROVED' || venue.is_verified) ? (
                           <>
-                            <CheckCircle2 size={12} /> Verified
+                            <CheckCircle2 size={12} /> Live & Approved
+                          </>
+                        ) : venue.approval_status === 'REJECTED' ? (
+                          <>
+                            <XCircle size={12} /> Needs Revision
                           </>
                         ) : (
                           <>
-                            <Clock size={12} /> Pending Verification
+                            <Clock size={12} /> Pending Admin Approval
                           </>
                         )}
                       </div>
@@ -645,6 +683,12 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
                       <p style={{ color: '#64748b', fontSize: '0.85rem', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <MapPin size={14} color="#0d8a73" /> {venue.location}
                       </p>
+
+                      {venue.approval_status === 'REJECTED' && venue.rejection_reason && (
+                        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '8px 12px', marginBottom: '12px', fontSize: '0.8rem', color: '#991b1b' }}>
+                          <strong>Admin Feedback:</strong> {venue.rejection_reason}
+                        </div>
+                      )}
 
                       <div
                         style={{
@@ -799,6 +843,18 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
                           "{booking.notes}"
                         </p>
                       )}
+
+                      {booking.cancellation_reason && (
+                        <div style={{ marginTop: '8px', padding: '6px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', fontSize: '0.8rem', color: '#991b1b' }}>
+                          <strong>Cancelled:</strong> {booking.cancellation_reason} {booking.cancelled_by ? `(by ${booking.cancelled_by})` : ''}
+                        </div>
+                      )}
+
+                      {booking.rejection_reason && (
+                        <div style={{ marginTop: '8px', padding: '6px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', fontSize: '0.8rem', color: '#991b1b' }}>
+                          <strong>Declined Reason:</strong> {booking.rejection_reason}
+                        </div>
+                      )}
                     </div>
 
                     {/* Actions */}
@@ -824,7 +880,10 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
                             <CheckCircle2 size={16} /> Accept Booking
                           </button>
                           <button
-                            onClick={() => handleUpdateBookingStatus(booking.id, 'REJECTED')}
+                            onClick={() => {
+                              setRejectingBooking(booking);
+                              setRejectionReason('');
+                            }}
                             style={{
                               background: '#fee2e2',
                               color: '#ef4444',
@@ -1458,6 +1517,122 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reject Booking Modal */}
+      {rejectingBooking && (
+        <div
+          className="modal-overlay"
+          onClick={() => {
+            if (!isSubmittingReject) {
+              setRejectingBooking(null);
+              setRejectionReason('');
+            }
+          }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.75)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1100,
+            padding: '16px',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#ffffff',
+              borderRadius: '16px',
+              maxWidth: '480px',
+              width: '100%',
+              padding: '24px',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#dc2626' }}>
+                <XCircle size={22} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>
+                  Decline Booking Request
+                </h3>
+                <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                  Booking #{rejectingBooking.id} · {rejectingBooking.event_title}
+                </span>
+              </div>
+            </div>
+
+            <p style={{ fontSize: '0.88rem', color: '#475569', marginBottom: '16px', lineHeight: 1.5 }}>
+              Please provide a clear reason to help the client understand why their booking request cannot be accommodated at this time.
+            </p>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                Decline Reason (Required):
+              </label>
+              <textarea
+                rows={3}
+                placeholder="e.g. Venue is already booked for private maintenance on this date..."
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.9rem',
+                  fontFamily: 'inherit',
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                disabled={isSubmittingReject}
+                onClick={() => {
+                  setRejectingBooking(null);
+                  setRejectionReason('');
+                }}
+                style={{
+                  padding: '10px 16px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  background: '#ffffff',
+                  fontWeight: 600,
+                  fontSize: '0.88rem',
+                  cursor: isSubmittingReject ? 'not-allowed' : 'pointer',
+                  color: '#475569',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isSubmittingReject || !rejectionReason.trim()}
+                onClick={handleConfirmReject}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: isSubmittingReject || !rejectionReason.trim() ? '#fca5a5' : '#dc2626',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  fontSize: '0.88rem',
+                  cursor: isSubmittingReject || !rejectionReason.trim() ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {isSubmittingReject ? 'Declining...' : 'Confirm Decline'}
+              </button>
+            </div>
           </div>
         </div>
       )}
