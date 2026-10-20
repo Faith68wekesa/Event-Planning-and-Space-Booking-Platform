@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import type { Venue, Vendor, VenueOwner, VerificationStatus, User, Booking, Review, PlatformStats, BookingStatus } from '../types';
+import type { Venue, Vendor, VenueOwner, VerificationStatus, User, Booking, Review, PlatformStats, BookingStatus, VerificationDocument } from '../types';
 import { 
   ShieldCheck, Building2, UserCheck, 
   X, Eye, Clock, MapPin, ExternalLink,
   Users, Calendar, Star, Trash2, Edit3, RefreshCw,
   Search, CheckCircle2, ArrowUpRight, DollarSign,
-  UserX, Shield, AlertCircle, ShieldAlert, Lock, ArrowLeft
+  UserX, Shield, AlertCircle, ShieldAlert, Lock, ArrowLeft, FileText, AlertTriangle
 } from 'lucide-react';
 import { ApiService } from '../services/api';
 import { toast } from 'react-hot-toast';
@@ -92,6 +92,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [verificationStatusFilter, setVerificationStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('ALL');
   const [verificationTypeFilter, setVerificationTypeFilter] = useState<'ALL' | 'VENDOR' | 'VENUE_OWNER'>('ALL');
 
+  // Verification Documents State
+  const [verificationDocuments, setVerificationDocuments] = useState<VerificationDocument[]>([]);
+  const [docSearch, setDocSearch] = useState('');
+  const [docTypeFilter, setDocTypeFilter] = useState<string>('ALL');
+  const [docStatusFilter, setDocStatusFilter] = useState<string>('ALL');
+  const [rejectingDocModal, setRejectingDocModal] = useState<VerificationDocument | null>(null);
+  const [docRejectionReason, setDocRejectionReason] = useState<string>('');
+  const [docAdminNotes, setDocAdminNotes] = useState<string>('');
+  const [submittingDocReview, setSubmittingDocReview] = useState(false);
+
   // Modals
   const [selectedAccount, setSelectedAccount] = useState<UnifiedAccount | null>(null);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
@@ -108,14 +118,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!isAdmin) return;
     setLoading(true);
     try {
-      const [fetchedStats, fetchedUsers, fetchedBookings, fetchedReviews, fetchedOwners, fetchedVendors, fetchedVenues] = await Promise.all([
+      const [fetchedStats, fetchedUsers, fetchedBookings, fetchedReviews, fetchedOwners, fetchedVendors, fetchedVenues, fetchedDocs] = await Promise.all([
         ApiService.getStats(),
         ApiService.getUsers(undefined, currentUser?.id),
         ApiService.getBookings(),
         ApiService.getReviews(),
         ApiService.getVenueOwners(),
         ApiService.getVendors({ all_status: true }),
-        ApiService.getVenues({ all_status: true })
+        ApiService.getVenues({ all_status: true }),
+        ApiService.getVerificationDocuments()
       ]);
 
       if (fetchedStats) setStats(fetchedStats);
@@ -125,6 +136,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (fetchedOwners) setVenueOwners(fetchedOwners);
       if (fetchedVendors) setVendors(fetchedVendors);
       if (fetchedVenues) setVenues(fetchedVenues);
+      if (fetchedDocs) setVerificationDocuments(fetchedDocs);
     } catch (err) {
       console.error('Failed to load admin data:', err);
       toast.error('Failed to load some dashboard data.');
@@ -1826,6 +1838,257 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               ))
             )}
           </div>
+
+          {/* VERIFICATION DOCUMENTS REVIEW SUB-SECTION */}
+          <div style={{ marginTop: '40px', paddingTop: '28px', borderTop: '2px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <FileText size={22} color="#0d8a73" />
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>
+                    Submitted Verification Documents & Permits ({verificationDocuments.length})
+                  </h3>
+                </div>
+                <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '0.85rem' }}>
+                  Inspect official compliance documents, county permits, and business licenses. Approving verified documents qualifies listings for public visibility.
+                </p>
+              </div>
+
+              {/* Document Filters */}
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ position: 'relative' }}>
+                  <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                  <input
+                    type="text"
+                    placeholder="Search provider, document..."
+                    value={docSearch}
+                    onChange={(e) => setDocSearch(e.target.value)}
+                    style={{
+                      padding: '7px 12px 7px 32px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.83rem',
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+
+                <select
+                  value={docTypeFilter}
+                  onChange={(e) => setDocTypeFilter(e.target.value)}
+                  style={{
+                    padding: '7px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.83rem',
+                    outline: 'none',
+                    background: '#fff',
+                    fontWeight: 600,
+                    color: '#334155',
+                  }}
+                >
+                  <option value="ALL">All Document Types</option>
+                  <option value="BUSINESS_REGISTRATION">Business Registration</option>
+                  <option value="OPERATING_LICENSE">Operating License / Permit</option>
+                  <option value="IDENTITY_DOCUMENT">National ID / Passport</option>
+                  <option value="TAX_COMPLIANCE">Tax Compliance</option>
+                  <option value="HEALTH_SAFETY">Health & Safety</option>
+                  <option value="INSURANCE">Insurance</option>
+                  <option value="OTHER">Other Documents</option>
+                </select>
+
+                <select
+                  value={docStatusFilter}
+                  onChange={(e) => setDocStatusFilter(e.target.value)}
+                  style={{
+                    padding: '7px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.83rem',
+                    outline: 'none',
+                    background: '#fff',
+                    fontWeight: 600,
+                    color: '#334155',
+                  }}
+                >
+                  <option value="ALL">All Review Statuses</option>
+                  <option value="PENDING">Pending Review</option>
+                  <option value="APPROVED">Approved & Valid</option>
+                  <option value="REJECTED">Rejected</option>
+                  <option value="EXPIRED">Expired</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Documents Table */}
+            <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.86rem' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                    <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 700 }}>Provider / Business</th>
+                    <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 700 }}>Document Type & Title</th>
+                    <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 700 }}>File Details</th>
+                    <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 700 }}>Submitted Date</th>
+                    <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 700 }}>Expiry Date</th>
+                    <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 700 }}>Status</th>
+                    <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 700, textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {verificationDocuments
+                    .filter(doc => {
+                      if (docStatusFilter !== 'ALL' && doc.status !== docStatusFilter) return false;
+                      if (docTypeFilter !== 'ALL' && doc.document_type !== docTypeFilter) return false;
+                      if (docSearch) {
+                        const q = docSearch.toLowerCase();
+                        const mUser = (doc.user_name || '').toLowerCase().includes(q);
+                        const mBiz = (doc.business_name || '').toLowerCase().includes(q);
+                        const mTitle = (doc.title || '').toLowerCase().includes(q);
+                        const mType = (doc.document_type_display || '').toLowerCase().includes(q);
+                        if (!mUser && !mBiz && !mTitle && !mType) return false;
+                      }
+                      return true;
+                    })
+                    .map(doc => {
+                      const isPending = doc.status === 'PENDING';
+                      const isApproved = doc.status === 'APPROVED' && doc.is_currently_valid;
+                      const isExpired = doc.status === 'EXPIRED' || (doc.status === 'APPROVED' && !doc.is_currently_valid);
+                      const isRejected = doc.status === 'REJECTED';
+
+                      return (
+                        <tr key={doc.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '12px 16px' }}>
+                            <div style={{ fontWeight: 700, color: '#1e293b' }}>
+                              {doc.business_name || doc.user_name || `User #${doc.user}`}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                              {doc.venue_owner ? 'Venue Owner' : doc.vendor ? 'Vendor' : 'Provider'}
+                            </div>
+                          </td>
+                          <td style={{ padding: '12px 16px' }}>
+                            <div style={{ fontWeight: 600, color: '#0f172a' }}>{doc.title || doc.document_type_display}</div>
+                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{doc.document_type_display}</div>
+                          </td>
+                          <td style={{ padding: '12px 16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ textTransform: 'uppercase', fontSize: '0.72rem', background: '#e2e8f0', color: '#334155', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                                {doc.file_extension || 'FILE'}
+                              </span>
+                              <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                                {doc.file_size ? `${(doc.file_size / (1024 * 1024)).toFixed(1)} MB` : ''}
+                              </span>
+                            </div>
+                          </td>
+                          <td style={{ padding: '12px 16px', color: '#64748b', fontSize: '0.82rem' }}>
+                            {new Date(doc.created_at).toLocaleDateString()}
+                          </td>
+                          <td style={{ padding: '12px 16px', fontSize: '0.82rem' }}>
+                            {doc.expiry_date ? (
+                              <span style={{ color: isExpired ? '#dc2626' : '#64748b', fontWeight: isExpired ? 700 : 500 }}>
+                                {new Date(doc.expiry_date).toLocaleDateString()} {isExpired && '(Expired)'}
+                              </span>
+                            ) : (
+                              <span style={{ color: '#94a3b8' }}>None</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '12px 16px' }}>
+                            <span style={{
+                              padding: '3px 8px',
+                              borderRadius: '999px',
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              background: isApproved ? '#ecfdf5' : isPending ? '#fef3c7' : '#fee2e2',
+                              color: isApproved ? '#059669' : isPending ? '#b45309' : '#dc2626',
+                            }}>
+                              {isExpired ? 'Expired' : doc.status_display}
+                            </span>
+                            {isRejected && doc.rejection_reason && (
+                              <div style={{ fontSize: '0.72rem', color: '#dc2626', marginTop: '3px', maxWidth: '200px' }}>
+                                Reason: {doc.rejection_reason}
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                              <a
+                                href={ApiService.getDocumentDownloadUrl(doc.id, currentUser?.id)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  padding: '6px 10px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #cbd5e1',
+                                  background: '#fff',
+                                  color: '#334155',
+                                  fontWeight: 600,
+                                  fontSize: '0.76rem',
+                                  textDecoration: 'none',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                }}
+                              >
+                                <ExternalLink size={12} /> Preview
+                              </a>
+
+                              {doc.status !== 'APPROVED' && (
+                                <button
+                                  onClick={async () => {
+                                    const res = await ApiService.approveVerificationDocument(doc.id, 'Approved by Administrator', currentUser?.id);
+                                    if (res.success) {
+                                      setVerificationDocuments(prev => prev.map(d => d.id === doc.id ? res.data || { ...d, status: 'APPROVED', is_currently_valid: true } : d));
+                                      toast.success(`Document '${doc.title || doc.document_type_display}' approved.`);
+                                      loadAdminData();
+                                      onDataChange?.();
+                                    } else {
+                                      toast.error(res.error || 'Failed to approve document.');
+                                    }
+                                  }}
+                                  style={{
+                                    padding: '6px 10px',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    background: '#059669',
+                                    color: '#fff',
+                                    fontWeight: 700,
+                                    fontSize: '0.76rem',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Approve
+                                </button>
+                              )}
+
+                              {doc.status !== 'REJECTED' && (
+                                <button
+                                  onClick={() => {
+                                    setRejectingDocModal(doc);
+                                    setDocRejectionReason('');
+                                    setDocAdminNotes('');
+                                  }}
+                                  style={{
+                                    padding: '6px 10px',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    background: '#ef4444',
+                                    color: '#fff',
+                                    fontWeight: 700,
+                                    fontSize: '0.76rem',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Reject
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 
@@ -2547,6 +2810,122 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#ef4444', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
               >
                 Confirm Rejection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: REJECT VERIFICATION DOCUMENT */}
+      {rejectingDocModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(15, 23, 42, 0.7)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1200,
+          padding: '20px',
+        }}>
+          <div style={{ background: '#fff', borderRadius: '16px', maxWidth: '500px', width: '100%', padding: '24px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+            <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: '#fee2e2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+              <AlertTriangle size={24} />
+            </div>
+            <h3 style={{ margin: '0 0 8px', fontSize: '1.2rem', fontWeight: 800, color: '#1e293b' }}>
+              Reject Document: {rejectingDocModal.title || rejectingDocModal.document_type_display}
+            </h3>
+            <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: '#64748b' }}>
+              Provide a clear reason for the document rejection. The provider will see this explanation and will be allowed to resubmit a valid replacement.
+            </p>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                Rejection Reason (Visible to Provider) *
+              </label>
+              <textarea
+                rows={3}
+                placeholder="e.g., The permit has expired, official seal is unreadable, or company registration name doesn't match..."
+                value={docRejectionReason}
+                onChange={(e) => setDocRejectionReason(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  border: '1.5px solid #cbd5e1',
+                  fontSize: '0.88rem',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                  fontFamily: 'inherit',
+                  resize: 'vertical',
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                Internal Admin Notes (Optional)
+              </label>
+              <input
+                type="text"
+                placeholder="Internal audit notes..."
+                value={docAdminNotes}
+                onChange={(e) => setDocAdminNotes(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.85rem',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                onClick={() => setRejectingDocModal(null)}
+                disabled={submittingDocReview}
+                style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                disabled={submittingDocReview}
+                onClick={async () => {
+                  const reason = docRejectionReason.trim() || 'Document does not satisfy LOCYFY verification requirements.';
+                  setSubmittingDocReview(true);
+                  try {
+                    const res = await ApiService.rejectVerificationDocument(rejectingDocModal.id, reason, docAdminNotes, currentUser?.id);
+                    if (res.success) {
+                      setVerificationDocuments(prev => prev.map(d => d.id === rejectingDocModal.id ? res.data || { ...d, status: 'REJECTED', rejection_reason: reason } : d));
+                      toast.success(`Document marked as rejected.`);
+                      setRejectingDocModal(null);
+                      loadAdminData();
+                      onDataChange?.();
+                    } else {
+                      toast.error(res.error || 'Failed to reject document.');
+                    }
+                  } catch (e: any) {
+                    toast.error(e?.message || 'Error rejecting document.');
+                  } finally {
+                    setSubmittingDocReview(false);
+                  }
+                }}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: '#ef4444',
+                  color: '#fff',
+                  fontWeight: 700,
+                  cursor: submittingDocReview ? 'not-allowed' : 'pointer',
+                  opacity: submittingDocReview ? 0.7 : 1,
+                }}
+              >
+                {submittingDocReview ? 'Submitting...' : 'Confirm Rejection'}
               </button>
             </div>
           </div>

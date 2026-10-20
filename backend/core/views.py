@@ -8,12 +8,12 @@ from django.db import transaction
 from django.db.models import Q, Sum
 from .models import (
     User, VendorProfile, VenueOwnerProfile, Venue, Booking, Review, EmailOTP, Message, Event, EventService,
-    Notification, CustomerReminderPreference
+    Notification, CustomerReminderPreference, VerificationDocument
 )
 from .serializers import (
     UserSerializer, VendorProfileSerializer, VenueOwnerProfileSerializer, VenueSerializer, 
     BookingSerializer, ReviewSerializer, MessageSerializer, EventSerializer, EventServiceSerializer,
-    NotificationSerializer, CustomerReminderPreferenceSerializer
+    NotificationSerializer, CustomerReminderPreferenceSerializer, VerificationDocumentSerializer
 )
 from .services.reminder_service import evaluate_and_generate_reminders
 from django.core.mail import send_mail
@@ -124,13 +124,20 @@ class VendorProfileViewSet(viewsets.ModelViewSet):
 
         is_admin = is_admin_user(self.request)
 
-        # Public queries only return approved & verified vendors
+        # Public queries only return approved & verified vendors who have valid verification documents
         if is_admin and all_status:
             pass
         elif user:
             pass  # Provider viewing their own account
         else:
-            queryset = queryset.filter(is_verified=True, verification_status='APPROVED')
+            today = datetime.date.today()
+            verified_vendor_ids = VerificationDocument.objects.filter(
+                vendor__isnull=False,
+                status='APPROVED'
+            ).filter(
+                Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
+            ).values_list('vendor_id', flat=True)
+            queryset = queryset.filter(is_verified=True, verification_status='APPROVED', id__in=verified_vendor_ids)
 
         if search:
             queryset = queryset.filter(
@@ -197,7 +204,14 @@ class VenueOwnerProfileViewSet(viewsets.ModelViewSet):
         elif user:
             pass  # Owner inspecting their own profile
         else:
-            queryset = queryset.filter(is_verified=True, verification_status='APPROVED')
+            today = datetime.date.today()
+            verified_owner_ids = VerificationDocument.objects.filter(
+                venue_owner__isnull=False,
+                status='APPROVED'
+            ).filter(
+                Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
+            ).values_list('venue_owner_id', flat=True)
+            queryset = queryset.filter(is_verified=True, verification_status='APPROVED', id__in=verified_owner_ids)
 
         if search:
             queryset = queryset.filter(
@@ -273,7 +287,35 @@ class VenueViewSet(viewsets.ModelViewSet):
             pass
         else:
             # PUBLIC CONSUMER ENDPOINT: Only approved, active/available listings
-            queryset = queryset.filter(approval_status='APPROVED', is_available=True)
+            # STRICT VERIFICATION GATING:
+            # Must satisfy all conditions:
+            # 1. Listing approval_status == 'APPROVED'
+            # 2. Listing is_available == True
+            # 3. Listing is_verified == True
+            # 4. Owner / Vendor profile must have at least one approved, unexpired verification document
+            today = datetime.date.today()
+            verified_owner_ids = VerificationDocument.objects.filter(
+                venue_owner__isnull=False,
+                status='APPROVED'
+            ).filter(
+                Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
+            ).values_list('venue_owner_id', flat=True)
+
+            verified_vendor_ids = VerificationDocument.objects.filter(
+                vendor__isnull=False,
+                status='APPROVED'
+            ).filter(
+                Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
+            ).values_list('vendor_id', flat=True)
+
+            queryset = queryset.filter(
+                approval_status='APPROVED',
+                is_available=True,
+                is_verified=True
+            ).filter(
+                (Q(owner_id__in=verified_owner_ids) & Q(owner__verification_status='APPROVED')) |
+                (Q(vendor_id__in=verified_vendor_ids) & Q(vendor__verification_status='APPROVED'))
+            )
 
         if search:
             queryset = queryset.filter(
@@ -1522,3 +1564,228 @@ class CustomerReminderPreferenceView(APIView):
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class VerificationDocumentViewSet(viewsets.ModelViewSet):
+    queryset = VerificationDocument.objects.all().order_by('-created_at')
+    serializer_class = VerificationDocumentSerializer
+    parser_classes = (MultiPartParser, FormParser)
+
+    def get_user_from_request(self):
+        user = getattr(self.request, 'user', None)
+        if user and user.is_authenticated:
+            return user
+        user_id = (
+            self.request.headers.get('X-User-Id') or 
+            self.request.query_params.get('user_id') or 
+            self.request.query_params.get('user')
+        )
+        if user_id:
+            try:
+                return User.objects.get(pk=int(user_id))
+            except (User.DoesNotExist, ValueError, TypeError):
+                return None
+        return None
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        req_user = self.get_user_from_request()
+        is_admin = is_admin_user(self.request)
+
+        # Non-admins can only see their own verification documents
+        if not is_admin:
+            if not req_user:
+                return VerificationDocument.objects.none()
+            queryset = queryset.filter(user=req_user)
+
+        # Filters for query
+        params = self.request.query_params
+        status_param = params.get('status')
+        doc_type_param = params.get('document_type')
+        user_param = params.get('user') or params.get('user_id')
+        vendor_param = params.get('vendor') or params.get('vendor_id')
+        venue_owner_param = params.get('venue_owner') or params.get('venue_owner_id')
+
+        if status_param and status_param != 'ALL':
+            queryset = queryset.filter(status=status_param)
+        if doc_type_param and doc_type_param != 'ALL':
+            queryset = queryset.filter(document_type=doc_type_param)
+        if is_admin:
+            if user_param:
+                queryset = queryset.filter(user_id=user_param)
+            if vendor_param:
+                queryset = queryset.filter(vendor_id=vendor_param)
+            if venue_owner_param:
+                queryset = queryset.filter(venue_owner_id=venue_owner_param)
+
+        return queryset
+
+    def perform_create(self, serializer):
+        req_user = self.get_user_from_request()
+        if not req_user:
+            raise PermissionDenied("Authentication is required to upload verification documents.")
+
+        file_obj = self.request.FILES.get('file')
+        file_name = file_obj.name if file_obj else ''
+        file_size = file_obj.size if file_obj else 0
+        file_ext = file_name.split('.')[-1].lower() if '.' in file_name else ''
+
+        # Auto-associate vendor or venue_owner profile
+        vendor = getattr(req_user, 'vendor_profile', None)
+        venue_owner = getattr(req_user, 'venue_owner_profile', None)
+
+        serializer.save(
+            user=req_user,
+            vendor=vendor,
+            venue_owner=venue_owner,
+            file_name=file_name,
+            file_size=file_size,
+            file_extension=file_ext,
+            status='PENDING',
+            rejection_reason=None,
+            admin_notes=None,
+            reviewed_by=None,
+            reviewed_at=None
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        doc = self.get_object()
+        req_user = self.get_user_from_request()
+        is_admin = is_admin_user(request)
+        if not is_admin and (not req_user or doc.user_id != req_user.id):
+            raise PermissionDenied("You do not have permission to delete this document.")
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=['get'])
+    def download(self, request, pk=None):
+        """
+        Secure document streaming. Only accessible by the document owner or an authorized administrator.
+        Prevents public exposure or unauthenticated access.
+        """
+        try:
+            doc = VerificationDocument.objects.get(pk=pk)
+        except VerificationDocument.DoesNotExist:
+            return Response({'error': 'Document not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        req_user = self.get_user_from_request()
+        is_admin = is_admin_user(request)
+
+        if not is_admin and (not req_user or doc.user_id != req_user.id):
+            raise PermissionDenied("Access Denied: You are not authorized to view or download this document.")
+
+        if not doc.file:
+            return Response({'error': 'Document file not found on server.'}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            import mimetypes
+            from django.http import FileResponse
+            file_path = doc.file.path
+            content_type, _ = mimetypes.guess_type(file_path)
+            content_type = content_type or 'application/octet-stream'
+            
+            # Serve file with disposition inline for previewing PDFs and images
+            response = FileResponse(open(file_path, 'rb'), content_type=content_type)
+            safe_display_name = doc.file_name or f"document_{doc.id}.{doc.file_extension or 'pdf'}"
+            response['Content-Disposition'] = f'inline; filename="{safe_display_name}"'
+            return response
+        except FileNotFoundError:
+            return Response({'error': 'Physical document file missing from storage.'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        if not is_admin_user(request):
+            raise PermissionDenied("Access Denied: Only platform administrators can approve verification documents.")
+        doc = self.get_object()
+        doc.status = 'APPROVED'
+        doc.rejection_reason = None
+        doc.admin_notes = request.data.get('admin_notes', '')
+        reviewer = self.get_user_from_request() or request.user if getattr(request, 'user', None) and request.user.is_authenticated else None
+        doc.reviewed_by = reviewer
+        doc.reviewed_at = timezone.now()
+        doc.save()
+
+        # Check if provider can now have their profile marked verified
+        # A provider is verified if they have at least one approved document and no unaddressed issues
+        user = doc.user
+        if doc.venue_owner:
+            owner = doc.venue_owner
+            owner.is_verified = True
+            owner.verification_status = 'APPROVED'
+            owner.save(update_fields=['is_verified', 'verification_status'])
+            Venue.objects.filter(owner=owner).update(is_verified=True)
+        elif hasattr(user, 'venue_owner_profile'):
+            owner = user.venue_owner_profile
+            owner.is_verified = True
+            owner.verification_status = 'APPROVED'
+            owner.save(update_fields=['is_verified', 'verification_status'])
+            Venue.objects.filter(owner=owner).update(is_verified=True)
+
+        if doc.vendor:
+            vendor = doc.vendor
+            vendor.is_verified = True
+            vendor.verification_status = 'APPROVED'
+            vendor.save(update_fields=['is_verified', 'verification_status'])
+            Venue.objects.filter(vendor=vendor).update(is_verified=True)
+        elif hasattr(user, 'vendor_profile'):
+            vendor = user.vendor_profile
+            vendor.is_verified = True
+            vendor.verification_status = 'APPROVED'
+            vendor.save(update_fields=['is_verified', 'verification_status'])
+            Venue.objects.filter(vendor=vendor).update(is_verified=True)
+
+        return Response(VerificationDocumentSerializer(doc).data)
+
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        if not is_admin_user(request):
+            raise PermissionDenied("Access Denied: Only platform administrators can reject verification documents.")
+        doc = self.get_object()
+        reason = request.data.get('reason', '').strip() or 'Document does not satisfy LOCYFY verification requirements.'
+        doc.status = 'REJECTED'
+        doc.rejection_reason = reason
+        doc.admin_notes = request.data.get('admin_notes', '')
+        reviewer = self.get_user_from_request() or request.user if getattr(request, 'user', None) and request.user.is_authenticated else None
+        doc.reviewed_by = reviewer
+        doc.reviewed_at = timezone.now()
+        doc.save()
+
+        # Re-evaluate provider verification:
+        # If provider no longer has ANY approved, valid verification documents, revoke verified status
+        user = doc.user
+        today = datetime.date.today()
+        has_other_valid_doc = VerificationDocument.objects.filter(
+            user=user,
+            status='APPROVED'
+        ).filter(Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)).exclude(id=doc.id).exists()
+
+        if not has_other_valid_doc:
+            if doc.venue_owner:
+                owner = doc.venue_owner
+                owner.is_verified = False
+                owner.verification_status = 'PENDING'
+                owner.save(update_fields=['is_verified', 'verification_status'])
+                Venue.objects.filter(owner=owner).update(is_verified=False)
+            elif hasattr(user, 'venue_owner_profile'):
+                owner = user.venue_owner_profile
+                owner.is_verified = False
+                owner.verification_status = 'PENDING'
+                owner.save(update_fields=['is_verified', 'verification_status'])
+                Venue.objects.filter(owner=owner).update(is_verified=False)
+
+            if doc.vendor:
+                vendor = doc.vendor
+                vendor.is_verified = False
+                vendor.verification_status = 'PENDING'
+                vendor.save(update_fields=['is_verified', 'verification_status'])
+                Venue.objects.filter(vendor=vendor).update(is_verified=False)
+            elif hasattr(user, 'vendor_profile'):
+                vendor = user.vendor_profile
+                vendor.is_verified = False
+                vendor.verification_status = 'PENDING'
+                vendor.save(update_fields=['is_verified', 'verification_status'])
+                Venue.objects.filter(vendor=vendor).update(is_verified=False)
+
+        return Response(VerificationDocumentSerializer(doc).data)
+

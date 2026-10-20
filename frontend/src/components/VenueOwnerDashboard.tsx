@@ -19,6 +19,8 @@ import {
 import toast from 'react-hot-toast';
 import { cleanImageUrl, handleImageError, DEFAULT_SPACE_IMAGE } from '../utils/imageUtils';
 import { CreateListingPage } from './CreateListingPage';
+import { VerificationDocumentsSection } from './VerificationDocumentsSection';
+import type { VerificationDocument } from '../types';
 
 interface VenueOwnerDashboardProps {
   currentOwner: VenueOwner;
@@ -29,7 +31,8 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
   currentOwner,
   onLogout,
 }) => {
-  const [activeTab, setActiveTab] = useState<'venues' | 'bookings' | 'messages' | 'profile' | 'create_listing'>('venues');
+  const [activeTab, setActiveTab] = useState<'venues' | 'bookings' | 'messages' | 'verification' | 'profile' | 'create_listing'>('venues');
+  const [verificationDocs, setVerificationDocs] = useState<VerificationDocument[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [selectedBookingChatId, setSelectedBookingChatId] = useState<number | null>(null);
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
@@ -131,9 +134,10 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
     try {
-      const [dashData, bookingsData] = await Promise.all([
+      const [dashData, bookingsData, docsData] = await Promise.all([
         ApiService.getVenueOwnerDashboard(currentOwner.id),
         ApiService.getVenueOwnerBookings(currentOwner.id),
+        ApiService.getVerificationDocuments({ venue_owner: currentOwner.id, user: currentOwner.user }),
       ]);
       setStats({
         total_revenue: dashData.total_revenue || 0,
@@ -144,12 +148,13 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
       });
       setVenues(dashData.venues || []);
       setBookings(bookingsData || []);
+      setVerificationDocs(docsData || []);
     } catch (e) {
       console.error('Failed to load venue owner dashboard data:', e);
     } finally {
       setLoading(false);
     }
-  }, [currentOwner.id]);
+  }, [currentOwner.id, currentOwner.user]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -530,6 +535,25 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
             <MessageSquare size={18} /> Messages
           </button>
           <button
+            onClick={() => setActiveTab('verification')}
+            style={{
+              padding: '12px 24px',
+              fontWeight: 700,
+              fontSize: '1rem',
+              color: activeTab === 'verification' ? '#0d8a73' : '#64748b',
+              borderBottom: activeTab === 'verification' ? '3px solid #0d8a73' : '3px solid transparent',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginBottom: '-2px',
+            }}
+          >
+            <ShieldCheck size={18} /> Verification & Licenses ({verificationDocs.length})
+          </button>
+          <button
             onClick={() => setActiveTab('profile')}
             style={{
               padding: '12px 24px',
@@ -546,9 +570,23 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
               marginBottom: '-2px',
             }}
           >
-            <ShieldCheck size={18} /> My Profile
+            <UserIcon size={18} /> My Profile
           </button>
         </div>
+
+        {/* TAB: VERIFICATION DOCUMENTS */}
+        {activeTab === 'verification' && (
+          <div className="mb-12">
+            <VerificationDocumentsSection
+              userId={currentOwner.user}
+              providerType="venue_owner"
+              providerName={currentOwner.business_name}
+              isVerified={currentOwner.is_verified}
+              documents={verificationDocs}
+              onRefresh={fetchDashboardData}
+            />
+          </div>
+        )}
 
         {/* TAB: CREATE LISTING FULL PAGE */}
         {activeTab === 'create_listing' && (

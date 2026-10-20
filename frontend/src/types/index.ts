@@ -325,4 +325,42 @@ export interface ReminderPreference {
   updated_at?: string;
 }
 
+export type DocumentType = 
+  | 'BUSINESS_REGISTRATION'
+  | 'OPERATING_LICENSE'
+  | 'IDENTITY_DOCUMENT'
+  | 'TAX_COMPLIANCE'
+  | 'HEALTH_SAFETY'
+  | 'INSURANCE'
+  | 'OTHER';
+
+export type DocumentReviewStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED';
+
+export interface VerificationDocument {
+  id: number;
+  user: number;
+  user_name?: string;
+  vendor?: number | null;
+  venue_owner?: number | null;
+  business_name?: string;
+  document_type: DocumentType;
+  document_type_display: string;
+  title: string;
+  file?: string;
+  file_name: string;
+  file_size: number;
+  file_extension: string;
+  status: DocumentReviewStatus;
+  status_display: string;
+  is_currently_valid: boolean;
+  rejection_reason?: string | null;
+  admin_notes?: string | null;
+  reviewed_by?: number | null;
+  reviewed_at?: string | null;
+  expiry_date?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+
 

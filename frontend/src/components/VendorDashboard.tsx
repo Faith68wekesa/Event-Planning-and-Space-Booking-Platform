@@ -9,10 +9,12 @@ import { VendorDashboardCalendar } from './VendorDashboardCalendar';
 import { VendorDashboardMessages } from './VendorDashboardMessages';
 import { VendorDashboardSettings } from './VendorDashboardSettings';
 import './vendor-dashboard.css';
-import { Home, Building, Package, MessageCircle, Settings, LogOut, User, CalendarCheck, Calendar, Star, Clock } from 'lucide-react';
+import { Home, Building, Package, MessageCircle, Settings, LogOut, User, CalendarCheck, Calendar, Star, Clock, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { CreateListingPage } from './CreateListingPage';
 import { ProviderAvailabilityDashboard } from './ProviderAvailabilityDashboard';
+import { VerificationDocumentsSection } from './VerificationDocumentsSection';
+import type { VerificationDocument } from '../types';
 
 interface VendorDashboardProps {
   currentVendor: Vendor;
@@ -21,7 +23,8 @@ interface VendorDashboardProps {
 export const VendorDashboard: React.FC<VendorDashboardProps> = ({
   currentVendor,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'portfolio' | 'availability' | 'bookings' | 'reviews' | 'profile' | 'messages' | 'calendar' | 'settings' | 'my_profile' | 'create_listing'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'portfolio' | 'availability' | 'bookings' | 'reviews' | 'profile' | 'messages' | 'calendar' | 'verification' | 'settings' | 'my_profile' | 'create_listing'>('overview');
+  const [verificationDocs, setVerificationDocs] = useState<VerificationDocument[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [reviews, setReviews] = useState<Review[]>([]);
 
@@ -94,10 +97,11 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
 
   const fetchDashboardData = useCallback(async () => {
     try {
-      const [dashData, bookingsData, reviewsData] = await Promise.all([
+      const [dashData, bookingsData, reviewsData, docsData] = await Promise.all([
         ApiService.getVendorDashboard(currentVendor.id),
         ApiService.getVendorBookings(currentVendor.id),
-        ApiService.getReviews({ vendor: currentVendor.id }).catch(() => [])
+        ApiService.getReviews({ vendor: currentVendor.id }).catch(() => []),
+        ApiService.getVerificationDocuments({ vendor: currentVendor.id, user: currentVendor.user })
       ]);
       setStats({
         total_venues: dashData.total_venues,
@@ -109,10 +113,11 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
       setVenues(dashData.venues);
       setBookings(bookingsData);
       setReviews(reviewsData);
+      setVerificationDocs(docsData || []);
     } catch (e) {
       console.error(e);
     }
-  }, [currentVendor.id]);
+  }, [currentVendor.id, currentVendor.user]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -149,6 +154,7 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
     { id: 'profile', label: 'Business Profile', icon: Building },
     { id: 'portfolio', label: 'My Services', icon: Package },
     { id: 'availability', label: 'Availability', icon: Clock },
+    { id: 'verification', label: `Licenses & Verification (${verificationDocs.length})`, icon: ShieldCheck },
     { id: 'bookings', label: 'Booking Requests', icon: CalendarCheck },
     { id: 'messages', label: 'Messages', icon: MessageCircle },
     { id: 'calendar', label: 'Calendar', icon: Calendar },
@@ -161,6 +167,8 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
     switch (activeTab) {
       case 'overview': return 'Vendor Dashboard';
       case 'portfolio': return 'My Services';
+      case 'availability': return 'Provider Availability';
+      case 'verification': return 'Verification Documents & Licenses';
       case 'bookings': return 'Manage Booking Requests';
       case 'reviews': return 'Client Reviews';
       case 'profile': return 'Business Profile';
@@ -176,6 +184,8 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
     switch (activeTab) {
       case 'overview': return 'Manage your account, bookings, and listings.';
       case 'portfolio': return 'Manage the services you offer, showcase examples of your work, and track their verification status.';
+      case 'availability': return 'Set your working hours, maximum guest capacity, and block dates.';
+      case 'verification': return 'Upload mandatory business registration, operating permits, and view verification review status.';
       case 'bookings': return 'Track and manage your upcoming client events.';
       case 'reviews': return 'See what clients are saying about your services.';
       case 'profile': return 'Update your public business information.';
@@ -269,6 +279,17 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
 
         {activeTab === 'availability' && (
           <ProviderAvailabilityDashboard bookings={bookings} venues={venues} />
+        )}
+
+        {activeTab === 'verification' && (
+          <VerificationDocumentsSection
+            userId={currentVendor.user}
+            providerType="vendor"
+            providerName={currentVendor.business_name}
+            isVerified={currentVendor.is_verified}
+            documents={verificationDocs}
+            onRefresh={fetchDashboardData}
+          />
         )}
 
         {activeTab === 'reviews' && (

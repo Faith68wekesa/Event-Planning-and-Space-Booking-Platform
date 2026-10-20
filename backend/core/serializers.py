@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import (
     User, VendorProfile, VenueOwnerProfile, Venue, Booking, Review, Message, Event, EventService,
-    Notification, CustomerReminderPreference
+    Notification, CustomerReminderPreference, VerificationDocument
 )
 
 class UserSerializer(serializers.ModelSerializer):
@@ -310,5 +310,65 @@ class CustomerReminderPreferenceSerializer(serializers.ModelSerializer):
             'remind_7_days', 'remind_1_day', 'remind_due_today', 'remind_overdue', 'updated_at'
         ]
         read_only_fields = ['id', 'user', 'updated_at']
+
+
+class VerificationDocumentSerializer(serializers.ModelSerializer):
+    document_type_display = serializers.CharField(source='get_document_type_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    user_name = serializers.SerializerMethodField()
+    business_name = serializers.SerializerMethodField()
+    is_currently_valid = serializers.BooleanField(read_only=True)
+
+    def get_user_name(self, obj):
+        if obj.user:
+            return f"{obj.user.first_name} {obj.user.last_name or ''}".strip() or obj.user.username
+        return ''
+
+    def get_business_name(self, obj):
+        if obj.venue_owner and obj.venue_owner.business_name:
+            return obj.venue_owner.business_name
+        if obj.vendor and obj.vendor.business_name:
+            return obj.vendor.business_name
+        return ''
+
+    class Meta:
+        model = VerificationDocument
+        fields = [
+            'id', 'user', 'user_name', 'vendor', 'venue_owner', 'business_name',
+            'document_type', 'document_type_display', 'title',
+            'file', 'file_name', 'file_size', 'file_extension',
+            'status', 'status_display', 'is_currently_valid',
+            'rejection_reason', 'admin_notes', 'reviewed_by', 'reviewed_at',
+            'expiry_date', 'created_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'id', 'user', 'vendor', 'venue_owner', 'file_name', 'file_size', 'file_extension',
+            'status', 'status_display', 'rejection_reason', 'admin_notes', 'reviewed_by', 'reviewed_at',
+            'created_at', 'updated_at'
+        ]
+
+    def validate_file(self, value):
+        if not value:
+            raise serializers.ValidationError("A valid file must be uploaded.")
+        
+        # Max file size: 10MB
+        max_size = 10 * 1024 * 1024
+        if value.size > max_size:
+            raise serializers.ValidationError(f"File size exceeds 10MB limit. Uploaded file is {round(value.size / (1024 * 1024), 2)}MB.")
+
+        # Allowed extensions
+        allowed_extensions = ['pdf', 'jpg', 'jpeg', 'png']
+        filename = value.name.lower() if hasattr(value, 'name') else ''
+        ext = filename.split('.')[-1] if '.' in filename else ''
+        if ext not in allowed_extensions:
+            raise serializers.ValidationError(f"Unsupported file format '.{ext}'. Allowed formats: PDF, JPG, JPEG, PNG.")
+
+        # Disallow dangerous executable extensions
+        dangerous = ['exe', 'bat', 'sh', 'py', 'js', 'php', 'html', 'cmd']
+        if ext in dangerous:
+            raise serializers.ValidationError("Executable or script files are strictly prohibited.")
+
+        return value
+
 
 

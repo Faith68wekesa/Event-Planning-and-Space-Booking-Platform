@@ -1,4 +1,4 @@
-import type { User, Venue, Vendor, VenueOwner, Booking, PlatformStats, FilterState, BookingStatus, Review, Message, ConversationThread, EventItem, EventServiceItem, NotificationItem, ReminderPreference } from '../types';
+import type { User, Venue, Vendor, VenueOwner, Booking, PlatformStats, FilterState, BookingStatus, Review, Message, ConversationThread, EventItem, EventServiceItem, NotificationItem, ReminderPreference, VerificationDocument } from '../types';
 
 const API_BASE = 'http://localhost:8000/api';
 
@@ -942,6 +942,128 @@ export const ApiService = {
       console.error('Failed to update reminder preferences:', e);
       return { success: false, error: e?.message || 'Network error updating reminder preferences.' };
     }
+  },
+
+  // Document & License Verification API
+  async getVerificationDocuments(filters: { user?: number | string; vendor?: number | string; venue_owner?: number | string; status?: string; document_type?: string } = {}): Promise<VerificationDocument[]> {
+    try {
+      const q = new URLSearchParams();
+      if (filters.user) q.append('user', filters.user.toString());
+      if (filters.vendor) q.append('vendor', filters.vendor.toString());
+      if (filters.venue_owner) q.append('venue_owner', filters.venue_owner.toString());
+      if (filters.status && filters.status !== 'ALL') q.append('status', filters.status);
+      if (filters.document_type && filters.document_type !== 'ALL') q.append('document_type', filters.document_type);
+
+      const res = await fetch(`${API_BASE}/documents/?${q.toString()}`, {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return Array.isArray(data) ? data : data.results || [];
+      }
+    } catch (e) {
+      console.error('Failed to fetch verification documents', e);
+    }
+    return [];
+  },
+
+  async uploadVerificationDocument(formData: FormData, userId?: number | string): Promise<{ success: boolean; data?: VerificationDocument; error?: string }> {
+    try {
+      const headers: Record<string, string> = {};
+      const uid = userId || currentUserId;
+      if (uid) {
+        headers['X-User-Id'] = uid.toString();
+      }
+
+      const res = await fetch(`${API_BASE}/documents/`, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+      const data = await res.json();
+      if (res.ok) {
+        return { success: true, data };
+      }
+      return { success: false, error: formatApiError(data, 'Failed to upload verification document.') };
+    } catch (e: any) {
+      console.error('Failed to upload verification document', e);
+      return { success: false, error: e?.message || 'Network error during document upload.' };
+    }
+  },
+
+  async approveVerificationDocument(documentId: number, adminNotes?: string, adminUserId?: number | string): Promise<{ success: boolean; data?: VerificationDocument; error?: string }> {
+    try {
+      const headers = getAuthHeaders({ 'Content-Type': 'application/json' });
+      if (adminUserId) {
+        headers['X-Admin-Id'] = adminUserId.toString();
+      }
+
+      const res = await fetch(`${API_BASE}/documents/${documentId}/approve/`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ admin_notes: adminNotes || '' }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        return { success: true, data };
+      }
+      return { success: false, error: formatApiError(data, 'Failed to approve document.') };
+    } catch (e: any) {
+      console.error('Failed to approve verification document', e);
+      return { success: false, error: e?.message || 'Network error approving document.' };
+    }
+  },
+
+  async rejectVerificationDocument(documentId: number, reason: string, adminNotes?: string, adminUserId?: number | string): Promise<{ success: boolean; data?: VerificationDocument; error?: string }> {
+    try {
+      const headers = getAuthHeaders({ 'Content-Type': 'application/json' });
+      if (adminUserId) {
+        headers['X-Admin-Id'] = adminUserId.toString();
+      }
+
+      const res = await fetch(`${API_BASE}/documents/${documentId}/reject/`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ reason, admin_notes: adminNotes || '' }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        return { success: true, data };
+      }
+      return { success: false, error: formatApiError(data, 'Failed to reject document.') };
+    } catch (e: any) {
+      console.error('Failed to reject verification document', e);
+      return { success: false, error: e?.message || 'Network error rejecting document.' };
+    }
+  },
+
+  async deleteVerificationDocument(documentId: number, userId?: number | string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const headers: Record<string, string> = {};
+      const uid = userId || currentUserId;
+      if (uid) {
+        headers['X-User-Id'] = uid.toString();
+      }
+
+      const res = await fetch(`${API_BASE}/documents/${documentId}/`, {
+        method: 'DELETE',
+        headers,
+      });
+      if (res.ok || res.status === 204) {
+        return { success: true };
+      }
+      const data = await res.json().catch(() => ({}));
+      return { success: false, error: formatApiError(data, 'Failed to delete document.') };
+    } catch (e: any) {
+      console.error('Failed to delete verification document', e);
+      return { success: false, error: e?.message || 'Network error deleting document.' };
+    }
+  },
+
+  getDocumentDownloadUrl(documentId: number, userId?: number | string): string {
+    const uid = userId || currentUserId;
+    const userParam = uid ? `?user_id=${uid}` : '';
+    return `${API_BASE}/documents/${documentId}/download/${userParam}`;
   }
 };
 

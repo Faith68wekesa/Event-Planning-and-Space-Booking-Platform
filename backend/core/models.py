@@ -462,3 +462,73 @@ class CustomerReminderPreference(models.Model):
     def __str__(self):
         return f"Preferences for {self.user.username}"
 
+
+import os
+from django.core.files.storage import FileSystemStorage
+from django.conf import settings
+
+private_doc_storage = FileSystemStorage(location=getattr(settings, 'PRIVATE_MEDIA_ROOT', os.path.join(settings.BASE_DIR, 'private_documents')))
+
+def verification_doc_upload_path(instance, filename):
+    import uuid
+    import os
+    ext = filename.split('.')[-1].lower() if '.' in filename else 'pdf'
+    safe_name = f"{uuid.uuid4().hex}.{ext}"
+    return os.path.join(f"user_{instance.user_id}", safe_name)
+
+
+class VerificationDocument(models.Model):
+    DOCUMENT_TYPE_CHOICES = [
+        ('BUSINESS_REGISTRATION', 'Business Registration / Certificate of Incorporation'),
+        ('OPERATING_LICENSE', 'Operating Permit / County Business License'),
+        ('IDENTITY_DOCUMENT', 'National ID / Passport (Director / Owner)'),
+        ('TAX_COMPLIANCE', 'KRA Tax Compliance Certificate / Pin Certificate'),
+        ('HEALTH_SAFETY', 'Health & Safety / Fire Inspection Clearance'),
+        ('INSURANCE', 'Public Liability Insurance Policy'),
+        ('OTHER', 'Other Supporting Verification Document'),
+    ]
+
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending Review'),
+        ('APPROVED', 'Approved'),
+        ('REJECTED', 'Rejected'),
+        ('EXPIRED', 'Expired'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='verification_documents')
+    vendor = models.ForeignKey(VendorProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='verification_documents')
+    venue_owner = models.ForeignKey(VenueOwnerProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='verification_documents')
+
+    document_type = models.CharField(max_length=50, choices=DOCUMENT_TYPE_CHOICES)
+    title = models.CharField(max_length=200, blank=True, default='')
+    file = models.FileField(upload_to=verification_doc_upload_path, storage=private_doc_storage)
+    file_name = models.CharField(max_length=255, blank=True)
+    file_size = models.IntegerField(default=0, help_text="File size in bytes")
+    file_extension = models.CharField(max_length=10, blank=True)
+
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    rejection_reason = models.TextField(blank=True, null=True)
+    admin_notes = models.TextField(blank=True, null=True)
+    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_verification_documents')
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    expiry_date = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.get_document_type_display()} - {self.user.username} ({self.status})"
+
+    @property
+    def is_currently_valid(self):
+        if self.status != 'APPROVED':
+            return False
+        if self.expiry_date:
+            import datetime
+            if self.expiry_date < datetime.date.today():
+                return False
+        return True
+

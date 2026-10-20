@@ -75,17 +75,47 @@ class BookingCapacityValidator:
         if guest_count < 1:
             raise ValidationError("Guest count must be at least 1.")
 
-        # Check listing approval and active status
+        # Check listing approval, active status, and provider verification documents
+        from core.models import VerificationDocument
         if venue:
             if venue.approval_status != 'APPROVED' or not venue.is_verified:
                 raise ValidationError("This venue is currently pending administrator verification and cannot accept bookings.")
             if not venue.is_available:
                 raise ValidationError("This venue is currently marked as unavailable or inactive.")
-            if venue.owner and venue.owner.verification_status != 'APPROVED':
-                raise ValidationError("The venue owner account is not verified.")
+            
+            # Check owner verification & documents
+            if venue.owner:
+                if venue.owner.verification_status != 'APPROVED' or not venue.owner.is_verified:
+                    raise ValidationError("The venue owner account is not verified.")
+                # If provider has documents on record, ensure at least one approved valid doc and no all-expired docs
+                owner_docs = VerificationDocument.objects.filter(venue_owner=venue.owner)
+                if owner_docs.exists():
+                    has_valid_doc = owner_docs.filter(status='APPROVED').filter(
+                        Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
+                    ).exists()
+                    if not has_valid_doc:
+                        raise ValidationError("This venue's owner has expired or unapproved verification documents.")
+            elif venue.vendor:
+                if venue.vendor.verification_status != 'APPROVED' or not venue.vendor.is_verified:
+                    raise ValidationError("The service provider account is not verified.")
+                vendor_docs = VerificationDocument.objects.filter(vendor=venue.vendor)
+                if vendor_docs.exists():
+                    has_valid_doc = vendor_docs.filter(status='APPROVED').filter(
+                        Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
+                    ).exists()
+                    if not has_valid_doc:
+                        raise ValidationError("This venue's provider has expired or unapproved verification documents.")
+
         if vendor:
             if vendor.verification_status != 'APPROVED' or not vendor.is_verified:
                 raise ValidationError("This service provider is currently pending administrator verification and cannot accept bookings.")
+            vendor_docs = VerificationDocument.objects.filter(vendor=vendor)
+            if vendor_docs.exists():
+                has_valid_doc = vendor_docs.filter(status='APPROVED').filter(
+                    Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
+                ).exists()
+                if not has_valid_doc:
+                    raise ValidationError("This service provider has expired or unapproved verification documents.")
 
         # Determine the provider user and settings
         provider_user = None

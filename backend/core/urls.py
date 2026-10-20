@@ -9,7 +9,7 @@ from .views import (
     upload_profile_picture,
     register_user, login_user, request_role,
     NotificationViewSet, CustomerReminderPreferenceView,
-    refresh_all_ratings
+    refresh_all_ratings, VerificationDocumentViewSet
 )
 
 router = DefaultRouter()
@@ -23,6 +23,7 @@ router.register(r'messages', MessageViewSet, basename='message')
 router.register(r'events', EventViewSet, basename='event')
 router.register(r'event-services', EventServiceViewSet, basename='event-service')
 router.register(r'notifications', NotificationViewSet, basename='notification')
+router.register(r'documents', VerificationDocumentViewSet, basename='verification-document')
 
 urlpatterns = [
     path('auth/register/', register_user, name='register-user'),
