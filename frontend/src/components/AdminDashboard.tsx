@@ -5,10 +5,13 @@ import {
   X, Eye, Clock, MapPin, ExternalLink,
   Users, Calendar, Star, Trash2, Edit3, RefreshCw,
   Search, CheckCircle2, ArrowUpRight, DollarSign,
-  UserX, Shield, AlertCircle, ShieldAlert, Lock, ArrowLeft, FileText, AlertTriangle
+  UserX, Shield, AlertCircle, ShieldAlert, Lock, ArrowLeft, FileText, AlertTriangle, Menu
 } from 'lucide-react';
 import { ApiService } from '../services/api';
 import { toast } from 'react-hot-toast';
+import { AdminSidebar } from './AdminSidebar';
+import type { AdminMenuItemId } from './AdminSidebar';
+import './admin-sidebar.css';
 
 interface AdminDashboardProps {
   venues: Venue[];
@@ -19,6 +22,7 @@ interface AdminDashboardProps {
   currentUser?: User | null;
   onNavigateHome?: () => void;
   onLoginClick?: () => void;
+  onLogout?: () => void;
   onDataChange?: () => void;
 }
 
@@ -41,7 +45,7 @@ interface UnifiedAccount {
   rawItem: Vendor | VenueOwner;
 }
 
-type AdminTab = 'overview' | 'users' | 'bookings' | 'venues' | 'verifications' | 'reviews';
+type AdminTab = 'overview' | 'users' | 'bookings' | 'venues' | 'verifications' | 'reviews' | 'analytics' | 'settings';
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   venues: propVenues,
@@ -51,6 +55,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   currentUser,
   onNavigateHome,
   onLoginClick,
+  onLogout,
   onDataChange,
 }) => {
   const isAdmin = Boolean(currentUser && (
@@ -60,6 +65,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   ));
 
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [refreshingRatings, setRefreshingRatings] = useState(false);
 
@@ -653,7 +659,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }
 
   return (
-    <div style={{ maxWidth: '1360px', margin: '32px auto', padding: '0 24px', minHeight: '80vh' }}>
+    <div className="admin-dashboard-wrapper">
+      {/* 1. Left Fixed Sidebar */}
+      <AdminSidebar
+        activeItem={activeTab as AdminMenuItemId}
+        onSelectItem={(item) => setActiveTab(item as AdminTab)}
+        currentUser={currentUser}
+        onNavigateHome={onNavigateHome}
+        onLogout={onLogout}
+        isMobileOpen={isMobileSidebarOpen}
+        onToggleMobile={() => setIsMobileSidebarOpen(prev => !prev)}
+        badgeCounts={{
+          users: users.length,
+          bookings: bookings.length,
+          venues: venues.length,
+          verifications: pendingVerificationCount,
+          reviews: reviews.length,
+        }}
+      />
+
+      {/* 2. Main Viewport (Scrolls independently) */}
+      <div className="admin-main-viewport">
+        {/* Mobile Header Bar with Hamburger */}
+        <header className="admin-mobile-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button
+              className="admin-mobile-toggle-btn"
+              onClick={() => setIsMobileSidebarOpen(true)}
+              aria-label="Open sidebar menu"
+            >
+              <Menu size={20} />
+            </button>
+            <span className="admin-mobile-title">Admin Console</span>
+          </div>
+          <span style={{ fontSize: '0.78rem', color: '#5eead4', fontWeight: 700, textTransform: 'uppercase' }}>
+            {activeTab}
+          </span>
+        </header>
+
+        <div className="admin-dashboard-container">
       {/* Top Banner & Title */}
       <div style={{
         background: 'linear-gradient(135deg, #0d8a73 0%, #065f46 100%)',
@@ -728,65 +772,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           Refreshing platform data and user accounts...
         </div>
       )}
-
-      {/* Admin Navigation Tabs */}
-      <div style={{
-        display: 'flex',
-        gap: '8px',
-        borderBottom: '2px solid #e2e8f0',
-        marginBottom: '28px',
-        overflowX: 'auto',
-        paddingBottom: '4px',
-      }}>
-        {[
-          { id: 'overview', label: 'Overview & Analytics', icon: ShieldCheck },
-          { id: 'users', label: `Users (${users.length})`, icon: Users },
-          { id: 'bookings', label: `Bookings (${bookings.length})`, icon: Calendar },
-          { id: 'venues', label: `Venues & Spaces (${venues.length})`, icon: Building2 },
-          { id: 'verifications', label: `Verification Queue (${pendingVerificationCount})`, icon: UserCheck, badge: pendingVerificationCount },
-          { id: 'reviews', label: `Reviews & Ratings (${reviews.length})`, icon: Star },
-        ].map(tab => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as AdminTab)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '12px 18px',
-                border: 'none',
-                background: isActive ? '#f0fdfa' : 'transparent',
-                color: isActive ? '#0d8a73' : '#64748b',
-                fontWeight: isActive ? 700 : 600,
-                fontSize: '0.92rem',
-                borderRadius: '10px 10px 0 0',
-                cursor: 'pointer',
-                borderBottom: isActive ? '3px solid #0d8a73' : '3px solid transparent',
-                transition: 'all 0.15s ease',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              <Icon size={18} color={isActive ? '#0d8a73' : '#64748b'} />
-              {tab.label}
-              {Boolean(tab.badge && tab.badge > 0) && (
-                <span style={{
-                  background: '#f59e0b',
-                  color: '#ffffff',
-                  fontSize: '0.72rem',
-                  fontWeight: 800,
-                  padding: '2px 7px',
-                  borderRadius: '999px',
-                }}>
-                  {tab.badge}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
 
       {/* TAB 1: OVERVIEW & ANALYTICS */}
       {activeTab === 'overview' && (
@@ -2217,6 +2202,167 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
+      {/* TAB 7: PLATFORM ANALYTICS & REPORTS */}
+      {activeTab === 'analytics' && (
+        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
+            <div>
+              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>Platform Analytics & Reports</h2>
+              <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Real-time business performance, conversion rates, and revenue breakdown across Kenya.</p>
+            </div>
+            <button
+              onClick={handleRefreshRatings}
+              disabled={refreshingRatings}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                background: '#0d8a73',
+                color: '#ffffff',
+                border: 'none',
+                padding: '9px 18px',
+                borderRadius: '10px',
+                fontWeight: 700,
+                fontSize: '0.85rem',
+                cursor: refreshingRatings ? 'not-allowed' : 'pointer'
+              }}
+            >
+              <RefreshCw size={15} className={refreshingRatings ? 'spin' : ''} />
+              Re-compute Platform Metrics
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '28px' }}>
+            <div style={{ padding: '20px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Booking Conversion Rate</div>
+              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0d8a73', marginTop: '8px' }}>
+                {bookings.length > 0
+                  ? `${Math.round((bookings.filter(b => b.status === 'APPROVED' || b.status === 'COMPLETED').length / bookings.length) * 100)}%`
+                  : '100%'}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '4px' }}>
+                {bookings.filter(b => b.status === 'APPROVED' || b.status === 'COMPLETED').length} confirmed / {bookings.length} requests
+              </div>
+            </div>
+
+            <div style={{ padding: '20px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Provider Verification Rate</div>
+              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#2563eb', marginTop: '8px' }}>
+                {unifiedAccounts.length > 0
+                  ? `${Math.round((unifiedAccounts.filter(a => a.is_verified || a.verification_status === 'APPROVED').length / unifiedAccounts.length) * 100)}%`
+                  : '0%'}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '4px' }}>
+                {unifiedAccounts.filter(a => a.is_verified || a.verification_status === 'APPROVED').length} verified of {unifiedAccounts.length} providers
+              </div>
+            </div>
+
+            <div style={{ padding: '20px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Average Booking Value</div>
+              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#059669', marginTop: '8px' }}>
+                KES {bookings.length > 0 ? Math.round((stats?.total_revenue || 0) / (bookings.length || 1)).toLocaleString() : '0'}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '4px' }}>
+                Based on active and completed platform reservations
+              </div>
+            </div>
+          </div>
+
+          <div style={{ padding: '20px', borderRadius: '14px', border: '1px solid #e2e8f0', background: '#ffffff' }}>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#1e293b', margin: '0 0 16px' }}>Catalog & Supply Breakdown</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
+              <div style={{ padding: '14px', borderRadius: '10px', background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase' }}>Active Venues</span>
+                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#15803d', marginTop: '4px' }}>{venues.length} Spaces</div>
+              </div>
+              <div style={{ padding: '14px', borderRadius: '10px', background: '#f0fdfa', border: '1px solid #99f6e4' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#115e59', textTransform: 'uppercase' }}>Active Vendors</span>
+                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f766e', marginTop: '4px' }}>{vendors.length} Services</div>
+              </div>
+              <div style={{ padding: '14px', borderRadius: '10px', background: '#fef3c7', border: '1px solid #fde68a' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#92400e', textTransform: 'uppercase' }}>Pending Approvals</span>
+                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#b45309', marginTop: '4px' }}>{pendingVerificationCount} Queue Items</div>
+              </div>
+              <div style={{ padding: '14px', borderRadius: '10px', background: '#f3e8ff', border: '1px solid #e9d5ff' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#6b21a8', textTransform: 'uppercase' }}>Total Feedback</span>
+                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#7e22ce', marginTop: '4px' }}>{reviews.length} Client Reviews</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 8: PLATFORM SETTINGS */}
+      {activeTab === 'settings' && (
+        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+          <div style={{ marginBottom: '24px' }}>
+            <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>Platform Settings & Configuration</h2>
+            <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Manage security settings, operational defaults, and administrative controls.</p>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{ padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: '#f8fafc' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <h4 style={{ margin: '0 0 4px', fontSize: '1rem', fontWeight: 700, color: '#1e293b' }}>Administrator Account Session</h4>
+                  <p style={{ margin: 0, color: '#64748b', fontSize: '0.84rem' }}>
+                    Signed in as <strong>{currentUser?.email || 'admin@locyfy.com'}</strong> with platform {currentUser?.role || 'ADMIN'} privileges.
+                  </p>
+                </div>
+                {onLogout && (
+                  <button
+                    onClick={onLogout}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      background: '#fee2e2',
+                      color: '#dc2626',
+                      border: '1px solid #fecaca',
+                      fontWeight: 700,
+                      fontSize: '0.82rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    End Session
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div style={{ padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: '#ffffff' }}>
+              <h4 style={{ margin: '0 0 12px', fontSize: '1rem', fontWeight: 700, color: '#1e293b' }}>System Operations & Data Caching</h4>
+              <p style={{ margin: '0 0 16px', color: '#64748b', fontSize: '0.84rem' }}>
+                Trigger background sync, recalculate composite provider ratings, or refresh booking inventory counts.
+              </p>
+              <button
+                onClick={async () => {
+                  await handleRefreshRatings();
+                  loadAdminData();
+                  onDataChange?.();
+                }}
+                disabled={loading || refreshingRatings}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: '10px',
+                  background: '#0d8a73',
+                  color: '#ffffff',
+                  border: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.88rem',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                <RefreshCw size={16} className={refreshingRatings ? 'spin' : ''} />
+                Force System Refresh
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL 1: Account Verification Review Modal */}
       {selectedAccount && (
         <div style={{
@@ -2931,6 +3077,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
       )}
+        </div>
+      </div>
     </div>
   );
 };

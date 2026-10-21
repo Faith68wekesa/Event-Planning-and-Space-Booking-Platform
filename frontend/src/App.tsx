@@ -322,6 +322,11 @@ export const App: React.FC = () => {
                       setAuthMode('login');
                       setShowAuthModal(true);
                     }}
+                    onLogout={() => {
+                      setCurrentUser(null);
+                      setActiveRole('CUSTOMER');
+                      setActiveTab('landing');
+                    }}
                   />
                 )}
               </>
