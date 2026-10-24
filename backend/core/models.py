@@ -532,3 +532,50 @@ class VerificationDocument(models.Model):
                 return False
         return True
 
+
+class UserInteraction(models.Model):
+    EVENT_TYPE_CHOICES = [
+        ('SEARCH', 'Search Performed'),
+        ('LISTING_VIEW', 'Listing Viewed'),
+        ('LISTING_CLICK', 'Listing Clicked'),
+        ('CATEGORY_INTEREST', 'Category Interest'),
+        ('BOOKING_FORM_OPEN', 'Booking Form Opened'),
+        ('BOOKING_SUBMITTED', 'Booking Request Submitted'),
+        ('BOOKING_STATUS_CHANGE', 'Booking Status Changed'),
+    ]
+
+    LISTING_TYPE_CHOICES = [
+        ('VENUE', 'Venue / Space'),
+        ('VENDOR', 'Vendor / Service'),
+    ]
+
+    event_type = models.CharField(max_length=30, choices=EVENT_TYPE_CHOICES, db_index=True)
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='interactions')
+    session_id = models.CharField(max_length=64, blank=True, null=True, db_index=True)
+    
+    listing_type = models.CharField(max_length=20, choices=LISTING_TYPE_CHOICES, null=True, blank=True)
+    venue = models.ForeignKey(Venue, on_delete=models.CASCADE, null=True, blank=True, related_name='interactions')
+    vendor = models.ForeignKey(VendorProfile, on_delete=models.CASCADE, null=True, blank=True, related_name='interactions')
+    
+    category = models.CharField(max_length=100, blank=True, null=True, db_index=True)
+    search_query = models.CharField(max_length=255, blank=True, null=True)
+    location_filter = models.CharField(max_length=100, blank=True, null=True)
+    source = models.CharField(max_length=100, blank=True, null=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['event_type', 'timestamp']),
+            models.Index(fields=['venue', 'timestamp']),
+            models.Index(fields=['vendor', 'timestamp']),
+            models.Index(fields=['session_id', 'timestamp']),
+            models.Index(fields=['category', 'timestamp']),
+        ]
+
+    def __str__(self):
+        actor = self.user.username if self.user else f"Anon ({self.session_id[:8] if self.session_id else 'n/a'})"
+        return f"{self.event_type} by {actor} at {self.timestamp}"
+
+

@@ -8,12 +8,13 @@ from django.db import transaction
 from django.db.models import Q, Sum
 from .models import (
     User, VendorProfile, VenueOwnerProfile, Venue, Booking, Review, EmailOTP, Message, Event, EventService,
-    Notification, CustomerReminderPreference, VerificationDocument
+    Notification, CustomerReminderPreference, VerificationDocument, UserInteraction
 )
 from .serializers import (
     UserSerializer, VendorProfileSerializer, VenueOwnerProfileSerializer, VenueSerializer, 
     BookingSerializer, ReviewSerializer, MessageSerializer, EventSerializer, EventServiceSerializer,
-    NotificationSerializer, CustomerReminderPreferenceSerializer, VerificationDocumentSerializer
+    NotificationSerializer, CustomerReminderPreferenceSerializer, VerificationDocumentSerializer,
+    UserInteractionSerializer
 )
 from .services.reminder_service import evaluate_and_generate_reminders
 from django.core.mail import send_mail
@@ -469,6 +470,21 @@ class BookingViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():
             self.perform_create(serializer)
+            booking_obj = serializer.instance
+            try:
+                session_id = request.headers.get('X-Session-Id') or request.COOKIES.get('locyfy_session_id') or ''
+                UserInteraction.objects.create(
+                    event_type='BOOKING_SUBMITTED',
+                    user=booking_obj.customer,
+                    session_id=session_id[:64] if session_id else None,
+                    listing_type='VENUE' if booking_obj.venue else ('VENDOR' if booking_obj.vendor else None),
+                    venue=booking_obj.venue,
+                    vendor=booking_obj.vendor,
+                    category=booking_obj.venue.category if booking_obj.venue else (booking_obj.vendor.vendor_type if booking_obj.vendor else None),
+                    metadata={'booking_id': booking_obj.id, 'event_type': booking_obj.event_type}
+                )
+            except Exception:
+                pass
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
@@ -626,8 +642,23 @@ class BookingViewSet(viewsets.ModelViewSet):
                         lock_provider=True
                     )
 
+                old_status = booking.status
                 booking.status = new_status
                 booking.save()
+                try:
+                    session_id = request.headers.get('X-Session-Id') or request.COOKIES.get('locyfy_session_id') or ''
+                    UserInteraction.objects.create(
+                        event_type='BOOKING_STATUS_CHANGE',
+                        user=booking.customer,
+                        session_id=session_id[:64] if session_id else None,
+                        listing_type='VENUE' if booking.venue else ('VENDOR' if booking.vendor else None),
+                        venue=booking.venue,
+                        vendor=booking.vendor,
+                        category=booking.venue.category if booking.venue else (booking.vendor.vendor_type if booking.vendor else None),
+                        metadata={'booking_id': booking.id, 'old_status': old_status, 'new_status': new_status}
+                    )
+                except Exception:
+                    pass
                 return Response(BookingSerializer(booking).data)
         except Booking.DoesNotExist:
             return Response({'error': 'Booking not found.'}, status=status.HTTP_404_NOT_FOUND)
@@ -1037,12 +1068,27 @@ def platform_stats(request):
 @api_view(['POST'])
 def refresh_all_ratings(request):
     if not is_admin_user(request):
-        raise PermissionDenied("Access Denied: Administrator privileges required to recalculate platform ratings.")
-    for v in Venue.objects.all():
-        v.update_rating_stats()
-    for ven in VendorProfile.objects.all():
-        ven.update_rating_stats()
-    return Response({'status': 'ratings_refreshed'})
+        return Response(
+            {'error': 'Access Denied: Administrator privileges required to recalculate platform ratings.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    try:
+        venue_count = 0
+        for v in Venue.objects.all():
+            v.update_rating_stats()
+            venue_count += 1
+        vendor_count = 0
+        for ven in VendorProfile.objects.all():
+            ven.update_rating_stats()
+            vendor_count += 1
+        return Response({
+            'status': 'ratings_refreshed',
+            'venues_updated': venue_count,
+            'vendors_updated': vendor_count
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({'error': f'Failed to recalculate ratings: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 
 
@@ -1788,4 +1834,724 @@ class VerificationDocumentViewSet(viewsets.ModelViewSet):
                 Venue.objects.filter(vendor=vendor).update(is_verified=False)
 
         return Response(VerificationDocumentSerializer(doc).data)
+
+
+# ==============================================================================
+# USER INTERACTION TRACKING & ROLE-BASED ANALYTICS ENDPOINTS
+# ==============================================================================
+
+import csv
+from django.http import HttpResponse
+from django.db.models import Count
+from datetime import timedelta
+
+
+def parse_date_range(request):
+    """
+    Parses date range query parameters (preset: '7d', '30d', '90d', 'all' or start_date & end_date).
+    Returns (start_datetime, end_datetime, range_label).
+    """
+    preset = request.query_params.get('preset', '30d')
+    start_str = request.query_params.get('start_date')
+    end_str = request.query_params.get('end_date')
+
+    now = timezone.now()
+    end_dt = now
+
+    if start_str and end_str:
+        try:
+            s_d = datetime.datetime.strptime(start_str, '%Y-%m-%d').date()
+            e_d = datetime.datetime.strptime(end_str, '%Y-%m-%d').date()
+            start_dt = timezone.make_aware(datetime.datetime.combine(s_d, datetime.time.min))
+            end_dt = timezone.make_aware(datetime.datetime.combine(e_d, datetime.time.max))
+            return start_dt, end_dt, f"{start_str} to {end_str}"
+        except (ValueError, TypeError):
+            pass
+
+    if preset == '7d':
+        start_dt = now - timedelta(days=7)
+        label = 'Last 7 Days'
+    elif preset == '90d':
+        start_dt = now - timedelta(days=90)
+        label = 'Last 90 Days'
+    elif preset == 'all':
+        start_dt = timezone.make_aware(datetime.datetime(2020, 1, 1))
+        label = 'All Time'
+    else:  # default '30d'
+        start_dt = now - timedelta(days=30)
+        label = 'Last 30 Days'
+
+    return start_dt, end_dt, label
+
+
+def get_actor_user(request):
+    """
+    Safely retrieves the acting User from request.user or X-User-Id header.
+    """
+    user = getattr(request, 'user', None)
+    if user and user.is_authenticated:
+        return user
+    uid = request.headers.get('X-User-Id') or request.query_params.get('user_id')
+    if uid:
+        try:
+            return User.objects.get(pk=int(uid))
+        except (User.DoesNotExist, ValueError):
+            return None
+    return None
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def track_user_interaction(request):
+    """
+    Endpoint for recording customer interactions securely.
+    Accepts valid event types: SEARCH, LISTING_VIEW, LISTING_CLICK, CATEGORY_INTEREST, BOOKING_FORM_OPEN.
+    Validates referenced venue/vendor against actual database records.
+    """
+    data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+    event_type = data.get('event_type')
+
+    allowed_public_events = ['SEARCH', 'LISTING_VIEW', 'LISTING_CLICK', 'CATEGORY_INTEREST', 'BOOKING_FORM_OPEN']
+    if event_type not in allowed_public_events:
+        return Response({'error': f"Invalid or non-public event type '{event_type}'."}, status=status.HTTP_400_BAD_REQUEST)
+
+    actor = get_actor_user(request)
+    session_id = data.get('session_id') or request.headers.get('X-Session-Id') or request.COOKIES.get('locyfy_session_id') or ''
+
+    venue_id = data.get('venue')
+    vendor_id = data.get('vendor')
+    venue = None
+    vendor = None
+    listing_type = data.get('listing_type')
+
+    if venue_id:
+        try:
+            venue = Venue.objects.get(pk=int(venue_id))
+            listing_type = 'VENUE'
+        except (Venue.DoesNotExist, ValueError):
+            return Response({'error': 'Referenced venue does not exist.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if vendor_id:
+        try:
+            vendor = VendorProfile.objects.get(pk=int(vendor_id))
+            listing_type = 'VENDOR'
+        except (VendorProfile.DoesNotExist, ValueError):
+            return Response({'error': 'Referenced vendor does not exist.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    category = data.get('category')
+    if not category:
+        if venue:
+            category = venue.category
+        elif vendor:
+            category = vendor.vendor_type
+
+    # Sanitize and normalize search query
+    raw_query = data.get('search_query', '')
+    normalized_query = (raw_query.strip()[:200]) if raw_query else ''
+
+    # Throttling duplicate events: If identical listing_view or search by same user/session happened < 10 seconds ago, ignore duplicate
+    if event_type in ['LISTING_VIEW', 'SEARCH', 'BOOKING_FORM_OPEN']:
+        recent_cutoff = timezone.now() - timedelta(seconds=10)
+        dup_filter = Q(event_type=event_type, timestamp__gte=recent_cutoff)
+        if actor:
+            dup_filter &= Q(user=actor)
+        elif session_id:
+            dup_filter &= Q(session_id=session_id)
+        if venue:
+            dup_filter &= Q(venue=venue)
+        if vendor:
+            dup_filter &= Q(vendor=vendor)
+        if normalized_query:
+            dup_filter &= Q(search_query=normalized_query)
+
+        if UserInteraction.objects.filter(dup_filter).exists():
+            return Response({'status': 'deduplicated', 'message': 'Duplicate interaction ignored.'}, status=status.HTTP_200_OK)
+
+    interaction = UserInteraction.objects.create(
+        event_type=event_type,
+        user=actor,
+        session_id=session_id[:64] if session_id else None,
+        listing_type=listing_type,
+        venue=venue,
+        vendor=vendor,
+        category=category[:100] if category else None,
+        search_query=normalized_query or None,
+        location_filter=(data.get('location_filter') or '')[:100] or None,
+        source=(data.get('source') or '')[:100] or None,
+        metadata=data.get('metadata') if isinstance(data.get('metadata'), dict) else {}
+    )
+
+    return Response(UserInteractionSerializer(interaction).data, status=status.HTTP_201_CREATED)
+
+
+def compute_daily_breakdown(interactions_qs, bookings_qs, start_dt, end_dt):
+    """
+    Computes a date-bucketed trend array for views, searches, and booking requests.
+    """
+    days_count = max(1, (end_dt.date() - start_dt.date()).days + 1)
+    # Generate daily buckets
+    daily_map = {}
+    cur = start_dt.date()
+    end_d = end_dt.date()
+    while cur <= end_d:
+        daily_map[cur.strftime('%Y-%m-%d')] = {
+            'date': cur.strftime('%Y-%m-%d'),
+            'label': cur.strftime('%b %d'),
+            'searches': 0,
+            'views': 0,
+            'clicks': 0,
+            'booking_requests': 0,
+            'confirmed_bookings': 0,
+        }
+        cur += timedelta(days=1)
+
+    for item in interactions_qs:
+        d_str = item.timestamp.date().strftime('%Y-%m-%d')
+        if d_str in daily_map:
+            if item.event_type == 'SEARCH':
+                daily_map[d_str]['searches'] += 1
+            elif item.event_type == 'LISTING_VIEW':
+                daily_map[d_str]['views'] += 1
+            elif item.event_type == 'LISTING_CLICK':
+                daily_map[d_str]['clicks'] += 1
+
+    for b in bookings_qs:
+        d_str = b.created_at.date().strftime('%Y-%m-%d')
+        if d_str in daily_map:
+            daily_map[d_str]['booking_requests'] += 1
+            if b.status in ['APPROVED', 'COMPLETED']:
+                daily_map[d_str]['confirmed_bookings'] += 1
+
+    return list(daily_map.values())
+
+
+@api_view(['GET'])
+def admin_analytics(request):
+    """
+    Returns platform-wide aggregate analytics strictly for administrators.
+    """
+    if not is_admin_user(request):
+        raise PermissionDenied("Access Denied: Platform Administrator privileges required.")
+
+    start_dt, end_dt, range_label = parse_date_range(request)
+
+    # Scoped QuerySets based on date filter
+    interactions = UserInteraction.objects.filter(timestamp__gte=start_dt, timestamp__lte=end_dt)
+    bookings = Booking.objects.filter(created_at__gte=start_dt, created_at__lte=end_dt)
+
+    total_searches = interactions.filter(event_type='SEARCH').count()
+    total_listing_views = interactions.filter(event_type='LISTING_VIEW').count()
+
+    # Unique listing viewers calculation:
+    # Distinct authenticated user IDs + distinct anonymous sessions (where user is null)
+    auth_viewers = interactions.filter(event_type='LISTING_VIEW', user__isnull=False).values('user_id').distinct().count()
+    anon_viewers = interactions.filter(event_type='LISTING_VIEW', user__isnull=True, session_id__isnull=False).values('session_id').distinct().count()
+    unique_viewers = auth_viewers + anon_viewers
+
+    # Bookings metrics
+    booking_requests = bookings.count()
+    confirmed_bookings = bookings.filter(status__in=['APPROVED', 'COMPLETED']).count()
+    completed_bookings = bookings.filter(status='COMPLETED').count()
+    cancelled_bookings = bookings.filter(status='CANCELLED').count()
+    pending_bookings = bookings.filter(status='PENDING').count()
+    rejected_bookings = bookings.filter(status='REJECTED').count()
+
+    # Cancellation rate: (Cancelled / Total Requests) * 100
+    cancellation_rate = round((cancelled_bookings / booking_requests * 100), 1) if booking_requests > 0 else 0.0
+
+    # Search sessions/users with a booking
+    searching_user_ids = set(interactions.filter(event_type='SEARCH', user__isnull=False).values_list('user_id', flat=True))
+    searching_sessions = set(interactions.filter(event_type='SEARCH', session_id__isnull=False).values_list('session_id', flat=True))
+    total_searching_cohort = len(searching_user_ids) + len(searching_sessions)
+
+    booking_user_ids = set(bookings.values_list('customer_id', flat=True))
+    converted_searchers = len(searching_user_ids.intersection(booking_user_ids))
+    search_to_booking_rate = round((converted_searchers / max(1, len(searching_user_ids)) * 100), 1) if searching_user_ids else (
+        round((booking_requests / max(1, total_searches) * 100), 1) if total_searches > 0 else 0.0
+    )
+
+    # View to booking conversion rate
+    viewing_user_ids = set(interactions.filter(event_type='LISTING_VIEW', user__isnull=False).values_list('user_id', flat=True))
+    converted_viewers = len(viewing_user_ids.intersection(booking_user_ids))
+    view_to_booking_rate = round((converted_viewers / max(1, len(viewing_user_ids)) * 100), 1) if viewing_user_ids else (
+        round((booking_requests / max(1, total_listing_views) * 100), 1) if total_listing_views > 0 else 0.0
+    )
+
+    # Booking funnel stages
+    funnel = [
+        {'stage': 'Searches Performed', 'count': total_searches, 'percentage': 100},
+        {'stage': 'Listings Viewed', 'count': total_listing_views, 'percentage': round((total_listing_views / max(1, total_searches) * 100), 1) if total_searches > 0 else 0},
+        {'stage': 'Booking Forms Opened', 'count': interactions.filter(event_type='BOOKING_FORM_OPEN').count(), 'percentage': round((interactions.filter(event_type='BOOKING_FORM_OPEN').count() / max(1, total_listing_views) * 100), 1) if total_listing_views > 0 else 0},
+        {'stage': 'Booking Requests Submitted', 'count': booking_requests, 'percentage': round((booking_requests / max(1, total_listing_views) * 100), 1) if total_listing_views > 0 else 0},
+        {'stage': 'Confirmed Bookings', 'count': confirmed_bookings, 'percentage': round((confirmed_bookings / max(1, booking_requests) * 100), 1) if booking_requests > 0 else 0},
+    ]
+
+    # Status distribution
+    status_distribution = [
+        {'status': 'Pending Approval', 'count': pending_bookings, 'color': '#d97706'},
+        {'status': 'Confirmed', 'count': confirmed_bookings - completed_bookings, 'color': '#0d8a73'},
+        {'status': 'Completed', 'count': completed_bookings, 'color': '#059669'},
+        {'status': 'Cancelled', 'count': cancelled_bookings, 'color': '#dc2626'},
+        {'status': 'Rejected', 'count': rejected_bookings, 'color': '#64748b'},
+    ]
+
+    # Popular categories by interaction counts
+    category_counts = (
+        interactions.filter(category__isnull=False)
+        .values('category')
+        .annotate(views=Count('id'))
+        .order_by('-views')[:8]
+    )
+    popular_categories = [{'category': c['category'], 'views': c['views']} for c in category_counts]
+
+    # Popular listings by views
+    venue_views = (
+        interactions.filter(venue__isnull=False, event_type='LISTING_VIEW')
+        .values('venue_id', 'venue__title', 'venue__category', 'venue__location')
+        .annotate(views=Count('id'))
+        .order_by('-views')[:6]
+    )
+    popular_venues = [
+        {
+            'id': v['venue_id'],
+            'title': v['venue__title'],
+            'type': 'Venue',
+            'category': v['venue__category'],
+            'location': v['venue__location'],
+            'views': v['views'],
+            'booking_requests': bookings.filter(venue_id=v['venue_id']).count()
+        }
+        for v in venue_views
+    ]
+
+    vendor_views = (
+        interactions.filter(vendor__isnull=False, event_type='LISTING_VIEW')
+        .values('vendor_id', 'vendor__business_name', 'vendor__vendor_type', 'vendor__location')
+        .annotate(views=Count('id'))
+        .order_by('-views')[:6]
+    )
+    popular_vendors = [
+        {
+            'id': vd['vendor_id'],
+            'title': vd['vendor__business_name'],
+            'type': 'Vendor Service',
+            'category': vd['vendor__vendor_type'],
+            'location': vd['vendor__location'],
+            'views': vd['views'],
+            'booking_requests': bookings.filter(vendor_id=vd['vendor_id']).count()
+        }
+        for vd in vendor_views
+    ]
+
+    # Peak booking request days of week
+    from collections import Counter
+    day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    day_counts = Counter(b.created_at.weekday() for b in bookings)
+    peak_days = [{'day': day_names[i], 'requests': day_counts.get(i, 0)} for i in range(7)]
+
+    # Over time trends
+    trends = compute_daily_breakdown(interactions, bookings, start_dt, end_dt)
+
+    return Response({
+        'date_range': {
+            'start': start_dt.strftime('%Y-%m-%d'),
+            'end': end_dt.strftime('%Y-%m-%d'),
+            'label': range_label,
+        },
+        'summary': {
+            'total_searches': total_searches,
+            'total_listing_views': total_listing_views,
+            'unique_viewers': unique_viewers,
+            'booking_requests': booking_requests,
+            'confirmed_bookings': confirmed_bookings,
+            'completed_bookings': completed_bookings,
+            'cancelled_bookings': cancelled_bookings,
+            'cancellation_rate': cancellation_rate,
+            'search_to_booking_rate': search_to_booking_rate,
+            'view_to_booking_rate': view_to_booking_rate,
+        },
+        'funnel': funnel,
+        'status_distribution': status_distribution,
+        'popular_categories': popular_categories,
+        'popular_listings': popular_venues + popular_vendors,
+        'peak_days': peak_days,
+        'trends': trends,
+    })
+
+
+@api_view(['GET'])
+def export_admin_analytics_csv(request):
+    """
+    Exports platform analytics as CSV.
+    """
+    if not is_admin_user(request):
+        raise PermissionDenied("Access Denied: Platform Administrator privileges required.")
+
+    start_dt, end_dt, range_label = parse_date_range(request)
+    interactions = UserInteraction.objects.filter(timestamp__gte=start_dt, timestamp__lte=end_dt)
+    bookings = Booking.objects.filter(created_at__gte=start_dt, created_at__lte=end_dt)
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="locyfy_admin_analytics_{timezone.now().strftime("%Y%m%d_%H%M%S")}.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow(['LOCYFY PLATFORM ANALYTICS REPORT'])
+    writer.writerow(['Date Range', range_label, f"{start_dt.strftime('%Y-%m-%d')} to {end_dt.strftime('%Y-%m-%d')}"])
+    writer.writerow([])
+
+    writer.writerow(['METRIC SUMMARY'])
+    writer.writerow(['Metric', 'Value'])
+    writer.writerow(['Total Searches', interactions.filter(event_type='SEARCH').count()])
+    writer.writerow(['Total Listing Views', interactions.filter(event_type='LISTING_VIEW').count()])
+    writer.writerow(['Booking Requests', bookings.count()])
+    writer.writerow(['Confirmed Bookings', bookings.filter(status__in=['APPROVED', 'COMPLETED']).count()])
+    writer.writerow(['Completed Bookings', bookings.filter(status='COMPLETED').count()])
+    writer.writerow(['Cancelled Bookings', bookings.filter(status='CANCELLED').count()])
+    writer.writerow([])
+
+    writer.writerow(['DAILY TRENDS'])
+    writer.writerow(['Date', 'Searches', 'Views', 'Clicks', 'Booking Requests', 'Confirmed'])
+    trends = compute_daily_breakdown(interactions, bookings, start_dt, end_dt)
+    for t in trends:
+        writer.writerow([t['date'], t['searches'], t['views'], t['clicks'], t['booking_requests'], t['confirmed_bookings']])
+
+    return response
+
+
+def verify_vendor_access(request, vendor_id):
+    """
+    Ensures the requesting user is the owner of the vendor profile or an admin.
+    """
+    if is_admin_user(request):
+        try:
+            return VendorProfile.objects.get(pk=vendor_id)
+        except VendorProfile.DoesNotExist:
+            return None
+
+    actor = get_actor_user(request)
+    if not actor:
+        return None
+    try:
+        vendor = VendorProfile.objects.get(pk=vendor_id)
+        if vendor.user_id == actor.id:
+            return vendor
+    except VendorProfile.DoesNotExist:
+        return None
+    return None
+
+
+@api_view(['GET'])
+def vendor_analytics(request, vendor_id):
+    """
+    Analytics scoped strictly to a specific vendor.
+    """
+    vendor = verify_vendor_access(request, vendor_id)
+    if not vendor:
+        raise PermissionDenied("Access Denied: You are not authorized to view this vendor's analytics.")
+
+    start_dt, end_dt, range_label = parse_date_range(request)
+
+    # Interactions for this vendor (either direct vendor profile or their linked service listings)
+    interactions = UserInteraction.objects.filter(
+        Q(vendor=vendor) | Q(venue__vendor=vendor),
+        timestamp__gte=start_dt,
+        timestamp__lte=end_dt
+    )
+
+    # Bookings for this vendor
+    bookings = Booking.objects.filter(
+        Q(vendor=vendor) | Q(venue__vendor=vendor),
+        created_at__gte=start_dt,
+        created_at__lte=end_dt
+    )
+
+    service_views = interactions.filter(event_type='LISTING_VIEW').count()
+    service_clicks = interactions.filter(event_type='LISTING_CLICK').count()
+
+    auth_viewers = interactions.filter(event_type='LISTING_VIEW', user__isnull=False).values('user_id').distinct().count()
+    anon_viewers = interactions.filter(event_type='LISTING_VIEW', user__isnull=True, session_id__isnull=False).values('session_id').distinct().count()
+    unique_viewers = auth_viewers + anon_viewers
+
+    booking_requests = bookings.count()
+    confirmed_bookings = bookings.filter(status__in=['APPROVED', 'COMPLETED']).count()
+    completed_bookings = bookings.filter(status='COMPLETED').count()
+    cancelled_bookings = bookings.filter(status='CANCELLED').count()
+    pending_bookings = bookings.filter(status='PENDING').count()
+
+    cancellation_rate = round((cancelled_bookings / booking_requests * 100), 1) if booking_requests > 0 else 0.0
+    conversion_rate = round((booking_requests / max(1, service_views) * 100), 1) if service_views > 0 else 0.0
+
+    # Service-level performance (if vendor has multiple venue/service listings)
+    services = Venue.objects.filter(vendor=vendor)
+    service_performance = []
+    for s in services:
+        s_views = interactions.filter(venue=s, event_type='LISTING_VIEW').count()
+        s_requests = bookings.filter(venue=s).count()
+        service_performance.append({
+            'id': s.id,
+            'title': s.title,
+            'category': s.category,
+            'views': s_views,
+            'requests': s_requests,
+            'conversion_rate': round((s_requests / max(1, s_views) * 100), 1) if s_views > 0 else 0.0
+        })
+    service_performance.sort(key=lambda x: x['views'], reverse=True)
+
+    # Peak days
+    from collections import Counter
+    day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    day_counts = Counter(b.created_at.weekday() for b in bookings)
+    peak_days = [{'day': day_names[i], 'requests': day_counts.get(i, 0)} for i in range(7)]
+
+    trends = compute_daily_breakdown(interactions, bookings, start_dt, end_dt)
+
+    return Response({
+        'vendor_id': vendor.id,
+        'business_name': vendor.business_name,
+        'date_range': {
+            'start': start_dt.strftime('%Y-%m-%d'),
+            'end': end_dt.strftime('%Y-%m-%d'),
+            'label': range_label,
+        },
+        'summary': {
+            'service_views': service_views,
+            'service_clicks': service_clicks,
+            'unique_viewers': unique_viewers,
+            'booking_requests': booking_requests,
+            'confirmed_bookings': confirmed_bookings,
+            'completed_bookings': completed_bookings,
+            'cancelled_bookings': cancelled_bookings,
+            'pending_bookings': pending_bookings,
+            'cancellation_rate': cancellation_rate,
+            'conversion_rate': conversion_rate,
+        },
+        'service_performance': service_performance,
+        'peak_days': peak_days,
+        'trends': trends,
+    })
+
+
+@api_view(['GET'])
+def export_vendor_analytics_csv(request, vendor_id):
+    """
+    Exports scoped vendor analytics as CSV.
+    """
+    vendor = verify_vendor_access(request, vendor_id)
+    if not vendor:
+        raise PermissionDenied("Access Denied.")
+
+    start_dt, end_dt, range_label = parse_date_range(request)
+    interactions = UserInteraction.objects.filter(
+        Q(vendor=vendor) | Q(venue__vendor=vendor),
+        timestamp__gte=start_dt,
+        timestamp__lte=end_dt
+    )
+    bookings = Booking.objects.filter(
+        Q(vendor=vendor) | Q(venue__vendor=vendor),
+        created_at__gte=start_dt,
+        created_at__lte=end_dt
+    )
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="vendor_{vendor_id}_analytics_{timezone.now().strftime("%Y%m%d_%H%M%S")}.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow([f"LOCYFY VENDOR ANALYTICS REPORT - {vendor.business_name}"])
+    writer.writerow(['Date Range', range_label, f"{start_dt.strftime('%Y-%m-%d')} to {end_dt.strftime('%Y-%m-%d')}"])
+    writer.writerow([])
+
+    writer.writerow(['Metric', 'Value'])
+    writer.writerow(['Total Service Views', interactions.filter(event_type='LISTING_VIEW').count()])
+    writer.writerow(['Total Service Clicks', interactions.filter(event_type='LISTING_CLICK').count()])
+    writer.writerow(['Booking Requests Received', bookings.count()])
+    writer.writerow(['Confirmed Bookings', bookings.filter(status__in=['APPROVED', 'COMPLETED']).count()])
+    writer.writerow(['Completed Bookings', bookings.filter(status='COMPLETED').count()])
+    writer.writerow(['Cancelled Bookings', bookings.filter(status='CANCELLED').count()])
+    writer.writerow([])
+
+    writer.writerow(['DAILY ACTIVITY TRENDS'])
+    writer.writerow(['Date', 'Views', 'Clicks', 'Booking Requests', 'Confirmed'])
+    trends = compute_daily_breakdown(interactions, bookings, start_dt, end_dt)
+    for t in trends:
+        writer.writerow([t['date'], t['views'], t['clicks'], t['booking_requests'], t['confirmed_bookings']])
+
+    return response
+
+
+def verify_venue_owner_access(request, owner_id):
+    """
+    Ensures the requesting user is the owner of the venue owner profile or an admin.
+    """
+    if is_admin_user(request):
+        try:
+            return VenueOwnerProfile.objects.get(pk=owner_id)
+        except VenueOwnerProfile.DoesNotExist:
+            return None
+
+    actor = get_actor_user(request)
+    if not actor:
+        return None
+    try:
+        owner = VenueOwnerProfile.objects.get(pk=owner_id)
+        if owner.user_id == actor.id:
+            return owner
+    except VenueOwnerProfile.DoesNotExist:
+        return None
+    return None
+
+
+@api_view(['GET'])
+def venue_owner_analytics(request, owner_id):
+    """
+    Analytics scoped strictly to a specific venue owner.
+    """
+    owner = verify_venue_owner_access(request, owner_id)
+    if not owner:
+        raise PermissionDenied("Access Denied: You are not authorized to view this venue owner's analytics.")
+
+    start_dt, end_dt, range_label = parse_date_range(request)
+
+    owner_venues = Venue.objects.filter(owner=owner)
+
+    interactions = UserInteraction.objects.filter(
+        venue__in=owner_venues,
+        timestamp__gte=start_dt,
+        timestamp__lte=end_dt
+    )
+
+    bookings = Booking.objects.filter(
+        venue__in=owner_venues,
+        created_at__gte=start_dt,
+        created_at__lte=end_dt
+    )
+
+    venue_views = interactions.filter(event_type='LISTING_VIEW').count()
+    venue_clicks = interactions.filter(event_type='LISTING_CLICK').count()
+
+    auth_viewers = interactions.filter(event_type='LISTING_VIEW', user__isnull=False).values('user_id').distinct().count()
+    anon_viewers = interactions.filter(event_type='LISTING_VIEW', user__isnull=True, session_id__isnull=False).values('session_id').distinct().count()
+    unique_viewers = auth_viewers + anon_viewers
+
+    booking_requests = bookings.count()
+    confirmed_bookings = bookings.filter(status__in=['APPROVED', 'COMPLETED']).count()
+    completed_bookings = bookings.filter(status='COMPLETED').count()
+    cancelled_bookings = bookings.filter(status='CANCELLED').count()
+    pending_bookings = bookings.filter(status='PENDING').count()
+
+    cancellation_rate = round((cancelled_bookings / booking_requests * 100), 1) if booking_requests > 0 else 0.0
+    conversion_rate = round((booking_requests / max(1, venue_views) * 100), 1) if venue_views > 0 else 0.0
+
+    # Per-venue performance
+    venue_performance = []
+    total_days_in_period = max(1, (end_dt.date() - start_dt.date()).days + 1)
+
+    for v in owner_venues:
+        v_views = interactions.filter(venue=v, event_type='LISTING_VIEW').count()
+        v_bookings = bookings.filter(venue=v)
+        v_requests = v_bookings.count()
+        v_confirmed = v_bookings.filter(status__in=['APPROVED', 'COMPLETED']).count()
+
+        # Reliable venue utilization: Count distinct confirmed event dates during this period / total days in period
+        confirmed_dates_count = v_bookings.filter(
+            status__in=['APPROVED', 'COMPLETED'],
+            event_date__gte=start_dt.date(),
+            event_date__lte=end_dt.date()
+        ).values('event_date').distinct().count()
+        utilization_rate = round((confirmed_dates_count / total_days_in_period * 100), 1)
+
+        venue_performance.append({
+            'id': v.id,
+            'title': v.title,
+            'capacity': v.capacity,
+            'views': v_views,
+            'requests': v_requests,
+            'confirmed_bookings': v_confirmed,
+            'confirmed_days_occupied': confirmed_dates_count,
+            'utilization_rate': utilization_rate,
+            'conversion_rate': round((v_requests / max(1, v_views) * 100), 1) if v_views > 0 else 0.0
+        })
+    venue_performance.sort(key=lambda x: x['views'], reverse=True)
+
+    # Peak days
+    from collections import Counter
+    day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    day_counts = Counter(b.created_at.weekday() for b in bookings)
+    peak_days = [{'day': day_names[i], 'requests': day_counts.get(i, 0)} for i in range(7)]
+
+    trends = compute_daily_breakdown(interactions, bookings, start_dt, end_dt)
+
+    return Response({
+        'owner_id': owner.id,
+        'business_name': owner.business_name,
+        'date_range': {
+            'start': start_dt.strftime('%Y-%m-%d'),
+            'end': end_dt.strftime('%Y-%m-%d'),
+            'label': range_label,
+        },
+        'summary': {
+            'venue_views': venue_views,
+            'venue_clicks': venue_clicks,
+            'unique_viewers': unique_viewers,
+            'booking_requests': booking_requests,
+            'confirmed_bookings': confirmed_bookings,
+            'completed_bookings': completed_bookings,
+            'cancelled_bookings': cancelled_bookings,
+            'pending_bookings': pending_bookings,
+            'cancellation_rate': cancellation_rate,
+            'conversion_rate': conversion_rate,
+        },
+        'venue_performance': venue_performance,
+        'peak_days': peak_days,
+        'trends': trends,
+    })
+
+
+@api_view(['GET'])
+def export_venue_owner_analytics_csv(request, owner_id):
+    """
+    Exports scoped venue owner analytics as CSV.
+    """
+    owner = verify_venue_owner_access(request, owner_id)
+    if not owner:
+        raise PermissionDenied("Access Denied.")
+
+    start_dt, end_dt, range_label = parse_date_range(request)
+    owner_venues = Venue.objects.filter(owner=owner)
+
+    interactions = UserInteraction.objects.filter(
+        venue__in=owner_venues,
+        timestamp__gte=start_dt,
+        timestamp__lte=end_dt
+    )
+    bookings = Booking.objects.filter(
+        venue__in=owner_venues,
+        created_at__gte=start_dt,
+        created_at__lte=end_dt
+    )
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="venue_owner_{owner_id}_analytics_{timezone.now().strftime("%Y%m%d_%H%M%S")}.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow([f"LOCYFY VENUE OWNER ANALYTICS REPORT - {owner.business_name}"])
+    writer.writerow(['Date Range', range_label, f"{start_dt.strftime('%Y-%m-%d')} to {end_dt.strftime('%Y-%m-%d')}"])
+    writer.writerow([])
+
+    writer.writerow(['Metric', 'Value'])
+    writer.writerow(['Total Venue Views', interactions.filter(event_type='LISTING_VIEW').count()])
+    writer.writerow(['Total Venue Clicks', interactions.filter(event_type='LISTING_CLICK').count()])
+    writer.writerow(['Booking Requests Received', bookings.count()])
+    writer.writerow(['Confirmed Bookings', bookings.filter(status__in=['APPROVED', 'COMPLETED']).count()])
+    writer.writerow(['Completed Bookings', bookings.filter(status='COMPLETED').count()])
+    writer.writerow(['Cancelled Bookings', bookings.filter(status='CANCELLED').count()])
+    writer.writerow([])
+
+    writer.writerow(['DAILY VENUE ACTIVITY TRENDS'])
+    writer.writerow(['Date', 'Views', 'Clicks', 'Booking Requests', 'Confirmed'])
+    trends = compute_daily_breakdown(interactions, bookings, start_dt, end_dt)
+    for t in trends:
+        writer.writerow([t['date'], t['views'], t['clicks'], t['booking_requests'], t['confirmed_bookings']])
+
+    return response
+
 

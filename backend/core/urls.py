@@ -9,7 +9,10 @@ from .views import (
     upload_profile_picture,
     register_user, login_user, request_role,
     NotificationViewSet, CustomerReminderPreferenceView,
-    refresh_all_ratings, VerificationDocumentViewSet
+    refresh_all_ratings, VerificationDocumentViewSet,
+    track_user_interaction, admin_analytics, export_admin_analytics_csv,
+    vendor_analytics, export_vendor_analytics_csv,
+    venue_owner_analytics, export_venue_owner_analytics_csv
 )
 
 router = DefaultRouter()
@@ -33,6 +36,16 @@ urlpatterns = [
     path('vendors/<int:vendor_id>/bookings/', VendorBookingsView.as_view(), name='vendor-bookings'),
     path('venue-owners/<int:owner_id>/dashboard/', VenueOwnerDashboardView.as_view(), name='venue-owner-dashboard'),
     path('venue-owners/<int:owner_id>/bookings/', VenueOwnerBookingsView.as_view(), name='venue-owner-bookings'),
+    
+    # Analytics & Tracking endpoints
+    path('analytics/track/', track_user_interaction, name='track-user-interaction'),
+    path('analytics/admin/', admin_analytics, name='admin-analytics'),
+    path('analytics/admin/export-csv/', export_admin_analytics_csv, name='admin-analytics-export-csv'),
+    path('analytics/vendor/<int:vendor_id>/', vendor_analytics, name='vendor-analytics'),
+    path('analytics/vendor/<int:vendor_id>/export-csv/', export_vendor_analytics_csv, name='vendor-analytics-export-csv'),
+    path('analytics/venue-owner/<int:owner_id>/', venue_owner_analytics, name='venue-owner-analytics'),
+    path('analytics/venue-owner/<int:owner_id>/export-csv/', export_venue_owner_analytics_csv, name='venue-owner-analytics-export-csv'),
+
     path('', include(router.urls)),
     path('stats/', platform_stats, name='platform-stats'),
     path('admin/refresh-ratings/', refresh_all_ratings, name='refresh-all-ratings'),
@@ -42,4 +55,5 @@ urlpatterns = [
     path('users/<int:user_id>/upload-avatar/', upload_profile_picture, name='upload-avatar'),
     path('reminder-preferences/', CustomerReminderPreferenceView.as_view(), name='reminder-preferences'),
 ]
+
 

@@ -1,7 +1,8 @@
 from rest_framework import serializers
+# pyrefly: ignore[missing-import]
 from .models import (
     User, VendorProfile, VenueOwnerProfile, Venue, Booking, Review, Message, Event, EventService,
-    Notification, CustomerReminderPreference, VerificationDocument
+    Notification, CustomerReminderPreference, VerificationDocument, UserInteraction
 )
 
 class UserSerializer(serializers.ModelSerializer):
@@ -369,6 +370,25 @@ class VerificationDocumentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Executable or script files are strictly prohibited.")
 
         return value
+
+
+class UserInteractionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserInteraction
+        fields = [
+            'id', 'event_type', 'user', 'session_id', 'listing_type',
+            'venue', 'vendor', 'category', 'search_query', 'location_filter',
+            'source', 'metadata', 'timestamp'
+        ]
+        read_only_fields = ['id', 'timestamp']
+
+    def validate_search_query(self, value):
+        if value:
+            # Normalize and cap length for privacy and security
+            cleaned = value.strip()[:200]
+            return cleaned
+        return value
+
 
 
 

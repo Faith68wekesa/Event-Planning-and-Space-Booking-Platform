@@ -4,7 +4,7 @@ from rest_framework import status
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from datetime import timedelta, date
-from core.models import Venue, VenueOwnerProfile, VendorProfile, Booking
+from core.models import Venue, VenueOwnerProfile, VendorProfile, Booking, VerificationDocument
 
 User = get_user_model()
 
@@ -33,6 +33,13 @@ class AdminApprovalAndLifecycleTestCase(TestCase):
             business_name='Mike Luxury Halls',
             is_verified=True,
             verification_status='APPROVED'
+        )
+        VerificationDocument.objects.create(
+            user=self.venue_owner_user,
+            venue_owner=self.owner_profile,
+            document_type='BUSINESS_REGISTRATION',
+            status='APPROVED',
+            file='test.pdf'
         )
 
         # Vendor provider
