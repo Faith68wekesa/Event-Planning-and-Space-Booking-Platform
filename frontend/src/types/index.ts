@@ -362,5 +362,168 @@ export interface VerificationDocument {
   updated_at: string;
 }
 
+export type InteractionEventType =
+  | 'SEARCH'
+  | 'LISTING_VIEW'
+  | 'LISTING_CLICK'
+  | 'CATEGORY_INTEREST'
+  | 'BOOKING_FORM_OPEN'
+  | 'BOOKING_SUBMITTED'
+  | 'BOOKING_STATUS_CHANGE';
+
+export interface UserInteractionEvent {
+  event_type: InteractionEventType;
+  user?: number | null;
+  session_id?: string;
+  listing_type?: 'VENUE' | 'VENDOR';
+  venue?: number | null;
+  vendor?: number | null;
+  category?: string;
+  search_query?: string;
+  location_filter?: string;
+  source?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface DailyTrendPoint {
+  date: string;
+  label: string;
+  searches: number;
+  views: number;
+  clicks: number;
+  booking_requests: number;
+  confirmed_bookings: number;
+}
+
+export interface FunnelStage {
+  stage: string;
+  count: number;
+  percentage: number;
+}
+
+export interface StatusDistributionItem {
+  status: string;
+  count: number;
+  color: string;
+}
+
+export interface PopularCategoryItem {
+  category: string;
+  views: number;
+}
+
+export interface PopularListingItem {
+  id: number;
+  title: string;
+  type: string;
+  category: string;
+  location: string;
+  views: number;
+  booking_requests: number;
+}
+
+export interface PeakDayItem {
+  day: string;
+  requests: number;
+}
+
+export interface AdminAnalyticsData {
+  date_range: {
+    start: string;
+    end: string;
+    label: string;
+  };
+  summary: {
+    total_searches: number;
+    total_listing_views: number;
+    unique_viewers: number;
+    booking_requests: number;
+    confirmed_bookings: number;
+    completed_bookings: number;
+    cancelled_bookings: number;
+    cancellation_rate: number;
+    search_to_booking_rate: number;
+    view_to_booking_rate: number;
+  };
+  funnel: FunnelStage[];
+  status_distribution: StatusDistributionItem[];
+  popular_categories: PopularCategoryItem[];
+  popular_listings: PopularListingItem[];
+  peak_days: PeakDayItem[];
+  trends: DailyTrendPoint[];
+}
+
+export interface VendorServicePerformance {
+  id: number;
+  title: string;
+  category: string;
+  views: number;
+  requests: number;
+  conversion_rate: number;
+}
+
+export interface VendorAnalyticsData {
+  vendor_id: number;
+  business_name: string;
+  date_range: {
+    start: string;
+    end: string;
+    label: string;
+  };
+  summary: {
+    service_views: number;
+    service_clicks: number;
+    unique_viewers: number;
+    booking_requests: number;
+    confirmed_bookings: number;
+    completed_bookings: number;
+    cancelled_bookings: number;
+    pending_bookings: number;
+    cancellation_rate: number;
+    conversion_rate: number;
+  };
+  service_performance: VendorServicePerformance[];
+  peak_days: PeakDayItem[];
+  trends: DailyTrendPoint[];
+}
+
+export interface VenuePerformance {
+  id: number;
+  title: string;
+  capacity: number;
+  views: number;
+  requests: number;
+  confirmed_bookings: number;
+  confirmed_days_occupied: number;
+  utilization_rate: number;
+  conversion_rate: number;
+}
+
+export interface VenueOwnerAnalyticsData {
+  owner_id: number;
+  business_name: string;
+  date_range: {
+    start: string;
+    end: string;
+    label: string;
+  };
+  summary: {
+    venue_views: number;
+    venue_clicks: number;
+    unique_viewers: number;
+    booking_requests: number;
+    confirmed_bookings: number;
+    completed_bookings: number;
+    cancelled_bookings: number;
+    pending_bookings: number;
+    cancellation_rate: number;
+    conversion_rate: number;
+  };
+  venue_performance: VenuePerformance[];
+  peak_days: PeakDayItem[];
+  trends: DailyTrendPoint[];
+}
+
+
 
 

@@ -14,12 +14,14 @@ import {
   User as UserIcon,
   Image as ImageIcon,
   MessageSquare,
-  Send
+  Send,
+  BarChart3
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cleanImageUrl, handleImageError, DEFAULT_SPACE_IMAGE } from '../utils/imageUtils';
 import { CreateListingPage } from './CreateListingPage';
 import { VerificationDocumentsSection } from './VerificationDocumentsSection';
+import { VenueOwnerAnalyticsSection } from './VenueOwnerAnalyticsSection';
 import type { VerificationDocument } from '../types';
 
 interface VenueOwnerDashboardProps {
@@ -31,7 +33,7 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
   currentOwner,
   onLogout,
 }) => {
-  const [activeTab, setActiveTab] = useState<'venues' | 'bookings' | 'messages' | 'verification' | 'profile' | 'create_listing'>('venues');
+  const [activeTab, setActiveTab] = useState<'venues' | 'analytics' | 'bookings' | 'messages' | 'verification' | 'profile' | 'create_listing'>('venues');
   const [verificationDocs, setVerificationDocs] = useState<VerificationDocument[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [selectedBookingChatId, setSelectedBookingChatId] = useState<number | null>(null);
@@ -497,6 +499,25 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
             <Building2 size={18} /> My Listed Spaces ({venues.length})
           </button>
           <button
+            onClick={() => setActiveTab('analytics')}
+            style={{
+              padding: '12px 24px',
+              fontWeight: 700,
+              fontSize: '1rem',
+              color: activeTab === 'analytics' ? '#0d8a73' : '#64748b',
+              borderBottom: activeTab === 'analytics' ? '3px solid #0d8a73' : '3px solid transparent',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginBottom: '-2px',
+            }}
+          >
+            <BarChart3 size={18} /> Venue Analytics
+          </button>
+          <button
             onClick={() => setActiveTab('bookings')}
             style={{
               padding: '12px 24px',
@@ -573,6 +594,11 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
             <UserIcon size={18} /> My Profile
           </button>
         </div>
+
+        {/* TAB: VENUE ANALYTICS */}
+        {activeTab === 'analytics' && (
+          <VenueOwnerAnalyticsSection currentOwner={currentOwner} />
+        )}
 
         {/* TAB: VERIFICATION DOCUMENTS */}
         {activeTab === 'verification' && (

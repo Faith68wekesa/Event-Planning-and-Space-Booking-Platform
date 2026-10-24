@@ -40,6 +40,19 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [contactEmail, setContactEmail] = useState(currentUser.email || '');
   const [contactPhone, setContactPhone] = useState(currentUser.phone_number || '');
 
+  React.useEffect(() => {
+    // Track booking form opening event
+    ApiService.trackInteraction({
+      event_type: 'BOOKING_FORM_OPEN',
+      user: currentUser?.id,
+      listing_type: venue ? 'VENUE' : (vendor ? 'VENDOR' : undefined),
+      venue: venue?.id,
+      vendor: vendor?.id,
+      category: venue?.category || vendor?.vendor_type,
+      source: 'booking_modal',
+    });
+  }, [venue?.id, vendor?.id, currentUser?.id]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);

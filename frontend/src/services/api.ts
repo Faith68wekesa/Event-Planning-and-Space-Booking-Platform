@@ -1,4 +1,9 @@
-import type { User, Venue, Vendor, VenueOwner, Booking, PlatformStats, FilterState, BookingStatus, Review, Message, ConversationThread, EventItem, EventServiceItem, NotificationItem, ReminderPreference, VerificationDocument } from '../types';
+import type {
+  User, Venue, Vendor, VenueOwner, Booking, PlatformStats, FilterState, BookingStatus,
+  Review, Message, ConversationThread, EventItem, EventServiceItem, NotificationItem,
+  ReminderPreference, VerificationDocument, UserInteractionEvent, AdminAnalyticsData,
+  VendorAnalyticsData, VenueOwnerAnalyticsData
+} from '../types';
 
 const API_BASE = 'http://localhost:8000/api';
 
@@ -672,16 +677,27 @@ export const ApiService = {
     }
   },
 
-  async refreshAllRatings(): Promise<boolean> {
+  async refreshAllRatings(userId?: number): Promise<{ success: boolean; error?: string; data?: any }> {
     try {
+      const activeId = userId ?? currentUserId;
+      const headers = getAuthHeaders({ 'Content-Type': 'application/json' });
+      if (activeId) {
+        headers['X-User-Id'] = activeId.toString();
+        headers['X-Admin-Id'] = activeId.toString();
+      }
       const res = await fetch(`${API_BASE}/admin/refresh-ratings/`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers,
+        body: JSON.stringify(activeId ? { user_id: activeId, admin_user_id: activeId } : {}),
       });
-      return res.ok;
-    } catch (e) {
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        return { success: true, data };
+      }
+      return { success: false, error: formatApiError(data, 'Failed to recalculate ratings.') };
+    } catch (e: any) {
       console.error('Failed to refresh ratings:', e);
-      return false;
+      return { success: false, error: e?.message || 'Network error while recalculating ratings.' };
     }
   },
 
@@ -1064,7 +1080,131 @@ export const ApiService = {
     const uid = userId || currentUserId;
     const userParam = uid ? `?user_id=${uid}` : '';
     return `${API_BASE}/documents/${documentId}/download/${userParam}`;
+  },
+
+  // ==========================================
+  // USER INTERACTION TRACKING & ANALYTICS APIs
+  // ==========================================
+
+  getOrCreateSessionId(): string {
+    const KEY = 'locyfy_session_id';
+    let sid = localStorage.getItem(KEY);
+    if (!sid) {
+      sid = 'locy_' + Math.random().toString(36).substring(2, 15) + '_' + Date.now().toString(36);
+      localStorage.setItem(KEY, sid);
+    }
+    return sid;
+  },
+
+  async trackInteraction(event: UserInteractionEvent): Promise<boolean> {
+    try {
+      const sessionId = this.getOrCreateSessionId();
+      const payload: UserInteractionEvent = {
+        ...event,
+        session_id: event.session_id || sessionId,
+        user: event.user !== undefined ? event.user : (currentUserId || null),
+      };
+
+      const res = await fetch(`${API_BASE}/analytics/track/`, {
+        method: 'POST',
+        headers: getAuthHeaders({
+          'Content-Type': 'application/json',
+          'X-Session-Id': sessionId,
+        }),
+        body: JSON.stringify(payload),
+      });
+      return res.ok;
+    } catch (err) {
+      // Analytics tracking failures must never break the customer UX
+      console.warn('Locyfy Analytics Tracking Notice:', err);
+      return false;
+    }
+  },
+
+  async getAdminAnalytics(params: { preset?: string; start_date?: string; end_date?: string } = {}): Promise<AdminAnalyticsData | null> {
+    try {
+      const q = new URLSearchParams();
+      if (params.preset) q.append('preset', params.preset);
+      if (params.start_date) q.append('start_date', params.start_date);
+      if (params.end_date) q.append('end_date', params.end_date);
+
+      const res = await fetch(`${API_BASE}/analytics/admin/?${q.toString()}`, {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.error('Failed to fetch admin analytics', e);
+    }
+    return null;
+  },
+
+  getAdminAnalyticsExportUrl(params: { preset?: string; start_date?: string; end_date?: string } = {}): string {
+    const q = new URLSearchParams();
+    if (params.preset) q.append('preset', params.preset);
+    if (params.start_date) q.append('start_date', params.start_date);
+    if (params.end_date) q.append('end_date', params.end_date);
+    if (currentUserId) q.append('admin_user_id', currentUserId.toString());
+    return `${API_BASE}/analytics/admin/export-csv/?${q.toString()}`;
+  },
+
+  async getVendorAnalytics(vendorId: number, params: { preset?: string; start_date?: string; end_date?: string } = {}): Promise<VendorAnalyticsData | null> {
+    try {
+      const q = new URLSearchParams();
+      if (params.preset) q.append('preset', params.preset);
+      if (params.start_date) q.append('start_date', params.start_date);
+      if (params.end_date) q.append('end_date', params.end_date);
+
+      const res = await fetch(`${API_BASE}/analytics/vendor/${vendorId}/?${q.toString()}`, {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.error('Failed to fetch vendor analytics', e);
+    }
+    return null;
+  },
+
+  getVendorAnalyticsExportUrl(vendorId: number, params: { preset?: string; start_date?: string; end_date?: string } = {}): string {
+    const q = new URLSearchParams();
+    if (params.preset) q.append('preset', params.preset);
+    if (params.start_date) q.append('start_date', params.start_date);
+    if (params.end_date) q.append('end_date', params.end_date);
+    if (currentUserId) q.append('user_id', currentUserId.toString());
+    return `${API_BASE}/analytics/vendor/${vendorId}/export-csv/?${q.toString()}`;
+  },
+
+  async getVenueOwnerAnalytics(ownerId: number, params: { preset?: string; start_date?: string; end_date?: string } = {}): Promise<VenueOwnerAnalyticsData | null> {
+    try {
+      const q = new URLSearchParams();
+      if (params.preset) q.append('preset', params.preset);
+      if (params.start_date) q.append('start_date', params.start_date);
+      if (params.end_date) q.append('end_date', params.end_date);
+
+      const res = await fetch(`${API_BASE}/analytics/venue-owner/${ownerId}/?${q.toString()}`, {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.error('Failed to fetch venue owner analytics', e);
+    }
+    return null;
+  },
+
+  getVenueOwnerAnalyticsExportUrl(ownerId: number, params: { preset?: string; start_date?: string; end_date?: string } = {}): string {
+    const q = new URLSearchParams();
+    if (params.preset) q.append('preset', params.preset);
+    if (params.start_date) q.append('start_date', params.start_date);
+    if (params.end_date) q.append('end_date', params.end_date);
+    if (currentUserId) q.append('user_id', currentUserId.toString());
+    return `${API_BASE}/analytics/venue-owner/${ownerId}/export-csv/?${q.toString()}`;
   }
 };
+
 
 

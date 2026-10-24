@@ -96,6 +96,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   }, []);
 
   const handleCategoryClick = (cat: VenueCategory) => {
+    ApiService.trackInteraction({
+      event_type: 'CATEGORY_INTEREST',
+      category: cat,
+      source: 'landing_quick_tag',
+      user: currentUser?.id,
+    });
     onSearch({
       ...filters,
       category: cat,

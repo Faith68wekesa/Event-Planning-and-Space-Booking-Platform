@@ -9,11 +9,12 @@ import { VendorDashboardCalendar } from './VendorDashboardCalendar';
 import { VendorDashboardMessages } from './VendorDashboardMessages';
 import { VendorDashboardSettings } from './VendorDashboardSettings';
 import './vendor-dashboard.css';
-import { Home, Building, Package, MessageCircle, Settings, LogOut, User, CalendarCheck, Calendar, Star, Clock, ShieldCheck } from 'lucide-react';
+import { Home, Building, Package, MessageCircle, Settings, LogOut, User, CalendarCheck, Calendar, Star, Clock, ShieldCheck, BarChart3 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { CreateListingPage } from './CreateListingPage';
 import { ProviderAvailabilityDashboard } from './ProviderAvailabilityDashboard';
 import { VerificationDocumentsSection } from './VerificationDocumentsSection';
+import { VendorAnalyticsSection } from './VendorAnalyticsSection';
 import type { VerificationDocument } from '../types';
 
 interface VendorDashboardProps {
@@ -23,7 +24,7 @@ interface VendorDashboardProps {
 export const VendorDashboard: React.FC<VendorDashboardProps> = ({
   currentVendor,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'portfolio' | 'availability' | 'bookings' | 'reviews' | 'profile' | 'messages' | 'calendar' | 'verification' | 'settings' | 'my_profile' | 'create_listing'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'portfolio' | 'availability' | 'bookings' | 'reviews' | 'profile' | 'messages' | 'calendar' | 'verification' | 'settings' | 'my_profile' | 'create_listing'>('overview');
   const [verificationDocs, setVerificationDocs] = useState<VerificationDocument[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -151,6 +152,7 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
 
   const menuItems = [
     { id: 'overview', label: 'Overview', icon: Home },
+    { id: 'analytics', label: 'Analytics & Performance', icon: BarChart3 },
     { id: 'profile', label: 'Business Profile', icon: Building },
     { id: 'portfolio', label: 'My Services', icon: Package },
     { id: 'availability', label: 'Availability', icon: Clock },
@@ -166,6 +168,7 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
   const getPageTitle = () => {
     switch (activeTab) {
       case 'overview': return 'Vendor Dashboard';
+      case 'analytics': return 'Vendor Analytics & Service Demand';
       case 'portfolio': return 'My Services';
       case 'availability': return 'Provider Availability';
       case 'verification': return 'Verification Documents & Licenses';
@@ -183,6 +186,7 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
   const getPageSubtitle = () => {
     switch (activeTab) {
       case 'overview': return 'Manage your account, bookings, and listings.';
+      case 'analytics': return 'Detailed service views, clicks, booking conversion, and peak demand periods.';
       case 'portfolio': return 'Manage the services you offer, showcase examples of your work, and track their verification status.';
       case 'availability': return 'Set your working hours, maximum guest capacity, and block dates.';
       case 'verification': return 'Upload mandatory business registration, operating permits, and view verification review status.';
@@ -267,6 +271,10 @@ export const VendorDashboard: React.FC<VendorDashboardProps> = ({
 
         {activeTab === 'overview' && (
           <VendorDashboardOverview bookings={bookings} stats={stats} venues={venues} onNavigate={(tab) => setActiveTab(tab as any)} />
+        )}
+
+        {activeTab === 'analytics' && (
+          <VendorAnalyticsSection currentVendor={currentVendor} />
         )}
 
         {activeTab === 'bookings' && (

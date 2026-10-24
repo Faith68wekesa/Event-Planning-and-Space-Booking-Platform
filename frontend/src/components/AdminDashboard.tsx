@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import type { Venue, Vendor, VenueOwner, VerificationStatus, User, Booking, Review, PlatformStats, BookingStatus, VerificationDocument } from '../types';
+import type { Venue, Vendor, VenueOwner, VerificationStatus, User, Booking, Review, PlatformStats, BookingStatus, VerificationDocument, AdminAnalyticsData } from '../types';
 import { 
   ShieldCheck, Building2, UserCheck, 
   X, Eye, Clock, MapPin, ExternalLink,
   Users, Calendar, Star, Trash2, Edit3, RefreshCw,
   Search, CheckCircle2, ArrowUpRight, DollarSign,
-  UserX, Shield, AlertCircle, ShieldAlert, Lock, ArrowLeft, FileText, AlertTriangle, Menu
+  UserX, Shield, AlertCircle, ShieldAlert, Lock, ArrowLeft, FileText, AlertTriangle, Menu,
+  Download, BarChart3
 } from 'lucide-react';
 import { ApiService } from '../services/api';
 import { toast } from 'react-hot-toast';
 import { AdminSidebar } from './AdminSidebar';
 import type { AdminMenuItemId } from './AdminSidebar';
+import { TrendLineChart, HorizontalBarChart, StatusDistributionChart, ConversionFunnelChart, PeakDaysBarChart } from './AnalyticsCharts';
 import './admin-sidebar.css';
 
 interface AdminDashboardProps {
@@ -119,6 +121,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     title: string;
   } | null>(null);
 
+  // Analytics Dashboard State
+  const [analyticsData, setAnalyticsData] = useState<AdminAnalyticsData | null>(null);
+  const [analyticsPreset, setAnalyticsPreset] = useState<string>('30d');
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
+  const [analyticsLoading, setAnalyticsLoading] = useState<boolean>(false);
+
+  const fetchAnalyticsData = async (preset: string = analyticsPreset, sDate: string = customStartDate, eDate: string = customEndDate) => {
+    setAnalyticsLoading(true);
+    try {
+      const data = await ApiService.getAdminAnalytics({
+        preset,
+        start_date: sDate || undefined,
+        end_date: eDate || undefined,
+      });
+      setAnalyticsData(data);
+    } catch (e) {
+      console.error('Failed to load admin analytics', e);
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'analytics' && isAdmin) {
+      fetchAnalyticsData(analyticsPreset, customStartDate, customEndDate);
+    }
+  }, [activeTab, analyticsPreset]);
+
   // Initial load
   const loadAdminData = async () => {
     if (!isAdmin) return;
@@ -170,8 +201,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setRefreshingRatings(true);
     const toastId = toast.loading('Recalculating review averages across platform...');
     try {
-      const ok = await ApiService.refreshAllRatings();
-      if (ok) {
+      const res = await ApiService.refreshAllRatings(currentUser?.id);
+      if (res.success) {
         toast.success('Ratings & review statistics refreshed successfully!', { id: toastId });
         const [v, ven, s, r] = await Promise.all([
           ApiService.getVenues(),
@@ -184,10 +215,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         setStats(s);
         setReviews(r);
       } else {
-        toast.error('Failed to recalculate ratings.', { id: toastId });
+        toast.error(res.error || 'Failed to recalculate ratings.', { id: toastId });
       }
-    } catch (e) {
-      toast.error('Error occurred while recalculating ratings.', { id: toastId });
+    } catch (e: any) {
+      toast.error(e?.message || 'Error occurred while recalculating ratings.', { id: toastId });
     } finally {
       setRefreshingRatings(false);
     }
@@ -2205,88 +2236,326 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* TAB 7: PLATFORM ANALYTICS & REPORTS */}
       {activeTab === 'analytics' && (
         <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
+          {/* Header & Controls */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '24px', borderBottom: '1px solid #f1f5f9', paddingBottom: '20px' }}>
             <div>
-              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>Platform Analytics & Reports</h2>
-              <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Real-time business performance, conversion rates, and revenue breakdown across Kenya.</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ padding: '8px', borderRadius: '10px', background: '#ecfdf5', color: '#0d8a73' }}>
+                  <BarChart3 size={22} />
+                </div>
+                <div>
+                  <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>Platform Analytics & Interaction Intelligence</h2>
+                  <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.85rem' }}>
+                    Audited event metrics, viewer tracking, conversion funnel, and demand trends computed from recorded customer interactions.
+                  </p>
+                </div>
+              </div>
             </div>
-            <button
-              onClick={handleRefreshRatings}
-              disabled={refreshingRatings}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                background: '#0d8a73',
-                color: '#ffffff',
-                border: 'none',
-                padding: '9px 18px',
-                borderRadius: '10px',
-                fontWeight: 700,
-                fontSize: '0.85rem',
-                cursor: refreshingRatings ? 'not-allowed' : 'pointer'
-              }}
-            >
-              <RefreshCw size={15} className={refreshingRatings ? 'spin' : ''} />
-              Re-compute Platform Metrics
-            </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              {/* Date Preset Selector */}
+              <div style={{ display: 'flex', background: '#f8fafc', padding: '3px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                {[
+                  { id: '7d', label: '7D' },
+                  { id: '30d', label: '30D' },
+                  { id: '90d', label: '90D' },
+                  { id: 'all', label: 'All' },
+                ].map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => {
+                      setAnalyticsPreset(p.id);
+                      setCustomStartDate('');
+                      setCustomEndDate('');
+                      fetchAnalyticsData(p.id, '', '');
+                    }}
+                    style={{
+                      padding: '6px 14px',
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      borderRadius: '8px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: analyticsPreset === p.id && !customStartDate ? '#0d8a73' : 'transparent',
+                      color: analyticsPreset === p.id && !customStartDate ? '#ffffff' : '#64748b',
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Custom Date Range Picker */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.8rem',
+                    color: '#334155',
+                    outline: 'none',
+                  }}
+                  title="Start Date"
+                />
+                <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>to</span>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.8rem',
+                    color: '#334155',
+                    outline: 'none',
+                  }}
+                  title="End Date"
+                />
+                <button
+                  onClick={() => {
+                    if (customStartDate && customEndDate) {
+                      setAnalyticsPreset('custom');
+                      fetchAnalyticsData('custom', customStartDate, customEndDate);
+                    } else {
+                      toast.error('Please select both start and end dates.');
+                    }
+                  }}
+                  style={{
+                    padding: '7px 12px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: '#334155',
+                    color: '#ffffff',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Apply
+                </button>
+              </div>
+
+              {/* CSV Export Button */}
+              <a
+                href={ApiService.getAdminAnalyticsExportUrl({
+                  preset: analyticsPreset,
+                  start_date: customStartDate || undefined,
+                  end_date: customEndDate || undefined,
+                })}
+                download
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: '#f8fafc',
+                  color: '#0d8a73',
+                  border: '1px solid #cbd5e1',
+                  padding: '7px 14px',
+                  borderRadius: '10px',
+                  fontWeight: 700,
+                  fontSize: '0.82rem',
+                  textDecoration: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                <Download size={15} /> Export CSV
+              </a>
+
+              <button
+                onClick={() => fetchAnalyticsData(analyticsPreset, customStartDate, customEndDate)}
+                disabled={analyticsLoading}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: '#0d8a73',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '8px 14px',
+                  borderRadius: '10px',
+                  fontWeight: 700,
+                  fontSize: '0.82rem',
+                  cursor: analyticsLoading ? 'not-allowed' : 'pointer',
+                }}
+              >
+                <RefreshCw size={14} className={analyticsLoading ? 'spin' : ''} />
+                Refresh
+              </button>
+            </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '28px' }}>
-            <div style={{ padding: '20px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px' }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Booking Conversion Rate</div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0d8a73', marginTop: '8px' }}>
-                {bookings.length > 0
-                  ? `${Math.round((bookings.filter(b => b.status === 'APPROVED' || b.status === 'COMPLETED').length / bookings.length) * 100)}%`
-                  : '100%'}
+          {/* Active Period Badge */}
+          {analyticsData && (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '6px 12px', fontSize: '0.78rem', color: '#166534', fontWeight: 600, marginBottom: '20px' }}>
+              <Clock size={14} /> Showing verified analytics for: <strong>{analyticsData.date_range.label} ({analyticsData.date_range.start} to {analyticsData.date_range.end})</strong>
+            </div>
+          )}
+
+          {/* SUMMARY METRIC CARDS */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '28px' }}>
+            <div style={{ padding: '18px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Total Searches</div>
+              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f172a', marginTop: '6px' }}>
+                {analyticsData?.summary.total_searches?.toLocaleString() || 0}
               </div>
-              <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '4px' }}>
-                {bookings.filter(b => b.status === 'APPROVED' || b.status === 'COMPLETED').length} confirmed / {bookings.length} requests
-              </div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>Customer query events</div>
             </div>
 
-            <div style={{ padding: '20px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px' }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Provider Verification Rate</div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#2563eb', marginTop: '8px' }}>
-                {unifiedAccounts.length > 0
-                  ? `${Math.round((unifiedAccounts.filter(a => a.is_verified || a.verification_status === 'APPROVED').length / unifiedAccounts.length) * 100)}%`
-                  : '0%'}
+            <div style={{ padding: '18px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Listing Views</div>
+              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0d8a73', marginTop: '6px' }}>
+                {analyticsData?.summary.total_listing_views?.toLocaleString() || 0}
               </div>
-              <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '4px' }}>
-                {unifiedAccounts.filter(a => a.is_verified || a.verification_status === 'APPROVED').length} verified of {unifiedAccounts.length} providers
-              </div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>Space & service profile views</div>
             </div>
 
-            <div style={{ padding: '20px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px' }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Average Booking Value</div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#059669', marginTop: '8px' }}>
-                KES {bookings.length > 0 ? Math.round((stats?.total_revenue || 0) / (bookings.length || 1)).toLocaleString() : '0'}
+            <div style={{ padding: '18px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Unique Viewers</div>
+              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#2563eb', marginTop: '6px' }}>
+                {analyticsData?.summary.unique_viewers?.toLocaleString() || 0}
               </div>
-              <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '4px' }}>
-                Based on active and completed platform reservations
+              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>Users & distinct visitor sessions</div>
+            </div>
+
+            <div style={{ padding: '18px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Booking Requests</div>
+              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#7c3aed', marginTop: '6px' }}>
+                {analyticsData?.summary.booking_requests?.toLocaleString() || 0}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>Reservations created in period</div>
+            </div>
+
+            <div style={{ padding: '18px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Confirmed Bookings</div>
+              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#059669', marginTop: '6px' }}>
+                {analyticsData?.summary.confirmed_bookings?.toLocaleString() || 0}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>Approved or completed</div>
+            </div>
+
+            <div style={{ padding: '18px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Search-to-Booking Rate</div>
+              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#ea580c', marginTop: '6px' }}>
+                {analyticsData?.summary.search_to_booking_rate || 0}%
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>Conversion across search cohort</div>
+            </div>
+          </div>
+
+          {/* CHARTS ROW 1: TRENDS OVER TIME */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(460px, 1fr))', gap: '24px', marginBottom: '28px' }}>
+            <div style={{ padding: '22px', border: '1px solid #e2e8f0', borderRadius: '14px', background: '#ffffff' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>Searches & Listing Views Over Time</h3>
+              </div>
+              {analyticsData && (
+                <TrendLineChart
+                  data={analyticsData.trends}
+                  series={[
+                    { key: 'views', label: 'Listing Views', color: '#0d8a73' },
+                    { key: 'searches', label: 'Searches', color: '#2563eb' },
+                  ]}
+                />
+              )}
+            </div>
+
+            <div style={{ padding: '22px', border: '1px solid #e2e8f0', borderRadius: '14px', background: '#ffffff' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>Booking Requests & Confirmations Over Time</h3>
+              </div>
+              {analyticsData && (
+                <TrendLineChart
+                  data={analyticsData.trends}
+                  series={[
+                    { key: 'booking_requests', label: 'Requests Received', color: '#7c3aed' },
+                    { key: 'confirmed_bookings', label: 'Confirmed', color: '#059669' },
+                  ]}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* CHARTS ROW 2: FUNNEL & STATUS DISTRIBUTION */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '24px', marginBottom: '28px' }}>
+            <div style={{ padding: '22px', border: '1px solid #e2e8f0', borderRadius: '14px', background: '#ffffff' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <div>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>Booking Conversion Funnel</h3>
+                  <p style={{ margin: '2px 0 0', fontSize: '0.76rem', color: '#64748b' }}>Customer drop-off across search, discovery, and submission</p>
+                </div>
+              </div>
+              {analyticsData && <ConversionFunnelChart stages={analyticsData.funnel} />}
+            </div>
+
+            <div style={{ padding: '22px', border: '1px solid #e2e8f0', borderRadius: '14px', background: '#ffffff' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <div>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>Booking Status Distribution</h3>
+                  <p style={{ margin: '2px 0 0', fontSize: '0.76rem', color: '#64748b' }}>Cancellation rate: {analyticsData?.summary.cancellation_rate || 0}%</p>
+                </div>
+              </div>
+              {analyticsData && <StatusDistributionChart items={analyticsData.status_distribution} />}
+
+              {/* Peak Days Bar */}
+              <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #f1f5f9' }}>
+                <h4 style={{ fontSize: '0.88rem', fontWeight: 700, color: '#334155', margin: '0 0 4px' }}>Peak Booking Request Days</h4>
+                <p style={{ margin: '0 0 10px', fontSize: '0.75rem', color: '#64748b' }}>Distribution of booking creation by day of the week</p>
+                {analyticsData && <PeakDaysBarChart peakDays={analyticsData.peak_days} />}
               </div>
             </div>
           </div>
 
-          <div style={{ padding: '20px', borderRadius: '14px', border: '1px solid #e2e8f0', background: '#ffffff' }}>
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#1e293b', margin: '0 0 16px' }}>Catalog & Supply Breakdown</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
-              <div style={{ padding: '14px', borderRadius: '10px', background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase' }}>Active Venues</span>
-                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#15803d', marginTop: '4px' }}>{venues.length} Spaces</div>
-              </div>
-              <div style={{ padding: '14px', borderRadius: '10px', background: '#f0fdfa', border: '1px solid #99f6e4' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#115e59', textTransform: 'uppercase' }}>Active Vendors</span>
-                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f766e', marginTop: '4px' }}>{vendors.length} Services</div>
-              </div>
-              <div style={{ padding: '14px', borderRadius: '10px', background: '#fef3c7', border: '1px solid #fde68a' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#92400e', textTransform: 'uppercase' }}>Pending Approvals</span>
-                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#b45309', marginTop: '4px' }}>{pendingVerificationCount} Queue Items</div>
-              </div>
-              <div style={{ padding: '14px', borderRadius: '10px', background: '#f3e8ff', border: '1px solid #e9d5ff' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#6b21a8', textTransform: 'uppercase' }}>Total Feedback</span>
-                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#7e22ce', marginTop: '4px' }}>{reviews.length} Client Reviews</div>
-              </div>
+          {/* CHARTS ROW 3: POPULAR CATEGORIES & POPULAR LISTINGS TABLES */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '24px' }}>
+            <div style={{ padding: '22px', border: '1px solid #e2e8f0', borderRadius: '14px', background: '#ffffff' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#1e293b', margin: '0 0 16px' }}>Most Popular Event Categories</h3>
+              {analyticsData && (
+                <HorizontalBarChart
+                  items={analyticsData.popular_categories.map((c) => ({
+                    label: c.category,
+                    value: c.views,
+                    secondaryLabel: 'views',
+                  }))}
+                  color="#0d8a73"
+                  emptyMessage="No category engagement recorded yet."
+                />
+              )}
+            </div>
+
+            <div style={{ padding: '22px', border: '1px solid #e2e8f0', borderRadius: '14px', background: '#ffffff' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#1e293b', margin: '0 0 16px' }}>Most Viewed Listings</h3>
+              {analyticsData && analyticsData.popular_listings.length > 0 ? (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#64748b' }}>
+                        <th style={{ padding: '8px 10px' }}>Listing</th>
+                        <th style={{ padding: '8px 10px' }}>Type</th>
+                        <th style={{ padding: '8px 10px' }}>Views</th>
+                        <th style={{ padding: '8px 10px' }}>Requests</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {analyticsData.popular_listings.map((l) => (
+                        <tr key={`${l.type}-${l.id}`} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '8px 10px', fontWeight: 700, color: '#1e293b' }}>{l.title}</td>
+                          <td style={{ padding: '8px 10px', color: '#64748b' }}>{l.type}</td>
+                          <td style={{ padding: '8px 10px', fontWeight: 700, color: '#0d8a73' }}>{l.views.toLocaleString()}</td>
+                          <td style={{ padding: '8px 10px', fontWeight: 700, color: '#7c3aed' }}>{l.booking_requests}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div style={{ color: '#94a3b8', fontSize: '0.88rem' }}>Analytics will appear as customers interact with your listings.</div>
+              )}
             </div>
           </div>
         </div>

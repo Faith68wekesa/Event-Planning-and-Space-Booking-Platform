@@ -19,6 +19,20 @@ export const VendorModal: React.FC<VendorModalProps> = ({ vendor, currentUser, o
   const [directMessageText, setDirectMessageText] = useState<string>('');
   const [sendingDirectMsg, setSendingDirectMsg] = useState<boolean>(false);
 
+  useEffect(() => {
+    if (vendor?.id) {
+      ApiService.trackInteraction({
+        event_type: 'LISTING_VIEW',
+        listing_type: 'VENDOR',
+        vendor: vendor.id,
+        category: vendor.vendor_type,
+        location_filter: vendor.location,
+        source: 'vendor_modal',
+        user: currentUser?.id,
+      });
+    }
+  }, [vendor?.id, currentUser?.id]);
+
   // Date availability checker state (accessible to anyone, even logged out)
   const [checkDate, setCheckDate] = useState<string>('');
   const [checkingAvailability, setCheckingAvailability] = useState<boolean>(false);

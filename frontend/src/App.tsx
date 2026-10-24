@@ -73,6 +73,26 @@ export const App: React.FC = () => {
     setVenues(fetchedVenues);
     setVendors(fetchedVendors);
     setStats(fetchedStats);
+
+    // Track search or category exploration
+    if (filters.search && filters.search.trim().length > 0) {
+      ApiService.trackInteraction({
+        event_type: 'SEARCH',
+        search_query: filters.search.trim(),
+        category: filters.category !== 'ALL' ? filters.category : undefined,
+        location_filter: filters.location !== 'ALL' ? filters.location : undefined,
+        source: 'catalog_search',
+        user: currentUser?.id,
+      });
+    } else if (filters.category && filters.category !== 'ALL') {
+      ApiService.trackInteraction({
+        event_type: 'CATEGORY_INTEREST',
+        category: filters.category,
+        location_filter: filters.location !== 'ALL' ? filters.location : undefined,
+        source: 'category_filter',
+        user: currentUser?.id,
+      });
+    }
   };
 
   useEffect(() => {
@@ -174,6 +194,30 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleSelectVenueWithTracking = (venue: Venue, source: string = 'grid') => {
+    setSelectedVenue(venue);
+    ApiService.trackInteraction({
+      event_type: 'LISTING_CLICK',
+      listing_type: 'VENUE',
+      venue: venue.id,
+      category: venue.category,
+      source: source,
+      user: currentUser?.id,
+    });
+  };
+
+  const handleSelectVendorWithTracking = (vendor: Vendor, source: string = 'grid') => {
+    setSelectedVendor(vendor);
+    ApiService.trackInteraction({
+      event_type: 'LISTING_CLICK',
+      listing_type: 'VENDOR',
+      vendor: vendor.id,
+      category: vendor.vendor_type,
+      source: source,
+      user: currentUser?.id,
+    });
+  };
+
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <Toaster position="top-center" reverseOrder={false} />
@@ -208,9 +252,9 @@ export const App: React.FC = () => {
                 filters={filters}
                 onExploreVenues={() => setActiveTab('venues')}
                 onExploreVendors={() => setActiveTab('vendors')}
-                onSelectVenue={(venue) => setSelectedVenue(venue)}
+                onSelectVenue={(venue) => handleSelectVenueWithTracking(venue, 'landing_page')}
                 onBookVenue={(venue) => handleInterceptBook(venue, 'venue')}
-                onSelectVendor={(vendor) => setSelectedVendor(vendor)}
+                onSelectVendor={(vendor) => handleSelectVendorWithTracking(vendor, 'landing_page')}
                 onBookVendor={(vendor) => handleInterceptBook(vendor, 'vendor')}
                 onOpenAdmin={handleOpenAdmin}
                 currentUser={currentUser}
@@ -253,13 +297,13 @@ export const App: React.FC = () => {
                         {activeTab === 'venues' ? (
                           <VenueGrid
                             venues={venues}
-                            onSelectVenue={(venue) => setSelectedVenue(venue)}
+                            onSelectVenue={(venue) => handleSelectVenueWithTracking(venue, 'catalog_grid')}
                             onBookVenue={(venue) => handleInterceptBook(venue, 'venue')}
                           />
                         ) : (
                           <VendorGrid
                             vendors={vendors}
-                            onSelectVendor={(vendor) => setSelectedVendor(vendor)}
+                            onSelectVendor={(vendor) => handleSelectVendorWithTracking(vendor, 'catalog_grid')}
                             onBookVendor={(vendor) => handleInterceptBook(vendor, 'vendor')}
                           />
                         )}

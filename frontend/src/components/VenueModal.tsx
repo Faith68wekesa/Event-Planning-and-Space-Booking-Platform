@@ -20,6 +20,20 @@ export const VenueModal: React.FC<VenueModalProps> = ({ venue, currentUser, onCl
   const [directMessageText, setDirectMessageText] = useState<string>('');
   const [sendingDirectMsg, setSendingDirectMsg] = useState<boolean>(false);
 
+  useEffect(() => {
+    if (venue?.id) {
+      ApiService.trackInteraction({
+        event_type: 'LISTING_VIEW',
+        listing_type: 'VENUE',
+        venue: venue.id,
+        category: venue.category,
+        location_filter: venue.location,
+        source: 'venue_modal',
+        user: currentUser?.id,
+      });
+    }
+  }, [venue?.id, currentUser?.id]);
+
   // Date availability checker state (accessible to anyone, even logged out)
   const [checkDate, setCheckDate] = useState<string>('');
   const [checkingAvailability, setCheckingAvailability] = useState<boolean>(false);
