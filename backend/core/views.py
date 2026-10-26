@@ -125,20 +125,23 @@ class VendorProfileViewSet(viewsets.ModelViewSet):
 
         is_admin = is_admin_user(self.request)
 
-        # Public queries only return approved & verified vendors who have valid verification documents
+        # Public queries return approved & verified vendors
         if is_admin and all_status:
             pass
         elif user:
             pass  # Provider viewing their own account
         else:
             today = datetime.date.today()
-            verified_vendor_ids = VerificationDocument.objects.filter(
+            verified_vendor_ids = list(VerificationDocument.objects.filter(
                 vendor__isnull=False,
                 status='APPROVED'
             ).filter(
                 Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
-            ).values_list('vendor_id', flat=True)
-            queryset = queryset.filter(is_verified=True, verification_status='APPROVED', id__in=verified_vendor_ids)
+            ).values_list('vendor_id', flat=True))
+            queryset = queryset.filter(
+                Q(is_verified=True, verification_status='APPROVED') |
+                Q(id__in=verified_vendor_ids)
+            )
 
         if search:
             queryset = queryset.filter(
@@ -166,7 +169,10 @@ class VendorProfileViewSet(viewsets.ModelViewSet):
         vendor.verification_status = 'APPROVED' if vendor.is_verified else 'PENDING'
         vendor.save()
         # Interconnect: sync all vendor listings and services
-        Venue.objects.filter(vendor=vendor).update(is_verified=vendor.is_verified)
+        Venue.objects.filter(vendor=vendor).update(
+            is_verified=vendor.is_verified,
+            approval_status='APPROVED' if vendor.is_verified else 'PENDING'
+        )
         return Response(VendorProfileSerializer(vendor).data)
 
     @action(detail=True, methods=['post', 'patch'])
@@ -180,7 +186,10 @@ class VendorProfileViewSet(viewsets.ModelViewSet):
             vendor.is_verified = (new_status == 'APPROVED')
             vendor.save()
             # Interconnect: sync all vendor listings and services
-            Venue.objects.filter(vendor=vendor).update(is_verified=vendor.is_verified)
+            Venue.objects.filter(vendor=vendor).update(
+                is_verified=vendor.is_verified,
+                approval_status='APPROVED' if vendor.is_verified else ('REJECTED' if new_status == 'REJECTED' else 'PENDING')
+            )
             return Response(VendorProfileSerializer(vendor).data)
         return Response({'error': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -206,13 +215,16 @@ class VenueOwnerProfileViewSet(viewsets.ModelViewSet):
             pass  # Owner inspecting their own profile
         else:
             today = datetime.date.today()
-            verified_owner_ids = VerificationDocument.objects.filter(
+            verified_owner_ids = list(VerificationDocument.objects.filter(
                 venue_owner__isnull=False,
                 status='APPROVED'
             ).filter(
                 Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
-            ).values_list('venue_owner_id', flat=True)
-            queryset = queryset.filter(is_verified=True, verification_status='APPROVED', id__in=verified_owner_ids)
+            ).values_list('venue_owner_id', flat=True))
+            queryset = queryset.filter(
+                Q(is_verified=True, verification_status='APPROVED') |
+                Q(id__in=verified_owner_ids)
+            )
 
         if search:
             queryset = queryset.filter(
@@ -238,7 +250,10 @@ class VenueOwnerProfileViewSet(viewsets.ModelViewSet):
         owner.verification_status = 'APPROVED' if owner.is_verified else 'PENDING'
         owner.save()
         # Interconnect: sync all venue owner physical spaces
-        Venue.objects.filter(owner=owner).update(is_verified=owner.is_verified)
+        Venue.objects.filter(owner=owner).update(
+            is_verified=owner.is_verified,
+            approval_status='APPROVED' if owner.is_verified else 'PENDING'
+        )
         return Response(VenueOwnerProfileSerializer(owner).data)
 
     @action(detail=True, methods=['post', 'patch'])
@@ -252,7 +267,10 @@ class VenueOwnerProfileViewSet(viewsets.ModelViewSet):
             owner.is_verified = (new_status == 'APPROVED')
             owner.save()
             # Interconnect: sync all venue owner physical spaces
-            Venue.objects.filter(owner=owner).update(is_verified=owner.is_verified)
+            Venue.objects.filter(owner=owner).update(
+                is_verified=owner.is_verified,
+                approval_status='APPROVED' if owner.is_verified else ('REJECTED' if new_status == 'REJECTED' else 'PENDING')
+            )
             return Response(VenueOwnerProfileSerializer(owner).data)
         return Response({'error': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -288,35 +306,36 @@ class VenueViewSet(viewsets.ModelViewSet):
             pass
         else:
             # PUBLIC CONSUMER ENDPOINT: Only approved, active/available listings
-            # STRICT VERIFICATION GATING:
-            # Must satisfy all conditions:
-            # 1. Listing approval_status == 'APPROVED'
-            # 2. Listing is_available == True
-            # 3. Listing is_verified == True
-            # 4. Owner / Vendor profile must have at least one approved, unexpired verification document
             today = datetime.date.today()
-            verified_owner_ids = VerificationDocument.objects.filter(
+            verified_owner_ids = list(VerificationDocument.objects.filter(
                 venue_owner__isnull=False,
                 status='APPROVED'
             ).filter(
                 Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
-            ).values_list('venue_owner_id', flat=True)
+            ).values_list('venue_owner_id', flat=True))
 
-            verified_vendor_ids = VerificationDocument.objects.filter(
+            verified_vendor_ids = list(VerificationDocument.objects.filter(
                 vendor__isnull=False,
                 status='APPROVED'
             ).filter(
                 Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
-            ).values_list('vendor_id', flat=True)
+            ).values_list('vendor_id', flat=True))
+
+            # Provider must be verified directly or via approved verification documents
+            provider_verified_q = (
+                Q(owner__is_verified=True) |
+                Q(owner__verification_status='APPROVED') |
+                Q(owner_id__in=verified_owner_ids) |
+                Q(vendor__is_verified=True) |
+                Q(vendor__verification_status='APPROVED') |
+                Q(vendor_id__in=verified_vendor_ids)
+            )
 
             queryset = queryset.filter(
                 approval_status='APPROVED',
                 is_available=True,
                 is_verified=True
-            ).filter(
-                (Q(owner_id__in=verified_owner_ids) & Q(owner__verification_status='APPROVED')) |
-                (Q(vendor_id__in=verified_vendor_ids) & Q(vendor__verification_status='APPROVED'))
-            )
+            ).filter(provider_verified_q)
 
         if search:
             queryset = queryset.filter(
@@ -395,6 +414,14 @@ class VenueViewSet(viewsets.ModelViewSet):
         venue.is_verified = True
         venue.rejection_reason = None
         venue.save(update_fields=['approval_status', 'is_verified', 'rejection_reason'])
+        if venue.owner and not venue.owner.is_verified:
+            venue.owner.is_verified = True
+            venue.owner.verification_status = 'APPROVED'
+            venue.owner.save(update_fields=['is_verified', 'verification_status'])
+        if venue.vendor and not venue.vendor.is_verified:
+            venue.vendor.is_verified = True
+            venue.vendor.verification_status = 'APPROVED'
+            venue.vendor.save(update_fields=['is_verified', 'verification_status'])
         return Response(VenueSerializer(venue).data)
 
     @action(detail=True, methods=['post'])

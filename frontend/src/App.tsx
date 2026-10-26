@@ -18,8 +18,67 @@ import type { User as UserType } from './types';
 import { Toaster, toast } from 'react-hot-toast';
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<string>('landing');
-  const [activeRole, setActiveRole] = useState<UserRole>('CUSTOMER');
+  const [currentUser, setCurrentUser] = useState<UserType | null>(() => {
+    try {
+      const saved = localStorage.getItem('locyfy_session_auth');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.user) return parsed.user;
+      }
+    } catch (e) {}
+    return null;
+  });
+
+  const [currentVendor, setCurrentVendor] = useState<Vendor | null>(() => {
+    try {
+      const saved = localStorage.getItem('locyfy_session_auth');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.vendor_profile) return parsed.vendor_profile;
+      }
+    } catch (e) {}
+    return null;
+  });
+
+  const [currentVenueOwner, setCurrentVenueOwner] = useState<VenueOwner | null>(() => {
+    try {
+      const saved = localStorage.getItem('locyfy_session_auth');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.venue_owner_profile) return parsed.venue_owner_profile;
+      }
+    } catch (e) {}
+    return null;
+  });
+
+  const [activeRole, setActiveRole] = useState<UserRole>(() => {
+    try {
+      const saved = localStorage.getItem('locyfy_session_auth');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.user?.role === 'ADMIN' || parsed?.user?.is_staff || parsed?.user?.is_superuser) {
+          return 'ADMIN';
+        }
+        if (parsed?.user?.role === 'PROVIDER' || parsed?.vendor_profile || parsed?.venue_owner_profile) {
+          return 'PROVIDER';
+        }
+      }
+    } catch (e) {}
+    return 'CUSTOMER';
+  });
+
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('locyfy_session_auth');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.user?.role === 'ADMIN' || parsed?.user?.is_staff || parsed?.user?.is_superuser) {
+          return 'admin-dashboard';
+        }
+      }
+    } catch (e) {}
+    return 'landing';
+  });
 
   const [filters, setFilters] = useState<FilterState>({
     search: '',
@@ -50,9 +109,6 @@ export const App: React.FC = () => {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isAdminAuthModal, setIsAdminAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [currentUser, setCurrentUser] = useState<UserType | null>(null);
-  const [currentVendor, setCurrentVendor] = useState<Vendor | null>(null);
-  const [currentVenueOwner, setCurrentVenueOwner] = useState<VenueOwner | null>(null);
 
   const handleInterceptBook = (target: any, type: 'venue' | 'vendor') => {
     if (type === 'venue') setBookingTargetVenue(target);
@@ -96,13 +152,24 @@ export const App: React.FC = () => {
   };
 
   useEffect(() => {
-    setApiCurrentUserId(currentUser ? currentUser.id : null);
     if (currentUser) {
+      setApiCurrentUserId(currentUser.id);
+      try {
+        localStorage.setItem('locyfy_session_auth', JSON.stringify({
+          user: currentUser,
+          vendor_profile: currentVendor,
+          venue_owner_profile: currentVenueOwner,
+        }));
+      } catch (e) {}
       ApiService.getBookings(currentUser.id).then(setBookings);
     } else {
+      setApiCurrentUserId(null);
+      try {
+        localStorage.removeItem('locyfy_session_auth');
+      } catch (e) {}
       setBookings([]);
     }
-  }, [currentUser, activeTab]);
+  }, [currentUser, currentVendor, currentVenueOwner, activeTab]);
 
   const isAdmin = Boolean(currentUser && (
     currentUser.role === 'ADMIN' || 

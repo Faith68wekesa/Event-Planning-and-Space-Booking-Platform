@@ -98,7 +98,14 @@ PRIVATE_MEDIA_ROOT = os.path.join(BASE_DIR, 'private_documents')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+from corsheaders.defaults import default_headers
+
 CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    'x-user-id',
+    'x-admin-id',
+    'x-session-id',
+]
 
 REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
