@@ -70,8 +70,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       .then(([allVenues, allVendors]) => {
         if (!isMounted) return;
 
-        // 1. Physical spaces (capacity > 0)
-        const rawSpaces = allVenues.filter((item) => Number(item.capacity) > 0);
+        // 1. Physical spaces: Must NOT be a vendor service category (Catering, Decoration, Photography, etc.)
+        const rawSpaces = allVenues.filter((item) => {
+          const isServiceCategory = ['PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'].includes(item.category);
+          const isVendorService = Boolean(item.vendor) || isServiceCategory;
+          return !isVendorService && Number(item.capacity) > 0;
+        });
         const seenSpaceTitles = new Set<string>();
         const uniqueSpaces = rawSpaces.filter((s) => {
           const key = s.title.toLowerCase().trim();

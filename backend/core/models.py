@@ -72,8 +72,8 @@ class VendorProfile(models.Model):
     verification_status = models.CharField(max_length=20, choices=VERIFICATION_STATUS_CHOICES, default='PENDING')
     is_verified = models.BooleanField(default=False)
     portfolio_images = models.JSONField(default=list, blank=True)
-    rating = models.FloatField(default=4.8)
-    review_count = models.IntegerField(default=12)
+    rating = models.FloatField(default=0.0)
+    review_count = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
@@ -157,8 +157,8 @@ class Venue(models.Model):
     rejection_reason = models.TextField(blank=True, null=True)
     cancellation_policy = models.CharField(max_length=20, choices=CANCELLATION_POLICY_CHOICES, default='FLEXIBLE')
     is_available = models.BooleanField(default=True)
-    rating = models.FloatField(default=4.9)
-    review_count = models.IntegerField(default=24)
+    rating = models.FloatField(default=0.0)
+    review_count = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

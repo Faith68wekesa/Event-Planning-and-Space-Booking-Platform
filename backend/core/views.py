@@ -23,6 +23,7 @@ import datetime
 import os
 from django.utils import timezone
 from django.conf import settings
+from django.http import Http404
 from rest_framework.exceptions import PermissionDenied
 from django.core.files.storage import FileSystemStorage
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -123,14 +124,20 @@ class VendorProfileViewSet(viewsets.ModelViewSet):
         user = params.get('user') or params.get('user_id')
         all_status = params.get('all_status') == 'true'
 
+        # Authenticated user ID (either Django session/token, header X-User-Id, or param)
         is_admin = is_admin_user(self.request)
 
-        # Public queries return approved & verified vendors
-        if is_admin and all_status:
+        # Provider viewing their own account or Admin viewing all
+        if is_admin:
+            pass
+        elif self.action in ['update', 'partial_update', 'toggle_verify', 'set_verification']:
             pass
         elif user:
-            pass  # Provider viewing their own account
+            queryset = queryset.filter(user_id=user)
+        elif all_status:
+            pass
         else:
+            # PUBLIC / LANDING PAGE: Only admin-verified and approved vendors
             today = datetime.date.today()
             verified_vendor_ids = list(VerificationDocument.objects.filter(
                 vendor__isnull=False,
@@ -207,13 +214,19 @@ class VenueOwnerProfileViewSet(viewsets.ModelViewSet):
         user = params.get('user') or params.get('user_id')
         all_status = params.get('all_status') == 'true'
 
+        # Authenticated user ID (either Django session/token, header X-User-Id, or param)
         is_admin = is_admin_user(self.request)
 
-        if is_admin and all_status:
+        if is_admin:
+            pass
+        elif self.action in ['update', 'partial_update', 'toggle_verify', 'set_verification']:
             pass
         elif user:
-            pass  # Owner inspecting their own profile
+            queryset = queryset.filter(user_id=user)
+        elif all_status:
+            pass
         else:
+            # PUBLIC / LANDING PAGE: Only admin-verified and approved owners
             today = datetime.date.today()
             verified_owner_ids = list(VerificationDocument.objects.filter(
                 venue_owner__isnull=False,
@@ -296,13 +309,13 @@ class VenueViewSet(viewsets.ModelViewSet):
         is_admin = is_admin_user(self.request)
 
         # Filtering logic for public visibility vs provider/admin dashboard:
-        # If admin, or detail action (like approve/reject), or provider scoping is requested, allow finding listing
+        # If admin, a management action, or provider scoping is requested, allow finding listing
         if is_admin:
             pass  # Admin can inspect all statuses and execute actions
-        elif self.action in ['approve', 'reject', 'toggle_verify']:
+        elif self.action in ['approve', 'reject', 'toggle_verify', 'destroy', 'update', 'partial_update', 'toggle_availability']:
             pass
-        elif user_id or owner_id or vendor_id:
-            # Scoped to provider's dashboard
+        elif user_id or owner_id or vendor_id or all_status:
+            # Scoped to provider's dashboard or admin all_status view
             pass
         else:
             # PUBLIC CONSUMER ENDPOINT: Only approved, active/available listings
@@ -452,6 +465,51 @@ class VenueViewSet(viewsets.ModelViewSet):
         venue.is_available = not venue.is_available
         venue.save(update_fields=['is_available'])
         return Response({'status': 'updated', 'is_available': venue.is_available})
+
+    def destroy(self, request, *args, **kwargs):
+        venue = self.get_object()
+        is_admin = is_admin_user(request)
+
+        # Identify requesting user ID from session or auth headers/params
+        req_user_id = None
+        if request.user and request.user.is_authenticated:
+            req_user_id = request.user.id
+            if getattr(request.user, 'role', '') == 'ADMIN' or getattr(request.user, 'is_staff', False) or getattr(request.user, 'is_superuser', False):
+                is_admin = True
+
+        if not req_user_id:
+            raw_uid = (
+                request.headers.get('X-User-Id') or
+                request.headers.get('X-Admin-Id') or
+                getattr(request, 'query_params', {}).get('admin_user_id') or
+                getattr(request, 'query_params', {}).get('user_id')
+            )
+            if raw_uid:
+                try:
+                    req_user_id = int(raw_uid)
+                except (ValueError, TypeError):
+                    pass
+
+        if req_user_id and not is_admin:
+            try:
+                u = User.objects.get(pk=req_user_id)
+                if u.role == 'ADMIN' or u.is_staff or u.is_superuser:
+                    is_admin = True
+            except User.DoesNotExist:
+                pass
+
+        is_owner = False
+        if req_user_id:
+            if venue.owner and venue.owner.user_id == req_user_id:
+                is_owner = True
+            elif venue.vendor and venue.vendor.user_id == req_user_id:
+                is_owner = True
+
+        if not is_admin and not is_owner:
+            raise PermissionDenied("Access Denied: Only administrators or the listing owner can delete this venue.")
+
+        venue.delete()
+        return Response({'message': 'Venue listing deleted successfully.'}, status=status.HTTP_204_NO_CONTENT)
 
 
 class BookingViewSet(viewsets.ModelViewSet):
@@ -700,6 +758,9 @@ class ReviewViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        if self.action in ['retrieve', 'destroy', 'update', 'partial_update'] or getattr(self, 'detail', False):
+            return queryset
+
         params = self.request.query_params
         venue_id = params.get('venue')
         vendor_id = params.get('vendor')
@@ -791,6 +852,54 @@ class ReviewViewSet(viewsets.ModelViewSet):
             'review_count': stats['count'] or 0,
             'rating_breakdown': breakdown,
         })
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            review = self.get_object()
+        except Http404:
+            # If review was already removed or not found, return 204 successfully (idempotent)
+            return Response({'message': 'Review already removed.'}, status=status.HTTP_204_NO_CONTENT)
+
+        is_admin = is_admin_user(request)
+        req_user_id = None
+        if request.user and request.user.is_authenticated:
+            req_user_id = request.user.id
+            if getattr(request.user, 'role', '') == 'ADMIN' or getattr(request.user, 'is_staff', False) or getattr(request.user, 'is_superuser', False):
+                is_admin = True
+
+        if not req_user_id:
+            raw_uid = (
+                request.headers.get('X-User-Id') or
+                request.headers.get('X-Admin-Id') or
+                getattr(request, 'query_params', {}).get('admin_user_id') or
+                getattr(request, 'query_params', {}).get('user_id')
+            )
+            if raw_uid:
+                try:
+                    req_user_id = int(raw_uid)
+                except (ValueError, TypeError):
+                    pass
+
+        if req_user_id and not is_admin:
+            try:
+                u = User.objects.get(pk=req_user_id)
+                if u.role == 'ADMIN' or u.is_staff or u.is_superuser:
+                    is_admin = True
+            except User.DoesNotExist:
+                pass
+
+        if not is_admin and (not req_user_id or review.user_id != req_user_id):
+            raise PermissionDenied("Access Denied: Only administrators or the review author can delete this review.")
+
+        venue = review.venue
+        vendor = review.vendor
+        review.delete()
+        if venue:
+            venue.update_rating_stats()
+        if vendor:
+            vendor.update_rating_stats()
+
+        return Response({'message': 'Review removed successfully.'}, status=status.HTTP_204_NO_CONTENT)
 
 
 class MessageViewSet(viewsets.ModelViewSet):
@@ -2580,5 +2689,3 @@ def export_venue_owner_analytics_csv(request, owner_id):
         writer.writerow([t['date'], t['views'], t['clicks'], t['booking_requests'], t['confirmed_bookings']])
 
     return response
-
-

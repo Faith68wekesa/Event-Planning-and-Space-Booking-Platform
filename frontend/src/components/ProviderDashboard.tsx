@@ -93,6 +93,17 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
     website_url: effectiveVenueOwner?.website_url || effectiveVendor?.website_url || '',
   });
 
+  useEffect(() => {
+    setProfileFormData({
+      business_name: businessName,
+      location: location,
+      contact_email: email,
+      contact_phone: phone,
+      description: effectiveVenueOwner?.description || effectiveVendor?.description || '',
+      website_url: effectiveVenueOwner?.website_url || effectiveVendor?.website_url || '',
+    });
+  }, [businessName, location, email, phone, effectiveVenueOwner?.description, effectiveVendor?.description, effectiveVenueOwner?.website_url, effectiveVendor?.website_url]);
+
   const [isUploading, setIsUploading] = useState(false);
 
   // Modal states
@@ -436,20 +447,48 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
     e.preventDefault();
     try {
       if (currentVenueOwner?.id) {
-        await ApiService.updateVenueOwner(currentVenueOwner.id, profileFormData);
+        const updatedOwner = await ApiService.updateVenueOwner(currentVenueOwner.id, profileFormData);
+        setLiveVenueOwner(updatedOwner);
       }
       if (currentVendor?.id) {
-        await ApiService.updateVendor(currentVendor.id, profileFormData);
+        const updatedVendor = await ApiService.updateVendor(currentVendor.id, profileFormData);
+        setLiveVendor(updatedVendor);
       }
       toast.success("Business profile updated!");
-    } catch {
-      toast.error("Failed to update profile.");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to update profile.");
     }
   };
 
+  // Helper to determine accurate listing verification/approval status
+  const isListingPublished = (item: Venue) => Boolean(item.is_verified && (item.approval_status === 'APPROVED' || !item.approval_status));
+  const isListingRejected = (item: Venue) => item.approval_status === 'REJECTED';
+
+  const renderStatusBadge = (item: Venue) => {
+    if (isListingPublished(item)) {
+      return (
+        <span className="status-badge approved">
+          <ShieldCheck size={12} /> Published
+        </span>
+      );
+    }
+    if (isListingRejected(item)) {
+      return (
+        <span className="status-badge rejected" title={item.rejection_reason || 'Rejected by Admin'}>
+          <AlertCircle size={12} /> Rejected
+        </span>
+      );
+    }
+    return (
+      <span className="status-badge pending">
+        <Clock size={12} /> Pending Admin Verification
+      </span>
+    );
+  };
+
   // Metrics
-  const activeSpacesCount = spaces.filter(s => s.is_verified).length;
-  const activeServicesCount = services.filter(s => s.is_verified).length;
+  const activeSpacesCount = spaces.filter(isListingPublished).length;
+  const activeServicesCount = services.filter(isListingPublished).length;
   const pendingRequestsCount = bookings.filter(b => b.status === 'PENDING').length;
   const totalRevenue = bookings
     .filter(b => b.status === 'COMPLETED' || b.status === 'APPROVED')
@@ -457,14 +496,14 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
   // Filtered views
   const filteredSpaces = spaces.filter(s => {
-    if (spaceFilter === 'APPROVED') return s.is_verified;
-    if (spaceFilter === 'PENDING') return !s.is_verified;
+    if (spaceFilter === 'APPROVED') return isListingPublished(s);
+    if (spaceFilter === 'PENDING') return !isListingPublished(s);
     return true;
   });
 
   const filteredServices = services.filter(s => {
-    if (serviceFilter === 'APPROVED') return s.is_verified;
-    if (serviceFilter === 'PENDING') return !s.is_verified;
+    if (serviceFilter === 'APPROVED') return isListingPublished(s);
+    if (serviceFilter === 'PENDING') return !isListingPublished(s);
     return true;
   });
 
@@ -1022,12 +1061,9 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                             >
                               {item.itemKind === 'VENUE' ? 'Venue' : item.category || 'Service'}
                             </span>
-                            <span 
-                              className={`status-badge ${item.is_verified ? 'approved' : 'pending'}`}
-                              style={{ position: 'absolute', top: '10px', right: '10px' }}
-                            >
-                              {item.is_verified ? 'Verified' : 'Pending'}
-                            </span>
+                            <div style={{ position: 'absolute', top: '10px', right: '10px' }}>
+                              {renderStatusBadge(item)}
+                            </div>
                           </div>
 
                           <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -1200,9 +1236,9 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                         onError={(e) => handleImageError(e, DEFAULT_SPACE_IMAGE)}
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
                       />
-                      <span className={`status-badge ${s.is_verified ? 'approved' : 'pending'}`} style={{ position: 'absolute', top: '12px', right: '12px' }}>
-                        {s.is_verified ? 'Verified Space' : 'Pending Review'}
-                      </span>
+                      <div style={{ position: 'absolute', top: '12px', right: '12px' }}>
+                        {renderStatusBadge(s)}
+                      </div>
                     </div>
 
                     <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
@@ -1297,9 +1333,9 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                         onError={(e) => handleImageError(e, DEFAULT_SERVICE_IMAGE)}
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
                       />
-                      <span className={`status-badge ${s.is_verified ? 'approved' : 'pending'}`} style={{ position: 'absolute', top: '12px', right: '12px' }}>
-                        {s.is_verified ? 'Verified Service' : 'Pending Review'}
-                      </span>
+                      <div style={{ position: 'absolute', top: '12px', right: '12px' }}>
+                        {renderStatusBadge(s)}
+                      </div>
                     </div>
 
                     <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', flexGrow: 1 }}>

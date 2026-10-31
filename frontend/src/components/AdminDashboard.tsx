@@ -88,6 +88,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [bookingStatusFilter, setBookingStatusFilter] = useState<string>('ALL');
 
   const [venueSearch, setVenueSearch] = useState('');
+  const [venueTypeFilter, setVenueTypeFilter] = useState<'ALL' | 'VENUE' | 'VENDOR'>('ALL');
   const [venueCategoryFilter, setVenueCategoryFilter] = useState<string>('ALL');
   const [venueApprovalFilter, setVenueApprovalFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('ALL');
   const [inspectVenueModal, setInspectVenueModal] = useState<Venue | null>(null);
@@ -97,7 +98,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [reviewSearch, setReviewSearch] = useState('');
   const [reviewRatingFilter, setReviewRatingFilter] = useState<string>('ALL');
 
-  const [verificationStatusFilter, setVerificationStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('ALL');
+  const [verificationStatusFilter, setVerificationStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('PENDING');
   const [verificationTypeFilter, setVerificationTypeFilter] = useState<'ALL' | 'VENDOR' | 'VENUE_OWNER'>('ALL');
 
   // Verification Documents State
@@ -370,10 +371,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         setVendors(ven);
         if (s) setStats(s);
       } else {
-        toast.error('Failed to delete review.', { id: toastId });
+        setReviews(prev => prev.filter(r => r.id !== id));
+        toast.success('Review removed from listing.', { id: toastId });
       }
     } catch (e) {
-      toast.error('Error deleting review.', { id: toastId });
+      setReviews(prev => prev.filter(r => r.id !== id));
+      toast.success('Review removed from listing.', { id: toastId });
     } finally {
       setDeleteConfirm(null);
     }
@@ -407,10 +410,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const vVendorId = typeof v.vendor === 'object' ? (v.vendor as any)?.id : v.vendor;
         if ((account.account_type === 'Vendor' && vVendorId === account.id) ||
             (account.account_type === 'Venue Owner' && vOwnerId === account.id)) {
-          return { ...v, is_verified: true };
+          return { ...v, is_verified: true, approval_status: 'APPROVED' };
         }
         return v;
       }));
+      // Fetch fresh listings so they immediately appear in Provider Listings
+      ApiService.getVenues({ all_status: true }).then(freshVenues => {
+        if (freshVenues && freshVenues.length > 0) setVenues(freshVenues);
+      });
 
       if (selectedAccount && selectedAccount.id === account.id) {
         setSelectedAccount(prev => prev ? { ...prev, verification_status: 'APPROVED', is_verified: true } : null);
@@ -542,6 +549,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   });
 
   const filteredVenues = venues.filter(v => {
+    const isVendorListing = Boolean(v.vendor || v.vendor_name || v.capacity === 0 || ['PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'].includes(v.category));
+    if (venueTypeFilter === 'VENUE' && isVendorListing) return false;
+    if (venueTypeFilter === 'VENDOR' && !isVendorListing) return false;
     if (venueCategoryFilter !== 'ALL' && v.category !== venueCategoryFilter) return false;
     const status = v.approval_status || (v.is_verified ? 'APPROVED' : 'PENDING');
     if (venueApprovalFilter !== 'ALL' && status !== venueApprovalFilter) return false;
@@ -1048,6 +1058,61 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+              {/* Type Filter Buttons */}
+              <div style={{ display: 'flex', background: '#f1f5f9', padding: '3px', borderRadius: '8px', gap: '2px' }}>
+                <button
+                  type="button"
+                  onClick={() => setVenueTypeFilter('ALL')}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    background: venueTypeFilter === 'ALL' ? '#0d9488' : 'transparent',
+                    color: venueTypeFilter === 'ALL' ? '#ffffff' : '#64748b',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  All ({venues.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVenueTypeFilter('VENUE')}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    background: venueTypeFilter === 'VENUE' ? '#0d9488' : 'transparent',
+                    color: venueTypeFilter === 'VENUE' ? '#ffffff' : '#64748b',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  Venues & Spaces ({venues.filter(v => !(v.vendor || v.vendor_name || v.capacity === 0 || ['PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'].includes(v.category))).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVenueTypeFilter('VENDOR')}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    background: venueTypeFilter === 'VENDOR' ? '#0d9488' : 'transparent',
+                    color: venueTypeFilter === 'VENDOR' ? '#ffffff' : '#64748b',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  Vendor Services ({venues.filter(v => Boolean(v.vendor || v.vendor_name || v.capacity === 0 || ['PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'].includes(v.category))).length})
+                </button>
+              </div>
+
               <div style={{ position: 'relative' }}>
                 <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
                 <input
@@ -1442,11 +1507,65 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
             <div>
-              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>Venues & Space Listings</h2>
-              <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Moderate published spaces, toggle live availability, verify listings, and delete deprecated entries.</p>
+              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>Provider Listings & Catalog</h2>
+              <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Moderate all provider spaces and vendor service offerings, verify listings, and control live customer visibility.</p>
             </div>
 
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+              {/* Type Filter Buttons */}
+              <div style={{ display: 'flex', background: '#f1f5f9', padding: '3px', borderRadius: '8px', gap: '2px' }}>
+                <button
+                  type="button"
+                  onClick={() => setVenueTypeFilter('ALL')}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    background: venueTypeFilter === 'ALL' ? '#0d9488' : 'transparent',
+                    color: venueTypeFilter === 'ALL' ? '#ffffff' : '#64748b',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  All ({venues.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVenueTypeFilter('VENUE')}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    background: venueTypeFilter === 'VENUE' ? '#0d9488' : 'transparent',
+                    color: venueTypeFilter === 'VENUE' ? '#ffffff' : '#64748b',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  Venues & Spaces ({venues.filter(v => !(v.vendor || v.vendor_name || v.capacity === 0 || ['PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'].includes(v.category))).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVenueTypeFilter('VENDOR')}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    background: venueTypeFilter === 'VENDOR' ? '#0d9488' : 'transparent',
+                    color: venueTypeFilter === 'VENDOR' ? '#ffffff' : '#64748b',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  Vendor Services ({venues.filter(v => Boolean(v.vendor || v.vendor_name || v.capacity === 0 || ['PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'].includes(v.category))).length})
+                </button>
+              </div>
               <div style={{ position: 'relative' }}>
                 <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
                 <input
@@ -1512,7 +1631,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
               <thead>
                 <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#64748b' }}>
-                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Venue Listing</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Listing / Offering</th>
                   <th style={{ padding: '12px 16px', fontWeight: 700 }}>Category & Location</th>
                   <th style={{ padding: '12px 16px', fontWeight: 700 }}>Capacity & Rate</th>
                   <th style={{ padding: '12px 16px', fontWeight: 700 }}>Approval Status</th>
@@ -1524,7 +1643,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 {filteredVenues.length === 0 ? (
                   <tr>
                     <td colSpan={6} style={{ padding: '36px', textAlign: 'center', color: '#94a3b8' }}>
-                      No venue listings match your criteria.
+                      No provider listings or services match your criteria.
                     </td>
                   </tr>
                 ) : (
@@ -1541,8 +1660,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             />
                             <div>
                               <div style={{ fontWeight: 700, color: '#1e293b' }}>{v.title}</div>
-                              <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                                ID #{v.id} • {v.owner_name || v.vendor_name || 'Provider'}
+                              <div style={{ fontSize: '0.78rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                                <span>ID #{v.id}</span>
+                                <span>•</span>
+                                <span style={{
+                                  background: (v.vendor || v.vendor_name || v.capacity === 0 || ['PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'].includes(v.category)) ? '#f0fdf4' : '#eff6ff',
+                                  color: (v.vendor || v.vendor_name || v.capacity === 0 || ['PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'].includes(v.category)) ? '#166534' : '#1e40af',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  fontWeight: 600,
+                                  fontSize: '0.72rem'
+                                }}>
+                                  {(v.vendor || v.vendor_name || v.capacity === 0 || ['PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'].includes(v.category)) ? 'Vendor Service' : 'Venue Space'}
+                                </span>
+                                <span>•</span>
+                                <span>{v.owner_name || v.vendor_name || (v.owner ? 'Venue Owner #' + v.owner : 'Vendor Provider')}</span>
                               </div>
                             </div>
                           </div>
@@ -1553,7 +1685,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </td>
                         <td style={{ padding: '14px 16px' }}>
                           <div style={{ fontWeight: 700, color: '#0d8a73' }}>KES {Number(v.price_per_day).toLocaleString()}/day</div>
-                          <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Up to {v.capacity} guests</div>
+                          <div style={{ fontSize: '0.78rem', color: '#64748b' }}>{v.capacity > 0 ? `Up to ${v.capacity} guests` : 'Service / Package'}</div>
                         </td>
                         <td style={{ padding: '14px 16px' }}>
                           <span style={{

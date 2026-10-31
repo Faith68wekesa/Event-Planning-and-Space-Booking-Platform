@@ -62,7 +62,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'users', label: 'Users', icon: Users, badge: badgeCounts.users },
     { id: 'bookings', label: 'Bookings', icon: Calendar, badge: badgeCounts.bookings },
-    { id: 'venues', label: 'Venues & Spaces', icon: Building2, badge: badgeCounts.venues },
+    { id: 'venues', label: 'Provider Listings', icon: Building2, badge: badgeCounts.venues },
     {
       id: 'verifications',
       label: 'Verification Queue',

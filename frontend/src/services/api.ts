@@ -35,13 +35,25 @@ export const setApiCurrentUserId = (id: number | null) => {
 };
 
 export const getApiCurrentUserId = (): number | null => {
-  return currentUserId;
+  if (currentUserId) return currentUserId;
+  try {
+    const stored = localStorage.getItem('locyfy_session_auth');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed?.user?.id) {
+        currentUserId = Number(parsed.user.id);
+        return currentUserId;
+      }
+    }
+  } catch (e) {}
+  return null;
 };
 
 const getAuthHeaders = (extraHeaders: Record<string, string> = {}): Record<string, string> => {
   const headers: Record<string, string> = { ...extraHeaders };
-  if (currentUserId) {
-    headers['X-User-Id'] = currentUserId.toString();
+  const uid = getApiCurrentUserId();
+  if (uid) {
+    headers['X-User-Id'] = uid.toString();
   }
   return headers;
 };
@@ -326,11 +338,12 @@ export const ApiService = {
     try {
       const res = await fetch(`${API_BASE}/vendors/${id}/`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(vendorData),
       });
-      if (res.ok) return await res.json();
-      throw new Error(await res.text());
+      const data = await res.json();
+      if (res.ok) return data;
+      throw new Error(formatApiError(data, 'Failed to update vendor profile'));
     } catch (e) {
       console.error("Failed to update vendor", e);
       throw e;
@@ -384,11 +397,12 @@ export const ApiService = {
     try {
       const res = await fetch(`${API_BASE}/venue-owners/${id}/`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(ownerData),
       });
-      if (res.ok) return await res.json();
-      throw new Error(await res.text());
+      const data = await res.json();
+      if (res.ok) return data;
+      throw new Error(formatApiError(data, 'Failed to update venue owner profile'));
     } catch (e) {
       console.error("Failed to update venue owner", e);
       throw e;
@@ -474,10 +488,13 @@ export const ApiService = {
 
   async deleteVenue(id: number): Promise<boolean> {
     try {
-      const res = await fetch(`${API_BASE}/venues/${id}/`, {
+      const uid = getApiCurrentUserId();
+      const queryParam = uid ? `?admin_user_id=${uid}&user_id=${uid}` : '';
+      const res = await fetch(`${API_BASE}/venues/${id}/${queryParam}`, {
         method: 'DELETE',
+        headers: getAuthHeaders(),
       });
-      return res.ok;
+      return res.ok || res.status === 204 || res.status === 404;
     } catch (e) {
       console.error("Failed to delete venue", e);
       return false;
@@ -576,10 +593,13 @@ export const ApiService = {
 
   async deleteReview(id: number): Promise<boolean> {
     try {
-      const res = await fetch(`${API_BASE}/reviews/${id}/`, {
+      const uid = getApiCurrentUserId();
+      const queryParam = uid ? `?admin_user_id=${uid}` : '';
+      const res = await fetch(`${API_BASE}/reviews/${id}/${queryParam}`, {
         method: 'DELETE',
+        headers: getAuthHeaders(),
       });
-      return res.ok || res.status === 204;
+      return res.ok || res.status === 204 || res.status === 404;
     } catch (e) {
       console.error('Failed to delete review:', e);
       return false;
@@ -643,7 +663,7 @@ export const ApiService = {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
-      return res.ok || res.status === 204;
+      return res.ok || res.status === 204 || res.status === 404;
     } catch (e) {
       console.error('Failed to delete user:', e);
       return false;
@@ -656,7 +676,7 @@ export const ApiService = {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
-      return res.ok || res.status === 204;
+      return res.ok || res.status === 204 || res.status === 404;
     } catch (e) {
       console.error('Failed to delete booking:', e);
       return false;
@@ -814,8 +834,11 @@ export const ApiService = {
 
   async deleteEvent(id: number): Promise<boolean> {
     try {
-      const res = await fetch(`${API_BASE}/events/${id}/`, {
+      const uid = getApiCurrentUserId();
+      const queryParam = uid ? `?user_id=${uid}` : '';
+      const res = await fetch(`${API_BASE}/events/${id}/${queryParam}`, {
         method: 'DELETE',
+        headers: getAuthHeaders(),
       });
       return res.ok || res.status === 204;
     } catch (e) {
@@ -875,8 +898,11 @@ export const ApiService = {
 
   async deleteEventService(id: number | string): Promise<boolean> {
     try {
-      const res = await fetch(`${API_BASE}/event-services/${id}/`, {
+      const uid = getApiCurrentUserId();
+      const queryParam = uid ? `?user_id=${uid}` : '';
+      const res = await fetch(`${API_BASE}/event-services/${id}/${queryParam}`, {
         method: 'DELETE',
+        headers: getAuthHeaders(),
       });
       return res.ok || res.status === 204;
     } catch (e) {
