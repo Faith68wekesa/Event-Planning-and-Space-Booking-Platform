@@ -43,51 +43,50 @@ class BookingCapacityValidator:
         return start_time, end_time
 
     @classmethod
-    def validate_booking(
+    def validate_listing_eligibility(
         cls,
-        customer,
-        event_date: datetime.date,
-        guest_count: int,
         venue: Optional[Venue] = None,
-        vendor: Optional[VendorProfile] = None,
-        event_type: Optional[str] = None,
-        notes: Optional[str] = None,
-        exclude_booking_id: Optional[int] = None,
-        lock_provider: bool = False
+        vendor: Optional[VendorProfile] = None
     ):
         """
-        Main validation method checking:
-        1. Target presence (venue or vendor)
-        2. Date validity (future date)
-        3. Venue capacity limit
-        4. Service capability
-        5. Provider date availability (custom blocked dates / day statuses)
-        6. Working hours compatibility
-        7. Remaining capacity after existing confirmed/approved bookings
+        Validate listing presence, target exclusivity, approval, availability,
+        owner verification, verification documents, and positive pricing.
+        Applies unconditionally on all writes (POST, PUT, and partial PATCH).
+        Uses Decimal-safe comparisons for monetary amounts.
         """
+        from rest_framework.exceptions import ValidationError
+        from decimal import Decimal, InvalidOperation
+        from core.models import VerificationDocument
+
         if not venue and not vendor:
             raise ValidationError("A booking request must specify either a venue or a service provider.")
+        if venue and vendor:
+            raise ValidationError("A booking request cannot specify both a venue and a service provider. Please create separate bookings for venue and vendor services.")
 
         today = datetime.date.today()
-        if event_date < today:
-            raise ValidationError("Event date cannot be in the past. Please select a future date.")
 
-        if guest_count < 1:
-            raise ValidationError("Guest count must be at least 1.")
-
-        # Check listing approval, active status, and provider verification documents
-        from core.models import VerificationDocument
         if venue:
             if venue.approval_status != 'APPROVED' or not venue.is_verified:
                 raise ValidationError("This venue is currently pending administrator verification and cannot accept bookings.")
             if not venue.is_available:
                 raise ValidationError("This venue is currently marked as unavailable or inactive.")
-            
+
+            # Decimal-safe price validation
+            if venue.price_per_day is None:
+                raise ValidationError(f"The venue '{venue.title}' has no rental price defined.")
+            try:
+                dec_price = Decimal(str(venue.price_per_day))
+                if dec_price.is_nan() or dec_price.is_infinite():
+                    raise ValidationError(f"The venue '{venue.title}' has an invalid non-finite rental price ({venue.price_per_day}).")
+                if dec_price <= Decimal('0.00'):
+                    raise ValidationError(f"The venue '{venue.title}' has an invalid or non-positive rental price ({venue.price_per_day}).")
+            except (InvalidOperation, ValueError, TypeError):
+                raise ValidationError(f"The venue '{venue.title}' has an invalid non-numeric rental price ({venue.price_per_day}).")
+
             # Check owner verification & documents
             if venue.owner:
                 if venue.owner.verification_status != 'APPROVED' or not venue.owner.is_verified:
                     raise ValidationError("The venue owner account is not verified.")
-                # If provider has documents on record, ensure at least one approved valid doc and no all-expired docs
                 owner_docs = VerificationDocument.objects.filter(venue_owner=venue.owner)
                 if owner_docs.exists():
                     has_valid_doc = owner_docs.filter(status='APPROVED').filter(
@@ -109,6 +108,19 @@ class BookingCapacityValidator:
         if vendor:
             if vendor.verification_status != 'APPROVED' or not vendor.is_verified:
                 raise ValidationError("This service provider is currently pending administrator verification and cannot accept bookings.")
+
+            # Decimal-safe price validation
+            if vendor.starting_price is None:
+                raise ValidationError(f"The service provider '{vendor.business_name}' has no starting price defined.")
+            try:
+                dec_price = Decimal(str(vendor.starting_price))
+                if dec_price.is_nan() or dec_price.is_infinite():
+                    raise ValidationError(f"The service provider '{vendor.business_name}' has an invalid non-finite starting price ({vendor.starting_price}).")
+                if dec_price <= Decimal('0.00'):
+                    raise ValidationError(f"The service provider '{vendor.business_name}' has an invalid or non-positive starting price ({vendor.starting_price}).")
+            except (InvalidOperation, ValueError, TypeError):
+                raise ValidationError(f"The service provider '{vendor.business_name}' has an invalid non-numeric starting price ({vendor.starting_price}).")
+
             vendor_docs = VerificationDocument.objects.filter(vendor=vendor)
             if vendor_docs.exists():
                 has_valid_doc = vendor_docs.filter(status='APPROVED').filter(
@@ -117,7 +129,38 @@ class BookingCapacityValidator:
                 if not has_valid_doc:
                     raise ValidationError("This service provider has expired or unapproved verification documents.")
 
-        # Determine the provider user and settings
+    @classmethod
+    def validate_booking(
+        cls,
+        customer,
+        event_date: datetime.date,
+        guest_count: int,
+        venue: Optional[Venue] = None,
+        vendor: Optional[VendorProfile] = None,
+        event_type: Optional[str] = None,
+        notes: Optional[str] = None,
+        exclude_booking_id: Optional[int] = None,
+        lock_provider: bool = False
+    ):
+        """
+        Main validation method checking:
+        1. Listing eligibility & pricing
+        2. Date validity (future date)
+        3. Venue capacity limit
+        4. Service capability
+        5. Provider date availability (custom blocked dates / day statuses)
+        6. Working hours compatibility
+        7. Remaining capacity after existing confirmed/approved bookings
+        """
+        cls.validate_listing_eligibility(venue=venue, vendor=vendor)
+
+        today = datetime.date.today()
+        if event_date < today:
+            raise ValidationError("Event date cannot be in the past. Please select a future date.")
+
+        if guest_count < 1:
+            raise ValidationError("Guest count must be at least 1.")
+# Determine the provider user and settings
         provider_user = None
         if venue:
             if venue.owner and venue.owner.user:

@@ -190,6 +190,11 @@ class Venue(models.Model):
         if not url or not isinstance(url, str):
             return url
         url = url.strip().strip('"\'')
+        if 'drive.google.com' in url:
+            import re
+            m = re.search(r'/d/([a-zA-Z0-9_-]+)', url) or re.search(r'id=([a-zA-Z0-9_-]+)', url)
+            if m:
+                return f"https://lh3.googleusercontent.com/d/{m.group(1)}"
         if 'google.com/imgres' in url or '/imgres?' in url:
             from urllib.parse import urlparse, parse_qs, unquote
             try:
@@ -579,3 +584,78 @@ class UserInteraction(models.Model):
         return f"{self.event_type} by {actor} at {self.timestamp}"
 
 
+
+
+
+class Recommendation(models.Model):
+    RECOMMENDATION_TYPE_CHOICES = [
+        ('VENUE', 'Venue'),
+        ('VENDOR', 'Vendor'),
+    ]
+
+    customer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='recommendations')
+    venue = models.ForeignKey(Venue, null=True, blank=True, on_delete=models.CASCADE, related_name='recommendations')
+    vendor = models.ForeignKey(VendorProfile, null=True, blank=True, on_delete=models.CASCADE, related_name='recommendations')
+    recommendation_type = models.CharField(max_length=10, choices=RECOMMENDATION_TYPE_CHOICES, db_index=True)
+    match_score = models.FloatField(default=0.0)  # Normalized 0.0 to 1.0
+    is_cold_start = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-match_score', '-updated_at']
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(venue__isnull=False, vendor__isnull=True, recommendation_type='VENUE') |
+                    models.Q(venue__isnull=True, vendor__isnull=False, recommendation_type='VENDOR')
+                ),
+                name='recommendation_target_valid'
+            ),
+            models.UniqueConstraint(fields=['customer', 'venue'], name='unique_customer_venue_rec'),
+            models.UniqueConstraint(fields=['customer', 'vendor'], name='unique_customer_vendor_rec'),
+        ]
+        indexes = [
+            models.Index(fields=['customer', 'recommendation_type', '-match_score']),
+            models.Index(fields=['customer', '-updated_at']),
+        ]
+
+    def __str__(self):
+        target = self.venue.title if self.venue else (self.vendor.business_name if self.vendor else 'Unknown')
+        mode = "ColdStart" if self.is_cold_start else "ML"
+        return f"[{mode}] {self.customer.username} -> {target} ({self.match_score:.2f})"
+
+
+class FraudAlert(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING_REVIEW', 'Pending Review'),
+        ('INVESTIGATING', 'Investigating'),
+        ('RESOLVED', 'Resolved'),
+        ('DISMISSED', 'Dismissed'),
+    ]
+
+    DETECTION_METHOD_CHOICES = [
+        ('RULE_BASED', 'Rule-Based Heuristic (Cold-Start Fallback)'),
+        ('ISOLATION_FOREST', 'Scikit-learn IsolationForest ML Model'),
+    ]
+
+    booking = models.OneToOneField(Booking, on_delete=models.CASCADE, related_name='fraud_alert')
+    risk_score = models.FloatField(default=0.0)  # Normalized score 0.0 - 100.0
+    is_anomaly = models.BooleanField(default=False)
+    detection_method = models.CharField(max_length=20, choices=DETECTION_METHOD_CHOICES, default='RULE_BASED')
+    reason = models.TextField(help_text="Detailed diagnostic explanation of risk indicators")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING_REVIEW', db_index=True)
+    reviewed_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='reviewed_fraud_alerts')
+    admin_notes = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['status', '-created_at']),
+            models.Index(fields=['-risk_score', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"FraudAlert #{self.id} for Booking #{self.booking_id} (Risk: {self.risk_score:.1f}, Status: {self.status})"

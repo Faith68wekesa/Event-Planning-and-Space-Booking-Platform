@@ -549,6 +549,14 @@ class BookingViewSet(viewsets.ModelViewSet):
 
         return queryset
 
+    def perform_create(self, serializer):
+        # Enforce server-side authenticated customer assignment:
+        # If user is authenticated, customer is authoritatively assigned from request.user
+        if self.request.user and self.request.user.is_authenticated:
+            serializer.save(customer=self.request.user)
+        else:
+            serializer.save()
+
     def create(self, request, *args, **kwargs):
         from django.db import transaction
         serializer = self.get_serializer(data=request.data)
@@ -779,6 +787,14 @@ class ReviewViewSet(viewsets.ModelViewSet):
 
         return queryset
 
+    def perform_create(self, serializer):
+        # Enforce server-side authenticated customer assignment:
+        # If user is authenticated, customer is authoritatively assigned from request.user
+        if self.request.user and self.request.user.is_authenticated:
+            serializer.save(customer=self.request.user)
+        else:
+            serializer.save()
+
     def create(self, request, *args, **kwargs):
         booking_id = request.data.get('booking')
         rating = request.data.get('rating')
@@ -935,6 +951,14 @@ class MessageViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(vendor_id=vendor_id)
 
         return queryset
+
+    def perform_create(self, serializer):
+        # Enforce server-side authenticated customer assignment:
+        # If user is authenticated, customer is authoritatively assigned from request.user
+        if self.request.user and self.request.user.is_authenticated:
+            serializer.save(customer=self.request.user)
+        else:
+            serializer.save()
 
     def create(self, request, *args, **kwargs):
         data = request.data.copy()

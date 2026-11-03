@@ -2,7 +2,7 @@ from rest_framework import serializers
 # pyrefly: ignore[missing-import]
 from .models import (
     User, VendorProfile, VenueOwnerProfile, Venue, Booking, Review, Message, Event, EventService,
-    Notification, CustomerReminderPreference, VerificationDocument, UserInteraction
+    Notification, CustomerReminderPreference, VerificationDocument, UserInteraction, Recommendation, FraudAlert
 )
 
 class UserSerializer(serializers.ModelSerializer):
@@ -51,6 +51,15 @@ class VendorProfileSerializer(serializers.ModelSerializer):
                 data['starting_price'] = sp
         else:
             data['starting_price'] = sp
+
+        # Automatically populate service portfolio images and logo if empty
+        if not data.get('portfolio_images') or len(data['portfolio_images']) == 0:
+            venue_imgs = [v.image_url for v in instance.venues.all() if v.image_url]
+            if venue_imgs:
+                data['portfolio_images'] = venue_imgs
+        if not data.get('logo_url') and data.get('portfolio_images') and len(data['portfolio_images']) > 0:
+            data['logo_url'] = data['portfolio_images'][0]
+
         return data
 
     class Meta:
@@ -160,32 +169,70 @@ class BookingSerializer(serializers.ModelSerializer):
             'has_reviewed', 'review',
             'created_at', 'updated_at'
         ]
+        read_only_fields = ['total_price']
 
     def validate(self, attrs):
         from core.services.booking_validator import BookingCapacityValidator
-        
+        from rest_framework.exceptions import ValidationError
+        from decimal import Decimal
+
+        request = self.context.get('request')
+        if request and hasattr(request, 'user') and request.user and request.user.is_authenticated:
+            # Authoritatively bind the authenticated user as the booking customer
+            attrs['customer'] = request.user
+
         customer = attrs.get('customer') or (self.instance.customer if self.instance else None)
         event_date = attrs.get('event_date') or (self.instance.event_date if self.instance else None)
         guest_count = attrs.get('guest_count') if 'guest_count' in attrs else (self.instance.guest_count if self.instance else 0)
-        venue = attrs.get('venue') or (self.instance.venue if self.instance else None)
-        vendor = attrs.get('vendor') or (self.instance.vendor if self.instance else None)
         event_type = attrs.get('event_type') or (self.instance.event_type if self.instance else None)
         notes = attrs.get('notes') if 'notes' in attrs else (self.instance.notes if self.instance else None)
 
+        # Robust target resolution for POST, PUT, and partial PATCH:
+        # In a full update (PUT or POST), fields not included are treated as omitted/None.
+        # In a partial update (PATCH), omitted fields fall back to self.instance.
+        is_partial = getattr(self, 'partial', False)
+        if 'venue' in attrs:
+            final_venue = attrs['venue']
+        elif is_partial and self.instance:
+            final_venue = self.instance.venue
+        else:
+            final_venue = None
+
+        if 'vendor' in attrs:
+            final_vendor = attrs['vendor']
+        elif is_partial and self.instance:
+            final_vendor = self.instance.vendor
+        else:
+            final_vendor = None
+
+        # 1. Target presence, exclusivity, approval, availability, and positive-pricing checks
+        # Executed unconditionally on every write (POST, PUT, and partial PATCH)
+        BookingCapacityValidator.validate_listing_eligibility(venue=final_venue, vendor=final_vendor)
+
+        # 2. Date and capacity validation when scheduling fields are provided or already present
         if event_date and guest_count is not None:
             BookingCapacityValidator.validate_booking(
                 customer=customer,
                 event_date=event_date,
                 guest_count=guest_count,
-                venue=venue,
-                vendor=vendor,
+                venue=final_venue,
+                vendor=final_vendor,
                 event_type=event_type,
                 notes=notes,
                 exclude_booking_id=self.instance.id if self.instance else None
             )
 
-        return attrs
+        # 3. Server-Side Authoritative Pricing Determination:
+        # Never trust user/client submitted total_price. The backend independently calculates
+        # and overrides total_price from authoritative listing rates:
+        # - Venue bookings: Venue.price_per_day
+        # - Vendor bookings: VendorProfile.starting_price
+        if final_venue:
+            attrs['total_price'] = Decimal(str(final_venue.price_per_day))
+        elif final_vendor:
+            attrs['total_price'] = Decimal(str(final_vendor.starting_price))
 
+        return attrs
 
 class MessageSerializer(serializers.ModelSerializer):
     sender_name = serializers.SerializerMethodField()
@@ -347,6 +394,7 @@ class VerificationDocumentSerializer(serializers.ModelSerializer):
             'status', 'status_display', 'rejection_reason', 'admin_notes', 'reviewed_by', 'reviewed_at',
             'created_at', 'updated_at'
         ]
+        read_only_fields = ['total_price']
 
     def validate_file(self, value):
         if not value:
@@ -392,3 +440,44 @@ class UserInteractionSerializer(serializers.ModelSerializer):
 
 
 
+
+
+
+class RecommendationSerializer(serializers.ModelSerializer):
+    venue_details = VenueSerializer(source='venue', read_only=True)
+    vendor_details = VendorProfileSerializer(source='vendor', read_only=True)
+    match_percentage = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Recommendation
+        fields = [
+            'id', 'customer', 'venue', 'vendor', 'venue_details', 'vendor_details',
+            'recommendation_type', 'match_score', 'match_percentage',
+            'is_cold_start', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'customer', 'created_at', 'updated_at']
+
+    def get_match_percentage(self, obj):
+        # Convert 0.0 - 1.0 to display percentage integer (e.g. 85%)
+        return round((obj.match_score or 0.0) * 100, 1)
+
+
+class FraudAlertSerializer(serializers.ModelSerializer):
+    booking_details = BookingSerializer(source='booking', read_only=True)
+    customer_username = serializers.CharField(source='booking.customer.username', read_only=True)
+    customer_email = serializers.CharField(source='booking.customer.email', read_only=True)
+    reviewed_by_username = serializers.CharField(source='reviewed_by.username', read_only=True, default=None)
+
+    class Meta:
+        model = FraudAlert
+        fields = [
+            'id', 'booking', 'booking_details', 'customer_username', 'customer_email',
+            'risk_score', 'is_anomaly', 'detection_method', 'reason',
+            'status', 'reviewed_by', 'reviewed_by_username', 'admin_notes',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['total_price']
+        read_only_fields = [
+            'id', 'booking', 'risk_score', 'is_anomaly', 'detection_method',
+            'reason', 'created_at', 'updated_at'
+        ]
