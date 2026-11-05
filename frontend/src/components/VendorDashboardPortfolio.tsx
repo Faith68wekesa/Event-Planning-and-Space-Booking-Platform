@@ -126,7 +126,7 @@ export const VendorDashboardPortfolio: React.FC<PortfolioProps> = ({ venues, onA
                     <span style={{ fontWeight: 700, color: '#0f172a' }}>KES {venue.price_per_day.toLocaleString()}</span> / event
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#f59e0b', fontSize: '0.9rem', fontWeight: 600 }}>
-                    <Star size={16} fill="#f59e0b" /> {venue.rating || '4.8'}
+                    <Star size={16} fill="#f59e0b" /> {venue.rating && Number(venue.rating) > 0 ? Number(venue.rating).toFixed(1) : 'No reviews'}
                   </div>
                 </div>
 

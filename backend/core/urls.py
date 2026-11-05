@@ -12,7 +12,8 @@ from .views import (
     refresh_all_ratings, VerificationDocumentViewSet,
     track_user_interaction, admin_analytics, export_admin_analytics_csv,
     vendor_analytics, export_vendor_analytics_csv,
-    venue_owner_analytics, export_venue_owner_analytics_csv
+    venue_owner_analytics, export_venue_owner_analytics_csv,
+    venue_recommendations, vendor_recommendations
 )
 
 router = DefaultRouter()
@@ -48,6 +49,8 @@ urlpatterns = [
 
     path('', include(router.urls)),
     path('stats/', platform_stats, name='platform-stats'),
+    path('recommendations/venues/', venue_recommendations, name='venue-recommendations'),
+    path('recommendations/vendors/', vendor_recommendations, name='vendor-recommendations'),
     path('admin/refresh-ratings/', refresh_all_ratings, name='refresh-all-ratings'),
     path('otp/send/', send_otp, name='send-otp'),
     path('otp/verify/', verify_otp, name='verify-otp'),
@@ -55,5 +58,4 @@ urlpatterns = [
     path('users/<int:user_id>/upload-avatar/', upload_profile_picture, name='upload-avatar'),
     path('reminder-preferences/', CustomerReminderPreferenceView.as_view(), name='reminder-preferences'),
 ]
-
 

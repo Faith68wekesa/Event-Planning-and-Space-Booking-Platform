@@ -29,9 +29,28 @@ export function formatApiError(resData: any, fallback: string): string {
 }
 
 let currentUserId: number | null = null;
+let currentAuthToken: string | null = null;
 
 export const setApiCurrentUserId = (id: number | null) => {
   currentUserId = id;
+};
+
+export const setApiAuthToken = (token: string | null) => {
+  currentAuthToken = token;
+};
+
+export const getApiAuthToken = (): string | null => {
+  if (currentAuthToken) return currentAuthToken;
+
+  try {
+    const stored = localStorage.getItem('locyfy_auth_token');
+    if (stored) {
+      currentAuthToken = stored;
+      return currentAuthToken;
+    }
+  } catch (e) {}
+
+  return null;
 };
 
 export const getApiCurrentUserId = (): number | null => {
@@ -52,9 +71,16 @@ export const getApiCurrentUserId = (): number | null => {
 const getAuthHeaders = (extraHeaders: Record<string, string> = {}): Record<string, string> => {
   const headers: Record<string, string> = { ...extraHeaders };
   const uid = getApiCurrentUserId();
+  const token = getApiAuthToken();
+
   if (uid) {
     headers['X-User-Id'] = uid.toString();
   }
+
+  if (token) {
+    headers['Authorization'] = `Token ${token}`;
+  }
+
   return headers;
 };
 
@@ -118,6 +144,16 @@ export const ApiService = {
       });
       const resData = await res.json();
       if (res.ok) {
+        if (resData.token) {
+          currentAuthToken = resData.token;
+
+          try {
+            localStorage.setItem('locyfy_auth_token', resData.token);
+          } catch (e) {
+            console.error('Failed to save authentication token:', e);
+          }
+        }
+
         return resData;
       }
       return { error: resData.error || resData.detail || 'Registration failed' };
@@ -134,10 +170,23 @@ export const ApiService = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(credentials),
       });
+
       const resData = await res.json();
+
       if (res.ok) {
+        if (resData.token) {
+          currentAuthToken = resData.token;
+
+          try {
+            localStorage.setItem('locyfy_auth_token', resData.token);
+          } catch (e) {
+            console.error('Failed to save authentication token:', e);
+          }
+        }
+
         return resData;
       }
+
       return { error: resData.error || resData.detail || 'Invalid credentials' };
     } catch (e: any) {
       console.error('Failed to login:', e);
@@ -520,6 +569,24 @@ export const ApiService = {
     };
   },
 
+  
+  async uploadImage(file: File): Promise<string | null> {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch(`${API_BASE}/upload-image/`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data.url;
+      }
+    } catch (e) {
+      console.error('Failed to upload image:', e);
+    }
+    return null;
+  },
   async uploadProfilePicture(userId: number, file: File): Promise<string | null> {
     try {
       const formData = new FormData();
@@ -1229,8 +1296,39 @@ export const ApiService = {
     if (params.end_date) q.append('end_date', params.end_date);
     if (currentUserId) q.append('user_id', currentUserId.toString());
     return `${API_BASE}/analytics/venue-owner/${ownerId}/export-csv/?${q.toString()}`;
-  }
+  },
+
+  async getVenueRecommendations(): Promise<(Venue & {
+    match_score: number;
+    is_cold_start: boolean;
+    recommendation_type: string;
+  })[]> {
+    const res = await fetch(`${API_BASE}/recommendations/venues/`, {
+      headers: getAuthHeaders(),
+    });
+
+    if (!res.ok) {
+      throw new Error('Failed to fetch venue recommendations');
+    }
+
+    const data = await res.json();
+    return data.results || [];
+  },
+
+  async getVendorRecommendations(): Promise<(Vendor & {
+    match_score: number;
+    is_cold_start: boolean;
+    recommendation_type: string;
+  })[]> {
+    const res = await fetch(`${API_BASE}/recommendations/vendors/`, {
+      headers: getAuthHeaders(),
+    });
+
+    if (!res.ok) {
+      throw new Error('Failed to fetch vendor recommendations');
+    }
+
+    const data = await res.json();
+    return data.results || [];
+  },
 };
-
-
-

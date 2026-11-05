@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { Booking, Venue, Review, Message, ConversationThread, EventItem, NotificationItem, ReminderPreference } from '../types';
+import type { Booking, Venue, Vendor, Review, Message, ConversationThread, EventItem, NotificationItem, ReminderPreference } from '../types';
 import './customer-dashboard.css';
 import {
   Calendar,
@@ -36,10 +36,13 @@ interface CustomerDashboardProps {
   currentUser: any;
   onCancelBooking: (id: number) => void;
   onNavigate?: (tab: string) => void;
+  handleSelectVenueWithTracking: (venue: Venue, source?: string) => void;
+  handleSelectVendorWithTracking: (vendor: Vendor, source?: string) => void;
   onLogout?: () => void;
   onRequestRole?: (role: 'CUSTOMER' | 'VENDOR' | 'VENUE_OWNER' | 'PROVIDER') => void;
   venues?: Venue[];
   initialTab?: 'dashboard' | 'events' | 'services' | 'venues' | 'bookings' | 'reviews' | 'messages' | 'favorites' | 'profile' | 'settings';
+  initialChatPartnerId?: number | null;
 }
 
 export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
@@ -47,10 +50,13 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
   currentUser,
   onCancelBooking: _onCancelBooking,
   onNavigate,
+  handleSelectVenueWithTracking,
+  handleSelectVendorWithTracking,
   onLogout,
   onRequestRole,
   venues = [],
   initialTab = 'dashboard',
+  initialChatPartnerId = null,
 }) => {
   const [activeTab, setActiveTab] = useState<
     'dashboard' | 'events' | 'services' | 'venues' | 'bookings' | 'reviews' | 'messages' | 'favorites' | 'profile' | 'settings'
@@ -65,6 +71,70 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
   const [events, setEvents] = useState<EventItem[]>([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
   const [eventsError, setEventsError] = useState<string | null>(null);
+
+  type RecommendedVenue = Venue & {
+    match_score: number;
+    is_cold_start: boolean;
+    recommendation_type: string;
+  };
+
+  type RecommendedVendor = Vendor & {
+    match_score: number;
+    is_cold_start: boolean;
+    recommendation_type: string;
+  };
+
+  const [recommendedVenues, setRecommendedVenues] = useState<RecommendedVenue[]>([]);
+  const [recommendedVendors, setRecommendedVendors] = useState<RecommendedVendor[]>([]);
+  const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
+  const [recommendationsError, setRecommendationsError] = useState<string | null>(null);
+
+  const fetchRecommendations = useCallback(async () => {
+    if (!currentUser?.id) return;
+
+    setIsLoadingRecommendations(true);
+    setRecommendationsError(null);
+
+    try {
+      const [venueResult, vendorResult] = await Promise.allSettled([
+        ApiService.getVenueRecommendations(),
+        ApiService.getVendorRecommendations(),
+      ]);
+
+      let failed = false;
+
+      if (venueResult.status === 'fulfilled') {
+        setRecommendedVenues(venueResult.value);
+      } else {
+        console.error('Error fetching venue recommendations:', venueResult.reason);
+        failed = true;
+      }
+
+      if (vendorResult.status === 'fulfilled') {
+        setRecommendedVendors(vendorResult.value);
+      } else {
+        console.error('Error fetching vendor recommendations:', vendorResult.reason);
+        failed = true;
+      }
+
+      if (failed) {
+        setRecommendationsError(
+          'Some recommendations could not be loaded. Please try again.'
+        );
+      }
+    } catch (error) {
+      console.error('Error fetching recommendations:', error);
+      setRecommendedVenues([]);
+      setRecommendedVendors([]);
+      setRecommendationsError('Failed to load recommendations. Please try again.');
+    } finally {
+      setIsLoadingRecommendations(false);
+    }
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    fetchRecommendations();
+  }, [fetchRecommendations]);
 
   const fetchEvents = useCallback(async () => {
     if (!currentUser?.id) return;
@@ -301,7 +371,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
 
   // Customer Direct Messaging State
   const [conversations, setConversations] = useState<ConversationThread[]>([]);
-  const [selectedPartnerId, setSelectedPartnerId] = useState<number | null>(null);
+  const [selectedPartnerId, setSelectedPartnerId] = useState<number | null>(initialChatPartnerId || null);
   const [activeThreadBooking, setActiveThreadBooking] = useState<Booking | null>(null);
   const [threadMessages, setThreadMessages] = useState<Message[]>([]);
   const [loadingConversations, setLoadingConversations] = useState(false);
@@ -338,6 +408,13 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
       setLoadingMessages(false);
     }
   }, [currentUser?.id]);
+
+  useEffect(() => {
+    if (initialChatPartnerId) {
+      setSelectedPartnerId(initialChatPartnerId);
+      fetchThreadMessages(initialChatPartnerId);
+    }
+  }, [initialChatPartnerId, fetchThreadMessages]);
 
   useEffect(() => {
     if (activeTab === 'messages') {
@@ -1074,6 +1151,382 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* Recommended for You */}
+            <section
+              style={{
+                background: '#ffffff',
+                borderRadius: '16px',
+                padding: '24px',
+                marginBottom: '24px',
+                border: '1px solid #e2e8f0',
+              }}
+            >
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '12px',
+                marginBottom: '20px',
+              }}>
+                <div>
+                  <h2 style={{
+                    fontSize: '1.3rem',
+                    fontWeight: 700,
+                    color: '#14213D',
+                    margin: 0,
+                  }}>
+                    Recommended for You
+                  </h2>
+                  <p style={{
+                    color: '#64748b',
+                    fontSize: '0.88rem',
+                    margin: '6px 0 0',
+                  }}>
+                    Discover event spaces and service providers selected for your preferences.
+                  </p>
+                </div>
+
+                <button
+                  onClick={fetchRecommendations}
+                  disabled={isLoadingRecommendations}
+                  style={{
+                    padding: '9px 15px',
+                    border: '1px solid #0F8F7A',
+                    borderRadius: '8px',
+                    background: '#ffffff',
+                    color: '#0F8F7A',
+                    cursor: isLoadingRecommendations ? 'not-allowed' : 'pointer',
+                    fontWeight: 600,
+                  }}
+                >
+                  <RotateCw
+                    size={14}
+                    style={{ marginRight: '6px', verticalAlign: 'middle' }}
+                  />
+                  Refresh
+                </button>
+              </div>
+
+              {isLoadingRecommendations ? (
+                <div style={{
+                  textAlign: 'center',
+                  padding: '35px 15px',
+                  color: '#64748b',
+                }}>
+                  <RotateCw size={25} style={{ marginBottom: '10px' }} />
+                  <p>Finding recommendations for you...</p>
+                </div>
+              ) : recommendationsError ? (
+                <div style={{
+                  textAlign: 'center',
+                  padding: '25px',
+                  color: '#b45309',
+                  background: '#fffbeb',
+                  borderRadius: '10px',
+                }}>
+                  <AlertTriangle size={24} />
+                  <p>{recommendationsError}</p>
+                  <button
+                    onClick={fetchRecommendations}
+                    style={{
+                      padding: '9px 18px',
+                      border: 'none',
+                      borderRadius: '8px',
+                      background: '#0F8F7A',
+                      color: '#ffffff',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                    }}
+                  >
+                    Try Again
+                  </button>
+                </div>
+              ) : recommendedVenues.length === 0 && recommendedVendors.length === 0 ? (
+                <div style={{
+                  textAlign: 'center',
+                  padding: '30px 15px',
+                  color: '#64748b',
+                }}>
+                  <Building2 size={35} color="#94a3b8" />
+                  <p style={{ fontWeight: 600, color: '#334155' }}>
+                    No recommendations available yet
+                  </p>
+                  <p style={{ fontSize: '0.88rem' }}>
+                    Check back later as more approved venues and service providers become available.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div style={{ marginBottom: '28px' }}>
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '14px',
+                    }}>
+                      <h3 style={{
+                        fontSize: '1.05rem',
+                        fontWeight: 700,
+                        color: '#14213D',
+                        margin: 0,
+                      }}>
+                        Event Spaces
+                      </h3>
+                      <button
+                        onClick={() => onNavigate ? onNavigate('venues') : setActiveTab('venues')}
+                        style={{
+                          border: 'none',
+                          background: 'none',
+                          color: '#0F8F7A',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        View all
+                      </button>
+                    </div>
+
+                    {recommendedVenues.length === 0 ? (
+                      <p style={{ color: '#64748b', fontSize: '0.88rem' }}>
+                        No matching event spaces available at the moment.
+                      </p>
+                    ) : (
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                        gap: '16px',
+                      }}>
+                        {recommendedVenues.slice(0, 3).map((venue) => (
+                          <div
+                            key={venue.id}
+                            style={{
+                              border: '1px solid #e2e8f0',
+                              borderRadius: '12px',
+                              overflow: 'hidden',
+                              background: '#ffffff',
+                            }}
+                          >
+                            {venue.image_url ? (
+                              <img
+                                src={venue.image_url}
+                                alt={venue.title}
+                                style={{
+                                  width: '100%',
+                                  height: '145px',
+                                  objectFit: 'cover',
+                                }}
+                              />
+                            ) : (
+                              <div style={{
+                                height: '145px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                background: '#f1f5f9',
+                              }}>
+                                <Building2 size={40} color="#94a3b8" />
+                              </div>
+                            )}
+
+                            <div style={{ padding: '14px' }}>
+                              <div style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                gap: '8px',
+                                alignItems: 'center',
+                                marginBottom: '8px',
+                              }}>
+                                <span style={{
+                                  fontSize: '0.75rem',
+                                  fontWeight: 700,
+                                  color: '#0F8F7A',
+                                  background: '#e6f5f1',
+                                  padding: '5px 8px',
+                                  borderRadius: '20px',
+                                }}>
+                                  {Math.round(venue.match_score * 100)}% Match
+                                </span>
+                                <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                                  <Star size={13} fill="#f59e0b" color="#f59e0b" /> {Number(venue.rating || 0).toFixed(1)}
+                                </span>
+                              </div>
+
+                              <h4 style={{
+                                fontSize: '1rem',
+                                fontWeight: 700,
+                                color: '#14213D',
+                                margin: '0 0 8px',
+                              }}>
+                                {venue.title}
+                              </h4>
+
+                              <p style={{
+                                fontSize: '0.83rem',
+                                color: '#64748b',
+                                margin: '0 0 8px',
+                              }}>
+                                <MapPin size={13} style={{ verticalAlign: 'middle' }} /> {venue.location}
+                              </p>
+
+                              <p style={{
+                                fontWeight: 700,
+                                color: '#0F8F7A',
+                                margin: '0 0 12px',
+                              }}>
+                                KES {Number(venue.price_per_day || 0).toLocaleString()} / day
+                              </p>
+
+                              <button
+                                onClick={() => handleSelectVenueWithTracking(venue, 'recommendation')}
+                                style={{
+                                  width: '100%',
+                                  padding: '9px',
+                                  border: 'none',
+                                  borderRadius: '8px',
+                                  background: '#0F8F7A',
+                                  color: '#ffffff',
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                View Venue Details
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '14px',
+                    }}>
+                      <h3 style={{
+                        fontSize: '1.05rem',
+                        fontWeight: 700,
+                        color: '#14213D',
+                        margin: 0,
+                      }}>
+                        Service Providers
+                      </h3>
+                      <button
+                        onClick={() => onNavigate ? onNavigate('vendors') : setActiveTab('services')}
+                        style={{
+                          border: 'none',
+                          background: 'none',
+                          color: '#0F8F7A',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        View all
+                      </button>
+                    </div>
+
+                    {recommendedVendors.length === 0 ? (
+                      <p style={{ color: '#64748b', fontSize: '0.88rem' }}>
+                        No matching service providers available at the moment.
+                      </p>
+                    ) : (
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                        gap: '16px',
+                      }}>
+                        {recommendedVendors.slice(0, 3).map((vendor) => (
+                          <div
+                            key={vendor.id}
+                            style={{
+                              border: '1px solid #e2e8f0',
+                              borderRadius: '12px',
+                              padding: '16px',
+                              background: '#ffffff',
+                            }}
+                          >
+                            <div style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              gap: '8px',
+                              marginBottom: '12px',
+                            }}>
+                              <span style={{
+                                fontSize: '0.75rem',
+                                fontWeight: 700,
+                                color: '#0F8F7A',
+                                background: '#e6f5f1',
+                                padding: '5px 8px',
+                                borderRadius: '20px',
+                              }}>
+                                {Math.round(vendor.match_score * 100)}% Match
+                              </span>
+                              <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                                <Star size={13} fill="#f59e0b" color="#f59e0b" /> {Number(vendor.rating || 0).toFixed(1)}
+                              </span>
+                            </div>
+
+                            <h4 style={{
+                              fontSize: '1rem',
+                              fontWeight: 700,
+                              color: '#14213D',
+                              margin: '0 0 7px',
+                            }}>
+                              {vendor.business_name}
+                            </h4>
+
+                            <p style={{
+                              fontSize: '0.83rem',
+                              color: '#64748b',
+                              margin: '0 0 7px',
+                            }}>
+                              {vendor.vendor_type_display || vendor.vendor_type}
+                            </p>
+
+                            <p style={{
+                              fontSize: '0.83rem',
+                              color: '#64748b',
+                              margin: '0 0 10px',
+                            }}>
+                              <MapPin size={13} style={{ verticalAlign: 'middle' }} /> {vendor.location}
+                            </p>
+
+                            <p style={{
+                              fontWeight: 700,
+                              color: '#0F8F7A',
+                              margin: '0 0 12px',
+                            }}>
+                              Starting at KES {Number(vendor.starting_price || 0).toLocaleString()}
+                            </p>
+
+                            <button
+                              onClick={() => handleSelectVendorWithTracking(vendor, 'recommendation')}
+                              style={{
+                                width: '100%',
+                                padding: '9px',
+                                border: 'none',
+                                borderRadius: '8px',
+                                background: '#0F8F7A',
+                                color: '#ffffff',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              View Provider Details
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </section>
 
             {/* 2-Column Content Layout */}
             <div className="customer-columns-grid">

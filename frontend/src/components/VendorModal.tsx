@@ -3,6 +3,7 @@ import type { Vendor, Review } from '../types';
 import { X, ShieldCheck, MapPin, Star, ArrowRight, MessageCircle, UserCheck, Calendar, CheckCircle2, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ApiService } from '../services/api';
+import { cleanImageUrl, handleImageError, getCategoryFallback } from '../utils/imageUtils';
 
 interface VendorModalProps {
   vendor: Vendor;
@@ -67,16 +68,10 @@ export const VendorModal: React.FC<VendorModalProps> = ({ vendor, currentUser, o
       }
 
       // 2. Check bookings for this vendor and calculate remaining guest capacity
-      let totalCapacityLimit = 100;
-      try {
-        const savedCap = localStorage.getItem('locyfy_provider_capacity');
-        if (savedCap) {
-          const parsed = JSON.parse(savedCap);
-          if (parsed.maxGuests) totalCapacityLimit = Number(parsed.maxGuests);
-        }
-      } catch (e) {
-        console.error(e);
-      }
+      // Strictly respect the provider's assigned vendor capacity
+      const totalCapacityLimit = Number((vendor as any).capacity || (vendor as any).max_capacity) > 0
+        ? Number((vendor as any).capacity || (vendor as any).max_capacity)
+        : 100;
 
       const bookings = await ApiService.getBookings({ vendor: vendor.id });
       const confirmedBookingsOnDate = bookings.filter(b => 
@@ -147,9 +142,8 @@ export const VendorModal: React.FC<VendorModalProps> = ({ vendor, currentUser, o
     };
   }, [vendor.id]);
 
-  const cover = vendor.portfolio_images && vendor.portfolio_images.length > 0
-    ? vendor.portfolio_images[0]
-    : 'https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&w=800&q=80';
+  const rawCover = (vendor.portfolio_images && vendor.portfolio_images.length > 0) ? vendor.portfolio_images[0] : vendor.logo_url;
+  const cover = cleanImageUrl(rawCover, vendor.vendor_type) || getCategoryFallback(vendor.vendor_type, 'SERVICE');
 
   const displayRating = reviews.length > 0
     ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1)
@@ -182,7 +176,7 @@ export const VendorModal: React.FC<VendorModalProps> = ({ vendor, currentUser, o
         </button>
 
         <div style={{ height: '260px', borderRadius: '16px', overflow: 'hidden', position: 'relative', marginBottom: '20px' }}>
-          <img src={cover} alt={vendor.business_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          <img src={cover} onError={(e) => handleImageError(e, vendor.vendor_type || 'DECORATION')} alt={vendor.business_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           <div style={{ position: 'absolute', top: '16px', left: '16px' }}>
             {vendor.is_verified ? (
               <span className="badge-verified"><ShieldCheck size={16} /> Verified Platform Vendor</span>
@@ -597,7 +591,7 @@ export const VendorModal: React.FC<VendorModalProps> = ({ vendor, currentUser, o
                     try {
                       const res = await ApiService.sendMessage({
                         sender: currentUser.id,
-                        recipient: (vendor as any).user || undefined,
+                        recipient: (typeof vendor.user === 'object' ? (vendor.user as any)?.id : vendor.user) || (vendor as any).user_details?.id || undefined,
                         vendor: vendor.id,
                         content: directMessageText.trim(),
                       });
@@ -606,7 +600,8 @@ export const VendorModal: React.FC<VendorModalProps> = ({ vendor, currentUser, o
                         setDirectMessageText('');
                         setShowMessageModal(false);
                         if (onMessage) {
-                          onMessage({ recipientId: (vendor as any).user, name: vendor.business_name, vendorId: vendor.id });
+                          const resolvedUserId = (typeof vendor.user === 'object' ? (vendor.user as any)?.id : vendor.user) || (vendor as any).user_details?.id;
+                          onMessage({ recipientId: resolvedUserId, name: vendor.business_name, vendorId: vendor.id });
                         }
                       } else {
                         toast.error('Failed to send message.');

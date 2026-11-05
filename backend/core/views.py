@@ -1,8 +1,9 @@
+from rest_framework.authtoken.models import Token
 from rest_framework import viewsets, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, action, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.contrib.auth import authenticate
 from django.db import transaction
 from django.db.models import Q, Sum
@@ -27,6 +28,10 @@ from django.http import Http404
 from rest_framework.exceptions import PermissionDenied
 from django.core.files.storage import FileSystemStorage
 from rest_framework.parsers import MultiPartParser, FormParser
+from .ml.recommender import (
+    get_venue_recommendations,
+    get_vendor_recommendations,
+)
 
 def is_admin_user(request):
     """
@@ -1558,6 +1563,8 @@ def login_user(request):
                 'is_admin': user.role == 'ADMIN' or user.is_staff or user.is_superuser
             }
         }
+        token, _ = Token.objects.get_or_create(user=user)
+        response_data['token'] = token.key
         
         if hasattr(user, 'vendor_profile'):
             response_data['vendor_profile'] = VendorProfileSerializer(user.vendor_profile).data
@@ -2713,3 +2720,49 @@ def export_venue_owner_analytics_csv(request, owner_id):
         writer.writerow([t['date'], t['views'], t['clicks'], t['booking_requests'], t['confirmed_bookings']])
 
     return response
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def venue_recommendations(request):
+    recommendations = get_venue_recommendations(
+        customer=request.user,
+        top_k=10
+    )
+    results = []
+    for item in recommendations:
+        venue = item.get('venue')
+        if not venue:
+            continue
+        venue_data = VenueSerializer(
+            venue,
+            context={'request': request}
+        ).data
+        venue_data['match_score'] = item.get('match_score', 0)
+        venue_data['is_cold_start'] = item.get('is_cold_start', False)
+        venue_data['recommendation_type'] = 'VENUE'
+        results.append(venue_data)
+    return Response({'results': results})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def vendor_recommendations(request):
+    recommendations = get_vendor_recommendations(
+        customer=request.user,
+        top_k=10
+    )
+    results = []
+    for item in recommendations:
+        vendor = item.get('vendor')
+        if not vendor:
+            continue
+        vendor_data = VendorProfileSerializer(
+            vendor,
+            context={'request': request}
+        ).data
+        vendor_data['match_score'] = item.get('match_score', 0)
+        vendor_data['is_cold_start'] = item.get('is_cold_start', False)
+        vendor_data['recommendation_type'] = 'VENDOR'
+        results.append(vendor_data)
+    return Response({'results': results})

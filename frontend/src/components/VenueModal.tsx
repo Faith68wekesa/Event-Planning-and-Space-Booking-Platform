@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { Venue, Review } from '../types';
 import { X, ShieldCheck, MapPin, Users, Star, CheckCircle2, ArrowRight, MessageCircle, Sparkles, UserCheck, Calendar, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { handleImageError, DEFAULT_SPACE_IMAGE } from '../utils/imageUtils';
+import { cleanImageUrl, handleImageError, getCategoryFallback } from '../utils/imageUtils';
 import { ApiService } from '../services/api';
 
 interface VenueModalProps {
@@ -68,16 +68,8 @@ export const VenueModal: React.FC<VenueModalProps> = ({ venue, currentUser, onCl
       }
 
       // 2. Check bookings for this venue and calculate remaining guest capacity
-      let totalCapacityLimit = venue.capacity || 100;
-      try {
-        const savedCap = localStorage.getItem('locyfy_provider_capacity');
-        if (savedCap) {
-          const parsed = JSON.parse(savedCap);
-          if (parsed.maxGuests) totalCapacityLimit = Number(parsed.maxGuests);
-        }
-      } catch (e) {
-        console.error(e);
-      }
+      // Strictly respect the provider's assigned venue capacity
+      const totalCapacityLimit = Number(venue.capacity) > 0 ? Number(venue.capacity) : 100;
 
       const bookings = await ApiService.getBookings({ owner: venue.owner });
       const confirmedBookingsOnDate = bookings.filter(b => 
@@ -181,8 +173,8 @@ export const VenueModal: React.FC<VenueModalProps> = ({ venue, currentUser, onCl
 
         <div style={{ height: '300px', borderRadius: '16px', overflow: 'hidden', position: 'relative', marginBottom: '24px' }}>
           <img
-            src={venue.image_url || DEFAULT_SPACE_IMAGE}
-            onError={(e) => handleImageError(e, DEFAULT_SPACE_IMAGE)}
+            src={cleanImageUrl(venue.image_url, venue.category) || getCategoryFallback(venue.category, 'VENUE')}
+            onError={(e) => handleImageError(e, venue.category || 'VENUE')}
             alt={venue.title}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />
@@ -639,7 +631,7 @@ export const VenueModal: React.FC<VenueModalProps> = ({ venue, currentUser, onCl
                     try {
                       const res = await ApiService.sendMessage({
                         sender: currentUser.id,
-                        recipient: venue.owner_user_id || undefined,
+                        recipient: venue.owner_user_id || (typeof venue.owner === 'object' ? (venue.owner as any)?.user : venue.owner) || (typeof venue.vendor === 'object' ? (venue.vendor as any)?.user : venue.vendor) || undefined,
                         venue: venue.id,
                         content: directMessageText.trim(),
                       });
@@ -648,7 +640,8 @@ export const VenueModal: React.FC<VenueModalProps> = ({ venue, currentUser, onCl
                         setDirectMessageText('');
                         setShowMessageModal(false);
                         if (onMessage) {
-                          onMessage({ recipientId: venue.owner_user_id, name: venue.owner_name || 'Host', venueId: venue.id });
+                          const resolvedVenueOwner = venue.owner_user_id || (typeof venue.owner === 'object' ? (venue.owner as any)?.user : venue.owner) || (typeof venue.vendor === 'object' ? (venue.vendor as any)?.user : venue.vendor);
+                          onMessage({ recipientId: resolvedVenueOwner, name: venue.owner_name || venue.vendor_name || 'Host', venueId: venue.id });
                         }
                       } else {
                         toast.error('Failed to send message.');

@@ -301,14 +301,36 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
               </div>
 
               <div className="listing-field-group">
-                <label className="listing-field-label">Service Cover Image URL (Optional)</label>
-                <input
-                  type="url"
-                  className="listing-input"
-                  placeholder="https://example.com/image.jpg"
-                  value={serviceCoverUrl}
-                  onChange={(e) => setServiceCoverUrl(e.target.value)}
-                />
+                <label className="listing-field-label">Service Cover Image (Optional)</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="url"
+                    className="listing-input"
+                    placeholder="https://example.com/image.jpg or upload file"
+                    value={serviceCoverUrl}
+                    onChange={(e) => setServiceCoverUrl(e.target.value)}
+                    style={{ flex: 1 }}
+                  />
+                  <label style={{ background: '#f1f5f9', color: '#0d8a73', border: '1px solid #cbd5e1', padding: '10px 14px', borderRadius: '8px', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center' }}>
+                    Upload File
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={async (e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          const url = await ApiService.uploadImage(e.target.files[0]);
+                          if (url) {
+                            setServiceCoverUrl(url);
+                            toast.success('Service image uploaded successfully!');
+                          } else {
+                            toast.error('Failed to upload image.');
+                          }
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -566,14 +588,36 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
 
             {/* Venue Cover Image URL */}
             <div className="listing-field-group">
-              <label className="listing-field-label">Venue Cover Image URL (Optional)</label>
-              <input
-                type="url"
-                className="listing-input"
-                placeholder="https://example.com/venue-photo.jpg"
-                value={venueCoverUrl}
-                onChange={(e) => setVenueCoverUrl(e.target.value)}
-              />
+              <label className="listing-field-label">Venue Cover Image (Optional)</label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="url"
+                  className="listing-input"
+                  placeholder="https://example.com/venue-photo.jpg or upload file"
+                  value={venueCoverUrl}
+                  onChange={(e) => setVenueCoverUrl(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <label style={{ background: '#f1f5f9', color: '#0d8a73', border: '1px solid #cbd5e1', padding: '10px 14px', borderRadius: '8px', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center' }}>
+                  Upload File
+                  <input
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={async (e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        const url = await ApiService.uploadImage(e.target.files[0]);
+                        if (url) {
+                          setVenueCoverUrl(url);
+                          toast.success('Venue image uploaded successfully!');
+                        } else {
+                          toast.error('Failed to upload image.');
+                        }
+                      }
+                    }}
+                  />
+                </label>
+              </div>
             </div>
 
             {/* Maximum Guest Capacity & Available Spaces / Layout Details */}

@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import type { FilterState, Venue, Vendor, VenueCategory, User } from '../types';
 import { ApiService } from '../services/api';
-import { handleImageError, DEFAULT_SPACE_IMAGE, DEFAULT_SERVICE_IMAGE } from '../utils/imageUtils';
+import { cleanImageUrl, handleImageError, getCategoryFallback } from '../utils/imageUtils';
 
 export interface LandingPageProps {
   onSearch: (filters: FilterState) => void;
@@ -328,8 +328,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 >
                   <div style={{ height: '210px', position: 'relative', overflow: 'hidden', background: '#f1f5f9' }}>
                     <img
-                      src={venue.image_url || DEFAULT_SPACE_IMAGE}
-                      onError={(e) => handleImageError(e, DEFAULT_SPACE_IMAGE)}
+                      src={cleanImageUrl(venue.image_url, venue.category) || getCategoryFallback(venue.category, 'VENUE')}
+                      onError={(e) => handleImageError(e, venue.category || 'WEDDING')}
                       alt={venue.title}
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     />
@@ -471,9 +471,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           ) : services.length > 0 ? (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '28px' }}>
               {services.map((service) => {
-                const coverImg = service.portfolio_images && service.portfolio_images.length > 0
-                  ? service.portfolio_images[0]
-                  : DEFAULT_SERVICE_IMAGE;
+                const rawImg = (service.portfolio_images && service.portfolio_images.length > 0) ? service.portfolio_images[0] : service.logo_url;
+                const coverImg = cleanImageUrl(rawImg, service.vendor_type) || getCategoryFallback(service.vendor_type, 'SERVICE');
 
                 return (
                   <div 
@@ -502,7 +501,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                     <div style={{ height: '210px', position: 'relative', overflow: 'hidden', background: '#f1f5f9' }}>
                       <img
                         src={coverImg}
-                        onError={(e) => handleImageError(e, DEFAULT_SERVICE_IMAGE)}
+                        onError={(e) => handleImageError(e, service.vendor_type || 'DECORATION')}
                         alt={service.business_name}
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />

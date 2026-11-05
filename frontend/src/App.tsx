@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { UserRole, Venue, Vendor, VenueOwner, Booking, PlatformStats, FilterState } from './types';
-import { ApiService, setApiCurrentUserId } from './services/api.ts';
+import { ApiService, setApiCurrentUserId, setApiAuthToken } from './services/api.ts';
 import { LandingPage } from './components/LandingPage.tsx';
 import { Navbar } from './components/Navbar.tsx';
 import { HeroSearch } from './components/HeroSearch.tsx';
@@ -94,16 +94,17 @@ export const App: React.FC = () => {
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [stats, setStats] = useState<PlatformStats>({
-    total_venues: 5,
-    verified_venues: 4,
-    total_vendors: 5,
-    verified_vendors: 4,
-    total_bookings: 2,
-    satisfied_clients: 342,
+    total_venues: 0,
+    verified_venues: 0,
+    total_vendors: 0,
+    verified_vendors: 0,
+    total_bookings: 0,
+    satisfied_clients: 0,
   });
 
   const [selectedVenue, setSelectedVenue] = useState<Venue | null>(null);
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
+  const [customerChatPartnerId, setCustomerChatPartnerId] = useState<number | null>(null);
   const [bookingTargetVenue, setBookingTargetVenue] = useState<Venue | null>(null);
   const [bookingTargetVendor, setBookingTargetVendor] = useState<Vendor | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -154,6 +155,10 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (currentUser) {
       setApiCurrentUserId(currentUser.id);
+
+      const savedToken = localStorage.getItem('locyfy_auth_token');
+      setApiAuthToken(savedToken);
+
       try {
         localStorage.setItem('locyfy_session_auth', JSON.stringify({
           user: currentUser,
@@ -161,12 +166,17 @@ export const App: React.FC = () => {
           venue_owner_profile: currentVenueOwner,
         }));
       } catch (e) {}
+
       ApiService.getBookings(currentUser.id).then(setBookings);
     } else {
       setApiCurrentUserId(null);
+      setApiAuthToken(null);
+
       try {
         localStorage.removeItem('locyfy_session_auth');
+        localStorage.removeItem('locyfy_auth_token');
       } catch (e) {}
+
       setBookings([]);
     }
   }, [currentUser, currentVendor, currentVenueOwner, activeTab]);
@@ -383,14 +393,21 @@ export const App: React.FC = () => {
                   <CustomerDashboard
                     bookings={bookings}
                     currentUser={currentUser}
-                    initialTab={activeTab === 'my-events' ? 'events' : 'dashboard'}
+                    initialTab={customerChatPartnerId ? 'messages' : (activeTab === 'my-events' ? 'events' : 'dashboard')}
+                    initialChatPartnerId={customerChatPartnerId}
                     onCancelBooking={handleCancelBooking}
-                    onNavigate={(tab) => setActiveTab(tab as any)}
+                    onNavigate={(tab) => {
+                      if (tab !== 'messages') setCustomerChatPartnerId(null);
+                      setActiveTab(tab as any);
+                    }}
+                    handleSelectVenueWithTracking={handleSelectVenueWithTracking}
+                    handleSelectVendorWithTracking={handleSelectVendorWithTracking}
                     venues={venues}
                     onLogout={() => {
                       setCurrentUser(null);
                       setActiveRole('CUSTOMER');
                       setActiveTab('landing');
+                      setCustomerChatPartnerId(null);
                     }}
                     onRequestRole={handleRequestRole}
                   />
@@ -450,8 +467,12 @@ export const App: React.FC = () => {
               currentUser={currentUser}
               onClose={() => setSelectedVenue(null)}
               onBook={(v) => setBookingTargetVenue(v)}
-              onMessage={() => {
+              onMessage={(target) => {
                 setSelectedVenue(null);
+                if (target?.recipientId) {
+                  setCustomerChatPartnerId(target.recipientId);
+                }
+                setActiveRole('CUSTOMER');
                 setActiveTab('my-bookings');
               }}
             />
@@ -463,8 +484,12 @@ export const App: React.FC = () => {
               currentUser={currentUser}
               onClose={() => setSelectedVendor(null)}
               onBook={(v) => handleInterceptBook(v, 'vendor')}
-              onMessage={() => {
+              onMessage={(target) => {
                 setSelectedVendor(null);
+                if (target?.recipientId) {
+                  setCustomerChatPartnerId(target.recipientId);
+                }
+                setActiveRole('CUSTOMER');
                 setActiveTab('my-bookings');
               }}
             />
@@ -584,4 +609,3 @@ export const App: React.FC = () => {
 };
 
 export default App;
-

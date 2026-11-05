@@ -14,6 +14,7 @@ import { AdminSidebar } from './AdminSidebar';
 import type { AdminMenuItemId } from './AdminSidebar';
 import { TrendLineChart, HorizontalBarChart, StatusDistributionChart, ConversionFunnelChart, PeakDaysBarChart } from './AnalyticsCharts';
 import './admin-sidebar.css';
+import { cleanImageUrl, handleImageError, getCategoryFallback } from '../utils/imageUtils';
 
 interface AdminDashboardProps {
   venues: Venue[];
@@ -869,8 +870,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 {stats?.total_users ?? users.length}
               </div>
               <div style={{ display: 'flex', gap: '8px', marginTop: '6px', fontSize: '0.75rem', color: '#64748b' }}>
-                <span><strong>{stats?.total_customers ?? users.filter(u => u.is_customer).length}</strong> Clients</span> •
-                <span><strong>{stats?.total_providers ?? users.filter(u => u.is_vendor || u.is_venue_owner || u.role === 'PROVIDER').length}</strong> Providers</span>
+                <span><strong>{stats?.total_customers ?? users.filter(u => u.role === 'CUSTOMER' && !u.is_staff).length}</strong> Clients</span> •
+                <span><strong>{stats?.total_providers ?? users.filter(u => (u.role === 'PROVIDER' || u.is_vendor || u.is_venue_owner) && !u.is_staff).length}</strong> Providers</span>
               </div>
             </div>
 
@@ -914,7 +915,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
               <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#1e293b', marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                {stats?.avg_rating || 4.9} <span style={{ fontSize: '1rem', color: '#94a3b8', fontWeight: 600 }}>/ 5.0</span>
+                {(stats?.total_reviews || reviews.length > 0) ? (stats?.avg_rating || 0).toFixed(1) : '—'} <span style={{ fontSize: '1rem', color: '#94a3b8', fontWeight: 600 }}>{(stats?.total_reviews || reviews.length > 0) ? '/ 5.0' : 'No ratings yet'}</span>
               </div>
               <p style={{ margin: '6px 0 0', fontSize: '0.78rem', color: '#64748b' }}>
                 Across <strong>{stats?.total_reviews ?? reviews.length}</strong> verified reviews
@@ -1654,7 +1655,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <td style={{ padding: '14px 16px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                             <img
-                              src={v.image_url || 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&q=80&w=300'}
+                              src={cleanImageUrl(v.image_url, v.category) || getCategoryFallback(v.category, 'SERVICE')}
+                              onError={(e) => handleImageError(e, v.category || 'SERVICE')}
                               alt={v.title}
                               style={{ width: '48px', height: '48px', borderRadius: '10px', objectFit: 'cover' }}
                             />
@@ -3194,7 +3196,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {inspectVenueModal.image_url && (
                 <div style={{ textAlign: 'center', marginBottom: '8px' }}>
                   <img
-                    src={inspectVenueModal.image_url}
+                    src={cleanImageUrl(inspectVenueModal.image_url, inspectVenueModal.category) || getCategoryFallback(inspectVenueModal.category, 'SERVICE')}
+                    onError={(e) => handleImageError(e, inspectVenueModal.category || 'SERVICE')}
                     alt={inspectVenueModal.title}
                     style={{ maxHeight: '200px', width: '100%', borderRadius: '10px', objectFit: 'cover' }}
                   />
