@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.test import TestCase
 from django.utils import timezone
@@ -13,6 +14,7 @@ from core.models import (
     FraudAlert,
 )
 from core.ml.fraud_detector import (
+    extract_booking_features,
     evaluate_booking_risk,
     create_fraud_alert,
 )
@@ -73,6 +75,48 @@ class FraudDetectionTestCase(TestCase):
             guest_count=30,
             total_price=50000,
             status='PENDING',
+        )
+
+    def test_later_bookings_are_not_counted_in_historical_features(self):
+        """Future bookings must not influence earlier booking features."""
+
+        reference_time = timezone.now()
+
+        # Create a booking that existed before the target booking.
+        earlier_booking = self.create_booking()
+
+        # Create the booking whose features we want to extract.
+        target_booking = self.create_booking()
+
+        # Create a booking that happened after the target booking.
+        later_booking = self.create_booking()
+
+        # Set controlled timestamps to simulate historical chronology.
+        Booking.objects.filter(pk=earlier_booking.pk).update(
+            created_at=reference_time - timedelta(days=2)
+        )
+
+        Booking.objects.filter(pk=target_booking.pk).update(
+            created_at=reference_time
+        )
+
+        Booking.objects.filter(pk=later_booking.pk).update(
+            created_at=reference_time + timedelta(days=2)
+        )
+
+        target_booking.refresh_from_db()
+
+        features = extract_booking_features(target_booking)
+
+        # Only the earlier booking should be counted.
+        self.assertEqual(
+            features['customer_booking_count'],
+            1.0,
+        )
+
+        self.assertEqual(
+            features['same_date_booking_count'],
+            1.0,
         )
 
     def test_new_account_booking_close_to_event_scores_35(self):
@@ -152,6 +196,67 @@ class FraudDetectionTestCase(TestCase):
         self.assertTrue(alert.is_anomaly)
         self.assertEqual(alert.detection_method, 'RULE_BASED')
         self.assertEqual(alert.status, 'PENDING_REVIEW')
+
+    @patch('core.ml.isolation_forest.predict_booking_anomaly')
+    @patch('core.ml.isolation_forest.load_isolation_forest')
+    def test_trained_isolation_forest_is_used(
+        self,
+        mock_load_model,
+        mock_predict,
+    ):
+        """A trained Isolation Forest model should be preferred."""
+
+        booking = self.create_booking()
+
+        mock_load_model.return_value = object()
+
+        expected_assessment = {
+            'risk_score': 75.0,
+            'is_anomaly': True,
+            'detection_method': 'ISOLATION_FOREST',
+            'reason': 'Unusual booking pattern detected.',
+            'features': {},
+        }
+
+        mock_predict.return_value = expected_assessment
+
+        assessment = evaluate_booking_risk(booking)
+
+        mock_load_model.assert_called_once()
+        mock_predict.assert_called_once_with(
+            booking,
+            artifact=mock_load_model.return_value,
+        )
+
+        self.assertEqual(
+            assessment['detection_method'],
+            'ISOLATION_FOREST',
+        )
+        self.assertEqual(assessment['risk_score'], 75.0)
+        self.assertTrue(assessment['is_anomaly'])
+
+    @patch('core.ml.isolation_forest.load_isolation_forest')
+    def test_model_loading_failure_uses_rule_based_fallback(
+        self,
+        mock_load_model,
+    ):
+        """Rule-based detection should work if model loading fails."""
+
+        booking = self.create_booking()
+
+        mock_load_model.side_effect = RuntimeError(
+            'Model file could not be loaded.'
+        )
+
+        assessment = evaluate_booking_risk(booking)
+
+        mock_load_model.assert_called_once()
+        self.assertEqual(
+            assessment['detection_method'],
+            'RULE_BASED',
+        )
+        self.assertEqual(assessment['risk_score'], 35.0)
+        self.assertFalse(assessment['is_anomaly'])
 
     def test_existing_alert_is_updated_without_duplicate(self):
         """Repeated detection updates the alert and preserves admin review."""

@@ -5,7 +5,12 @@ Extracts numerical booking features for rule-based fraud detection
 and future Isolation Forest anomaly detection.
 """
 
+import logging
+
+from django.db.models import Q
 from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 
 
 def _get_local_date(value):
@@ -23,7 +28,8 @@ def extract_booking_features(booking):
     """
     Extract numerical features from a saved booking.
 
-    Historical booking counts exclude the current booking.
+    Historical booking counts include only bookings created before the
+    booking being evaluated.
     """
 
     Booking = booking.__class__
@@ -55,10 +61,17 @@ def extract_booking_features(booking):
         else 0.0
     )
 
-    # Previous bookings by this customer.
+    # Only count bookings created before the booking being evaluated.
+    # The primary key provides a tie-breaker when timestamps are identical.
     previous_bookings = Booking.objects.filter(
         customer_id=booking.customer_id
-    ).exclude(pk=booking.pk)
+    ).filter(
+        Q(created_at__lt=booking.created_at)
+        | Q(
+            created_at=booking.created_at,
+            pk__lt=booking.pk
+        )
+    )
 
     customer_booking_count = previous_bookings.count()
 
@@ -126,12 +139,35 @@ RULE_BASED_ALERT_THRESHOLD = 40.0
 
 def evaluate_booking_risk(booking):
     """
-    Evaluate a booking using explainable cold-start rules.
-
-    Returns a risk assessment without automatically declaring
-    that the customer has committed fraud.
+    Evaluate a booking using Isolation Forest when a trained model
+    is available. Fall back to explainable rules otherwise.
     """
 
+    try:
+        from .isolation_forest import (
+            load_isolation_forest,
+            predict_booking_anomaly,
+        )
+
+        artifact = load_isolation_forest()
+
+        if artifact is not None:
+            assessment = predict_booking_anomaly(
+                booking,
+                artifact=artifact,
+            )
+
+            if assessment is not None:
+                return assessment
+
+    except Exception:
+        logger.exception(
+            'Isolation Forest prediction failed for booking %s. '
+            'Falling back to rule-based detection.',
+            booking.pk,
+        )
+
+    # Cold-start fallback: existing rule-based detection.
     features = extract_booking_features(booking)
 
     risk_score = 0.0
@@ -148,8 +184,7 @@ def evaluate_booking_risk(booking):
             'A newly created customer account is booking very close to the event date.'
         )
 
-    # Rule 2: The customer has several previous bookings
-    # for the same event date.
+    # Rule 2: Several previous bookings for the same event date.
     if features['same_date_booking_count'] >= 3:
         risk_score += 20
         risk_indicators.append(

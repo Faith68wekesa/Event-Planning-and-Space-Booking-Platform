@@ -54,3 +54,6 @@ extracted_proposal.txt
 proposal.docx
 proposal doc.docx
 backend/private_documents/
+
+# Machine learning model artifacts
+backend/ml_models/
