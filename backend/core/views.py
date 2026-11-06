@@ -32,6 +32,7 @@ from .ml.recommender import (
     get_venue_recommendations,
     get_vendor_recommendations,
 )
+from .ml.fraud_detector import create_fraud_alert
 
 def is_admin_user(request):
     """
@@ -583,8 +584,26 @@ class BookingViewSet(viewsets.ModelViewSet):
                 )
             except Exception:
                 pass
+        # Run fraud detection only after the booking transaction commits.
+        transaction.on_commit(
+            lambda: self._run_fraud_detection(booking_obj)
+        )
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def _run_fraud_detection(self, booking):
+        """
+        Run fraud detection without interrupting booking creation.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        try:
+            create_fraud_alert(booking)
+        except Exception:
+            logger.exception(
+                'Fraud detection failed for booking ID %s',
+                booking.id
+            )
 
     @action(detail=True, methods=['patch'])
     def update_status(self, request, pk=None):
