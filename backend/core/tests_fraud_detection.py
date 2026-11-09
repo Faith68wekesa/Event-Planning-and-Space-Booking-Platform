@@ -119,6 +119,38 @@ class FraudDetectionTestCase(TestCase):
             1.0,
         )
 
+    def test_same_timestamp_bookings_use_primary_key_order(self):
+        """Bookings with identical timestamps are ordered by primary key."""
+
+        reference_time = timezone.now()
+
+        earlier_booking = self.create_booking()
+        target_booking = self.create_booking()
+        later_booking = self.create_booking()
+
+        # Give all three bookings exactly the same timestamp.
+        Booking.objects.filter(
+            pk__in=[
+                earlier_booking.pk,
+                target_booking.pk,
+                later_booking.pk,
+            ]
+        ).update(created_at=reference_time)
+
+        target_booking.refresh_from_db()
+
+        features = extract_booking_features(target_booking)
+
+        # Only the booking with a lower primary key should count.
+        self.assertEqual(
+            features['customer_booking_count'],
+            1.0,
+        )
+        self.assertEqual(
+            features['same_date_booking_count'],
+            1.0,
+        )
+
     def test_new_account_booking_close_to_event_scores_35(self):
         """A new account booking close to the event receives 35 points."""
 
