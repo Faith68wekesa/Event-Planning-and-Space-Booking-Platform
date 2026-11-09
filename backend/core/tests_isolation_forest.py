@@ -128,6 +128,30 @@ class IsolationForestTests(TestCase):
                 'ISOLATION_FOREST',
             )
 
+            # Verify that the prediction matches the model's decision.
+            test_matrix = np.asarray(
+                [[test_features[name] for name in FEATURE_NAMES]],
+                dtype=float,
+            )
+
+            expected_prediction = int(
+                artifact['model'].predict(test_matrix)[0]
+            )
+
+            expected_decision_score = float(
+                artifact['model'].decision_function(test_matrix)[0]
+            )
+
+            self.assertEqual(
+                result['is_anomaly'],
+                expected_prediction == -1,
+            )
+
+            self.assertAlmostEqual(
+                result['decision_score'],
+                expected_decision_score,
+            )
+
     def test_training_clears_model_cache(self):
         _load_cached_isolation_forest.cache_clear()
         self.addCleanup(_load_cached_isolation_forest.cache_clear)

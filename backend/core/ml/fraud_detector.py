@@ -215,7 +215,7 @@ def evaluate_booking_risk(booking):
 def create_fraud_alert(booking):
     """
     Evaluate a saved booking and create a FraudAlert
-    only when its risk score reaches the alert threshold.
+    only when the assessment identifies an anomaly.
     """
 
     from ..models import FraudAlert
