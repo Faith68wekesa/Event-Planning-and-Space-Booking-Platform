@@ -110,6 +110,8 @@ def train_isolation_forest(
                 'customer',
                 'venue',
                 'vendor',
+            ).filter(
+                status__in=['APPROVED', 'COMPLETED'],
             ).order_by('created_at', 'pk')
         )
     else:

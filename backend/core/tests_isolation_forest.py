@@ -1,7 +1,7 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import time
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import joblib
 import numpy as np
@@ -53,6 +53,49 @@ class IsolationForestTests(TestCase):
         ):
             with self.assertRaises(ValueError):
                 build_feature_matrix([object()])
+
+    def test_training_uses_only_approved_and_completed_bookings_by_default(self):
+        """Default production training excludes rejected and cancelled bookings."""
+
+        bookings = [object()] * MIN_TRAINING_SAMPLES
+
+        queryset = MagicMock()
+        queryset.filter.return_value.order_by.return_value = bookings
+
+        rng = np.random.default_rng(42)
+        test_matrix = rng.normal(
+            size=(MIN_TRAINING_SAMPLES, len(FEATURE_NAMES))
+        )
+
+        with TemporaryDirectory() as directory:
+            model_path = Path(directory) / 'filtered_model.joblib'
+
+            with patch(
+                'core.models.Booking.objects.select_related',
+                return_value=queryset,
+            ) as mock_select_related:
+                with patch(
+                    'core.ml.isolation_forest.build_feature_matrix',
+                    return_value=test_matrix,
+                ):
+                    train_isolation_forest(
+                        model_path=model_path,
+                    )
+
+            mock_select_related.assert_called_once_with(
+                'customer',
+                'venue',
+                'vendor',
+            )
+
+            queryset.filter.assert_called_once_with(
+                status__in=['APPROVED', 'COMPLETED'],
+            )
+
+            queryset.filter.return_value.order_by.assert_called_once_with(
+                'created_at',
+                'pk',
+            )
 
     def test_training_rejects_insufficient_bookings(self):
         bookings = [object()] * (MIN_TRAINING_SAMPLES - 1)

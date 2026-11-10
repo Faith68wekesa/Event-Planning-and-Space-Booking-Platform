@@ -64,7 +64,8 @@ def extract_booking_features(booking):
     # Only count bookings created before the booking being evaluated.
     # The primary key provides a tie-breaker when timestamps are identical.
     previous_bookings = Booking.objects.filter(
-        customer_id=booking.customer_id
+        customer_id=booking.customer_id,
+        status__in=['PENDING', 'APPROVED', 'COMPLETED'],
     ).filter(
         Q(created_at__lt=booking.created_at)
         | Q(

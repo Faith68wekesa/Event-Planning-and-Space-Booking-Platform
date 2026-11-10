@@ -151,6 +151,73 @@ class FraudDetectionTestCase(TestCase):
             1.0,
         )
 
+    def test_rejected_and_cancelled_bookings_are_not_counted(self):
+        """Rejected and cancelled bookings must not affect history."""
+
+        rejected_booking = self.create_booking()
+        cancelled_booking = self.create_booking()
+
+        Booking.objects.filter(pk=rejected_booking.pk).update(
+            status='REJECTED'
+        )
+        Booking.objects.filter(pk=cancelled_booking.pk).update(
+            status='CANCELLED'
+        )
+
+        target_booking = self.create_booking()
+
+        features = extract_booking_features(target_booking)
+
+        self.assertEqual(
+            features['customer_booking_count'],
+            0.0,
+        )
+        self.assertEqual(
+            features['same_date_booking_count'],
+            0.0,
+        )
+
+    def test_pending_approved_and_completed_bookings_are_counted(self):
+        """Valid historical booking statuses contribute to booking counts."""
+
+        reference_time = timezone.now()
+
+        previous_bookings = []
+
+        for booking_status in ['PENDING', 'APPROVED', 'COMPLETED']:
+            previous_booking = self.create_booking()
+            previous_bookings.append(previous_booking)
+
+            Booking.objects.filter(pk=previous_booking.pk).update(
+                status=booking_status
+            )
+
+        target_booking = self.create_booking()
+
+        # Ensure all three bookings occurred before the target booking.
+        Booking.objects.filter(
+            pk__in=[booking.pk for booking in previous_bookings]
+        ).update(
+            created_at=reference_time - timedelta(days=1)
+        )
+
+        Booking.objects.filter(pk=target_booking.pk).update(
+            created_at=reference_time
+        )
+
+        target_booking.refresh_from_db()
+
+        features = extract_booking_features(target_booking)
+
+        self.assertEqual(
+            features['customer_booking_count'],
+            3.0,
+        )
+        self.assertEqual(
+            features['same_date_booking_count'],
+            3.0,
+        )
+
     def test_new_account_booking_close_to_event_scores_35(self):
         """A new account booking close to the event receives 35 points."""
 
