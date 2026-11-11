@@ -279,4 +279,3 @@ class VerificationDocumentAndGatingTests(TestCase):
             'total_price': 90000.00
         })
         self.assertEqual(book_res_success.status_code, status.HTTP_201_CREATED)
-

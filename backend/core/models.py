@@ -637,6 +637,7 @@ class FraudAlert(models.Model):
     DETECTION_METHOD_CHOICES = [
         ('RULE_BASED', 'Rule-Based Heuristic (Cold-Start Fallback)'),
         ('ISOLATION_FOREST', 'Scikit-learn IsolationForest ML Model'),
+        ('HYBRID', 'Combined Rule-Based and Isolation Forest Detection'),
     ]
 
     booking = models.OneToOneField(Booking, on_delete=models.CASCADE, related_name='fraud_alert')

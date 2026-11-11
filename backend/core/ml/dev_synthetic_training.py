@@ -103,22 +103,25 @@ def generate_synthetic_training_data(
 
     has_capacity_reference = is_venue_booking.copy()
 
-    # Generate realistic prices for each booking type.
-    price_per_guest = np.zeros(n_samples, dtype=float)
+    # Generate fixed listing prices for each booking type.
+    # These ranges are based on the current development database:
+    # KSh 210,000 to KSh 3,000,000.
+    # They are development assumptions, not verified market ranges.
+    total_price = np.zeros(n_samples, dtype=float)
 
-    price_per_guest[venue_indices] = rng.uniform(
-        300,
-        5000,
+    # Venue price is the fixed daily listing price.
+    total_price[venue_indices] = rng.uniform(
+        210000,
+        3000000,
         size=len(venue_indices),
     )
 
-    price_per_guest[vendor_indices] = rng.uniform(
-        100,
-        4000,
+    # Vendor price is the fixed starting price.
+    total_price[vendor_indices] = rng.uniform(
+        210000,
+        3000000,
         size=len(vendor_indices),
     )
-
-    total_price = guest_count * price_per_guest
 
     # Mirror the production calculation exactly.
     price_per_guest = np.divide(
@@ -159,12 +162,12 @@ def generate_synthetic_training_data(
 def generate_synthetic_anomalies(
     n_samples=100,
     random_state=RANDOM_STATE + 1,
+    return_scenarios=False,
 ):
     """
-    Generate several different suspicious booking patterns.
+    Generate five suspicious or unusual booking patterns.
 
-    These records are for development testing only.
-    They are never inserted into the database.
+    Development testing only. No database records are created.
     """
 
     if n_samples < 1:
@@ -172,13 +175,12 @@ def generate_synthetic_anomalies(
 
     rng = np.random.default_rng(random_state)
 
-    # Start with structurally valid synthetic bookings.
     matrix = generate_synthetic_training_data(
         n_samples=n_samples,
         random_state=random_state + 100,
     ).copy()
 
-    # Distribute samples across five different suspicious patterns.
+    # Distribute samples across five scenarios.
     scenarios = np.arange(n_samples) % 5
     rng.shuffle(scenarios)
 
@@ -190,23 +192,21 @@ def generate_synthetic_anomalies(
             continue
 
         if scenario == 0:
-            # Pattern 1: New account making an immediate booking.
+            # New account making an immediate booking.
             matrix[indices, 0] = rng.integers(0, 2, size=count)
             matrix[indices, 1] = rng.integers(0, 2, size=count)
             matrix[indices, 5] = 0
             matrix[indices, 6] = 0
 
         elif scenario == 1:
-            # Pattern 2: Venue booking exceeding its capacity.
+            # Invalid venue booking exceeding venue capacity.
             matrix[indices, 10] = 1
             matrix[indices, 8] = 1
 
-            # Generate a realistic venue capacity.
             venue_capacity = rng.integers(
                 50, 1001, size=count
             )
 
-            # Generate guest counts exceeding venue capacity.
             utilization = rng.uniform(
                 1.1, 1.6, size=count
             )
@@ -215,32 +215,18 @@ def generate_synthetic_anomalies(
                 venue_capacity * utilization
             )
 
-            # Calculate utilization exactly as production does.
             matrix[indices, 7] = (
                 matrix[indices, 2] / venue_capacity
             )
 
-            matrix[indices, 4] = rng.uniform(
-                300, 5000, size=count
-            )
-            matrix[indices, 3] = (
-                matrix[indices, 2] * matrix[indices, 4]
+            # Keep the original listing price.
+            # Recalculate price per guest as production does.
+            matrix[indices, 4] = (
+                matrix[indices, 3] / matrix[indices, 2]
             )
 
         elif scenario == 2:
-            # Pattern 3: Unusually high price per guest.
-            matrix[indices, 2] = rng.integers(
-                5, 101, size=count
-            )
-            matrix[indices, 4] = rng.uniform(
-                8000, 20000, size=count
-            )
-            matrix[indices, 3] = (
-                matrix[indices, 2] * matrix[indices, 4]
-            )
-
-        elif scenario == 3:
-            # Pattern 4: Many previous bookings for the same date.
+            # Many previous bookings for the same event date.
             matrix[indices, 5] = rng.integers(
                 10, 31, size=count
             )
@@ -251,13 +237,29 @@ def generate_synthetic_anomalies(
                 0, 4, size=count
             )
 
-        elif scenario == 4:
-            # Pattern 5: Unusually distant event date.
-            matrix[indices, 0] = rng.integers(
-                1, 31, size=count
-            )
+        elif scenario == 3:
+            # Unusually long booking lead time.
+            # Account age is left unchanged to avoid mixing signals.
             matrix[indices, 1] = rng.integers(
                 730, 1501, size=count
+            )
+
+        elif scenario == 4:
+            # High booking activity from a relatively new account.
+            matrix[indices, 0] = rng.integers(
+                1, 8, size=count
+            )
+
+            matrix[indices, 1] = rng.integers(
+                1, 8, size=count
+            )
+
+            matrix[indices, 5] = rng.integers(
+                15, 31, size=count
+            )
+
+            matrix[indices, 6] = rng.integers(
+                0, 4, size=count
             )
 
     if matrix.shape[1] != len(FEATURE_NAMES):
@@ -275,6 +277,8 @@ def generate_synthetic_anomalies(
             "Synthetic anomalies contain invalid booking histories."
         )
 
+    if return_scenarios:
+        return matrix, scenarios
     return matrix
 
 
@@ -374,10 +378,11 @@ def test_development_isolation_forest(model_path=None):
         random_state=RANDOM_STATE + 200,
     )
 
-    # Generate suspicious bookings.
-    anomaly_matrix = generate_synthetic_anomalies(
+    # Generate suspicious bookings and retain their scenario labels.
+    anomaly_matrix, anomaly_scenarios = generate_synthetic_anomalies(
         n_samples=100,
         random_state=RANDOM_STATE + 300,
+        return_scenarios=True,
     )
 
     # Predict normal bookings.
@@ -394,6 +399,46 @@ def test_development_isolation_forest(model_path=None):
     anomalies_detected = int(np.sum(anomaly_predictions == -1))
     anomalies_missed = int(np.sum(anomaly_predictions == 1))
 
+    scenario_names = {
+        0: "new_account_immediate_booking",
+        1: "venue_capacity_overrun",
+        2: "many_same_date_bookings",
+        3: "unusually_long_booking_lead_time",
+        4: "new_account_high_booking_activity",
+    }
+
+    scenario_results = {}
+
+    for scenario_id, scenario_name in scenario_names.items():
+        scenario_mask = anomaly_scenarios == scenario_id
+
+        scenario_predictions = anomaly_predictions[scenario_mask]
+
+        scenario_detected = int(
+            np.sum(scenario_predictions == -1)
+        )
+
+        scenario_missed = int(
+            np.sum(scenario_predictions == 1)
+        )
+
+        scenario_total = len(scenario_predictions)
+
+        detection_rate = (
+            scenario_detected / scenario_total * 100
+            if scenario_total > 0
+            else 0.0
+        )
+
+        scenario_results[scenario_name] = {
+            "test_samples": scenario_total,
+            "anomalies_detected": scenario_detected,
+            "anomalies_missed": scenario_missed,
+            "detection_rate_percent": round(
+                detection_rate, 2
+            ),
+        }
+
     return {
         "model_path": str(source),
         "training_samples": artifact["training_samples"],
@@ -409,6 +454,7 @@ def test_development_isolation_forest(model_path=None):
             "test_samples": len(anomaly_matrix),
             "anomalies_detected": anomalies_detected,
             "anomalies_missed": anomalies_missed,
+            "scenario_results": scenario_results,
             "predictions": anomaly_predictions.tolist(),
             "decision_scores": anomaly_scores.tolist(),
         },

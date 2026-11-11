@@ -270,8 +270,10 @@ class FraudDetectionTestCase(TestCase):
         self.assertEqual(assessment['risk_score'], 55.0)
         self.assertTrue(assessment['is_anomaly'])
 
-    def test_high_risk_booking_creates_fraud_alert(self):
+    @patch('core.ml.isolation_forest.load_isolation_forest')
+    def test_high_risk_booking_creates_fraud_alert(self, mock_load_model):
         """A booking reaching the threshold should create an alert."""
+        mock_load_model.return_value = None
 
         for number in range(3):
             Booking.objects.create(
@@ -298,12 +300,12 @@ class FraudDetectionTestCase(TestCase):
 
     @patch('core.ml.isolation_forest.predict_booking_anomaly')
     @patch('core.ml.isolation_forest.load_isolation_forest')
-    def test_trained_isolation_forest_is_used(
+    def test_trained_isolation_forest_is_combined_with_rules(
         self,
         mock_load_model,
         mock_predict,
     ):
-        """A trained Isolation Forest model should be preferred."""
+        """A trained model and business rules both contribute."""
 
         booking = self.create_booking()
 
@@ -329,10 +331,147 @@ class FraudDetectionTestCase(TestCase):
 
         self.assertEqual(
             assessment['detection_method'],
-            'ISOLATION_FOREST',
+            'HYBRID',
         )
         self.assertEqual(assessment['risk_score'], 75.0)
         self.assertTrue(assessment['is_anomaly'])
+        self.assertEqual(
+            assessment['rule_based_risk_score'],
+            35.0,
+        )
+        self.assertEqual(
+            assessment['isolation_forest_risk_score'],
+            75.0,
+        )
+
+    @patch('core.ml.isolation_forest.predict_booking_anomaly')
+    @patch('core.ml.isolation_forest.load_isolation_forest')
+    def test_both_methods_detect_anomaly(
+        self,
+        mock_load_model,
+        mock_predict,
+    ):
+        """Both rules and Isolation Forest identify an anomaly."""
+
+        for number in range(3):
+            Booking.objects.create(
+                customer=self.customer,
+                venue=self.venue,
+                event_title=f'Previous Event {number}',
+                event_type='Wedding',
+                event_date=self.event_date,
+                guest_count=20,
+                total_price=30000,
+                status='PENDING',
+            )
+
+        booking = self.create_booking()
+        mock_load_model.return_value = object()
+        mock_predict.return_value = {
+            'risk_score': 75.0,
+            'is_anomaly': True,
+            'detection_method': 'ISOLATION_FOREST',
+            'reason': 'Unusual booking pattern detected.',
+            'features': {},
+        }
+
+        assessment = evaluate_booking_risk(booking)
+
+        self.assertEqual(assessment['detection_method'], 'HYBRID')
+        self.assertEqual(assessment['rule_based_risk_score'], 55.0)
+        self.assertEqual(assessment['isolation_forest_risk_score'], 75.0)
+        self.assertEqual(assessment['risk_score'], 75.0)
+        self.assertTrue(assessment['is_anomaly'])
+
+    @patch('core.ml.isolation_forest.predict_booking_anomaly')
+    @patch('core.ml.isolation_forest.load_isolation_forest')
+    def test_rules_detect_anomaly_when_model_does_not(
+        self,
+        mock_load_model,
+        mock_predict,
+    ):
+        """Business rules can flag a booking independently of the model."""
+
+        for number in range(3):
+            Booking.objects.create(
+                customer=self.customer,
+                venue=self.venue,
+                event_title=f'Previous Event {number}',
+                event_type='Wedding',
+                event_date=self.event_date,
+                guest_count=20,
+                total_price=30000,
+                status='PENDING',
+            )
+
+        booking = self.create_booking()
+        mock_load_model.return_value = object()
+        mock_predict.return_value = {
+            'risk_score': 10.0,
+            'is_anomaly': False,
+            'detection_method': 'ISOLATION_FOREST',
+            'reason': 'No ML anomaly detected.',
+            'features': {},
+        }
+
+        assessment = evaluate_booking_risk(booking)
+
+        self.assertEqual(assessment['detection_method'], 'HYBRID')
+        self.assertEqual(assessment['rule_based_risk_score'], 55.0)
+        self.assertFalse(assessment['isolation_forest_risk_score'] >= 40)
+        self.assertEqual(assessment['risk_score'], 55.0)
+        self.assertTrue(assessment['is_anomaly'])
+
+    @patch('core.ml.isolation_forest.predict_booking_anomaly')
+    @patch('core.ml.isolation_forest.load_isolation_forest')
+    def test_model_detects_anomaly_when_rules_do_not(
+        self,
+        mock_load_model,
+        mock_predict,
+    ):
+        """Isolation Forest can flag a booking independently of the rules."""
+
+        booking = self.create_booking()
+        mock_load_model.return_value = object()
+        mock_predict.return_value = {
+            'risk_score': 80.0,
+            'is_anomaly': True,
+            'detection_method': 'ISOLATION_FOREST',
+            'reason': 'Unusual booking pattern detected.',
+            'features': {},
+        }
+
+        assessment = evaluate_booking_risk(booking)
+
+        self.assertEqual(assessment['detection_method'], 'HYBRID')
+        self.assertEqual(assessment['rule_based_risk_score'], 35.0)
+        self.assertEqual(assessment['isolation_forest_risk_score'], 80.0)
+        self.assertTrue(assessment['is_anomaly'])
+
+    @patch('core.ml.isolation_forest.predict_booking_anomaly')
+    @patch('core.ml.isolation_forest.load_isolation_forest')
+    def test_neither_method_detects_anomaly(
+        self,
+        mock_load_model,
+        mock_predict,
+    ):
+        """A normal booking is not flagged by either detection method."""
+
+        booking = self.create_booking()
+        mock_load_model.return_value = object()
+        mock_predict.return_value = {
+            'risk_score': 10.0,
+            'is_anomaly': False,
+            'detection_method': 'ISOLATION_FOREST',
+            'reason': 'No ML anomaly detected.',
+            'features': {},
+        }
+
+        assessment = evaluate_booking_risk(booking)
+
+        self.assertEqual(assessment['detection_method'], 'HYBRID')
+        self.assertEqual(assessment['risk_score'], 35.0)
+        self.assertFalse(assessment['is_anomaly'])
 
     @patch('core.ml.isolation_forest.load_isolation_forest')
     def test_model_loading_failure_uses_rule_based_fallback(
@@ -393,8 +532,10 @@ class FraudDetectionTestCase(TestCase):
             'Administrator is reviewing this booking.',
         )
 
-    def test_booking_api_triggers_fraud_detection(self):
+    @patch('core.ml.isolation_forest.load_isolation_forest')
+    def test_booking_api_triggers_fraud_detection(self, mock_load_model):
         """Submitting a suspicious booking through the API creates an alert."""
+        mock_load_model.return_value = None
 
         # Create three previous bookings for the same event date.
         for number in range(3):

@@ -1,8 +1,8 @@
 """
 LOCYFY Fraud Detection Engine.
 
-Extracts numerical booking features for rule-based fraud detection
-and future Isolation Forest anomaly detection.
+Extracts numerical booking features for hybrid rule-based and
+Isolation Forest fraud detection.
 """
 
 import logging
@@ -134,15 +134,61 @@ def extract_booking_features(booking):
         'is_venue_booking': float(is_venue_booking),
     }
 
-# Initial rule-based risk configuration.
+# Rule-based risk configuration.
 RULE_BASED_ALERT_THRESHOLD = 40.0
+
+
+def _evaluate_rule_based_risk(features):
+    """Evaluate known business risk indicators."""
+
+    risk_score = 0.0
+    risk_indicators = []
+
+    # Rule 1: A newly created account books very close to the event.
+    if (
+        features['account_age_days'] <= 1
+        and 0 <= features['booking_lead_time_days'] <= 1
+    ):
+        risk_score += 35
+        risk_indicators.append(
+            'A newly created customer account is booking very close '
+            'to the event date.'
+        )
+
+    # Rule 2: Several previous bookings share the same event date.
+    if features['same_date_booking_count'] >= 3:
+        risk_score += 20
+        risk_indicators.append(
+            'The customer has several previous bookings for the same '
+            'event date.'
+        )
+
+    risk_score = min(risk_score, 100.0)
+
+    return {
+        'risk_score': risk_score,
+        'is_anomaly': risk_score >= RULE_BASED_ALERT_THRESHOLD,
+        'detection_method': 'RULE_BASED',
+        'reason': (
+            ' '.join(risk_indicators)
+            if risk_indicators
+            else 'No significant rule-based risk indicators were detected.'
+        ),
+        'features': features,
+    }
 
 
 def evaluate_booking_risk(booking):
     """
-    Evaluate a booking using Isolation Forest when a trained model
-    is available. Fall back to explainable rules otherwise.
+    Combine Isolation Forest predictions with explainable business rules.
+
+    If the ML model is unavailable, use rule-based detection.
+    A booking is flagged when either method identifies an anomaly.
     """
+
+    # Always evaluate business rules.
+    features = extract_booking_features(booking)
+    rule_assessment = _evaluate_rule_based_risk(features)
 
     try:
         from .isolation_forest import (
@@ -153,64 +199,69 @@ def evaluate_booking_risk(booking):
         artifact = load_isolation_forest()
 
         if artifact is not None:
-            assessment = predict_booking_anomaly(
+            ml_assessment = predict_booking_anomaly(
                 booking,
                 artifact=artifact,
             )
 
-            if assessment is not None:
-                return assessment
+            if ml_assessment is not None:
+                # Either method can identify a suspicious booking.
+                combined_risk_score = max(
+                    rule_assessment['risk_score'],
+                    ml_assessment['risk_score'],
+                )
+
+                is_anomaly = (
+                    rule_assessment['is_anomaly']
+                    or ml_assessment['is_anomaly']
+                )
+
+                reasons = []
+
+                if rule_assessment['risk_score'] > 0:
+                    reasons.append(
+                        'Rule-based checks: '
+                        + rule_assessment['reason']
+                    )
+
+                if ml_assessment['is_anomaly']:
+                    reasons.append(
+                        'Isolation Forest: '
+                        + ml_assessment['reason']
+                    )
+
+                if not reasons:
+                    reasons.append(
+                        'Neither the business rules nor Isolation Forest '
+                        'identified a significant risk indicator.'
+                    )
+
+                return {
+                    'risk_score': round(combined_risk_score, 2),
+                    'is_anomaly': is_anomaly,
+                    'detection_method': 'HYBRID',
+                    'reason': ' '.join(reasons),
+                    'features': features,
+                    'rule_based_risk_score': (
+                        rule_assessment['risk_score']
+                    ),
+                    'isolation_forest_risk_score': (
+                        ml_assessment['risk_score']
+                    ),
+                    'decision_score': ml_assessment.get(
+                        'decision_score'
+                    ),
+                }
 
     except Exception:
         logger.exception(
             'Isolation Forest prediction failed for booking %s. '
-            'Falling back to rule-based detection.',
+            'Using rule-based detection.',
             booking.pk,
         )
 
-    # Cold-start fallback: existing rule-based detection.
-    features = extract_booking_features(booking)
-
-    risk_score = 0.0
-    risk_indicators = []
-
-    # Rule 1: A newly created account makes a booking very close
-    # to the event date.
-    if (
-        features['account_age_days'] <= 1
-        and 0 <= features['booking_lead_time_days'] <= 1
-    ):
-        risk_score += 35
-        risk_indicators.append(
-            'A newly created customer account is booking very close to the event date.'
-        )
-
-    # Rule 2: Several previous bookings for the same event date.
-    if features['same_date_booking_count'] >= 3:
-        risk_score += 20
-        risk_indicators.append(
-            'The customer has several previous bookings for the same event date.'
-        )
-
-    risk_score = min(risk_score, 100.0)
-
-    is_anomaly = (
-        risk_score >= RULE_BASED_ALERT_THRESHOLD
-    )
-
-    reason = (
-        ' '.join(risk_indicators)
-        if risk_indicators
-        else 'No significant risk indicators were detected.'
-    )
-
-    return {
-        'risk_score': risk_score,
-        'is_anomaly': is_anomaly,
-        'detection_method': 'RULE_BASED',
-        'reason': reason,
-        'features': features,
-    }
+    # Cold-start fallback or model prediction failure.
+    return rule_assessment
 
 
 def create_fraud_alert(booking):

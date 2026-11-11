@@ -390,11 +390,13 @@ class VerificationDocumentSerializer(serializers.ModelSerializer):
             'expiry_date', 'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'user', 'vendor', 'venue_owner', 'file_name', 'file_size', 'file_extension',
-            'status', 'status_display', 'rejection_reason', 'admin_notes', 'reviewed_by', 'reviewed_at',
+            'id', 'user', 'vendor', 'venue_owner',
+            'file_name', 'file_size', 'file_extension',
+            'status', 'status_display', 'is_currently_valid',
+            'rejection_reason', 'admin_notes',
+            'reviewed_by', 'reviewed_at',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['total_price']
 
     def validate_file(self, value):
         if not value:
