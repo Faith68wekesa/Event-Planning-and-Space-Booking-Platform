@@ -12,6 +12,7 @@ from core.models import (
     Venue,
     VenueOwnerProfile,
     FraudAlert,
+    UserInteraction,
 )
 from core.ml.fraud_detector import (
     extract_booking_features,
@@ -76,6 +77,48 @@ class FraudDetectionTestCase(TestCase):
             total_price=50000,
             status='PENDING',
         )
+
+    def test_unauthenticated_user_cannot_create_booking(self):
+        """A visitor without an account cannot create a booking."""
+
+        client = APIClient()
+
+        response = client.post('/api/bookings/', {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_non_customer_cannot_create_booking(self):
+        """A venue owner cannot create a customer booking."""
+
+        client = APIClient()
+        client.force_authenticate(user=self.provider_user)
+
+        response = client.post('/api/bookings/', {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_other_non_customer_roles_cannot_create_booking(self):
+        """Provider, vendor and admin accounts cannot create bookings."""
+
+        for role in ['PROVIDER', 'VENDOR', 'ADMIN']:
+            user = User.objects.create_user(
+                username=f'fraud_test_{role.lower()}',
+                email=f'{role.lower()}@example.com',
+                password='Password123!',
+                role=role,
+                is_customer=False,
+            )
+
+            client = APIClient()
+            client.force_authenticate(user=user)
+
+            response = client.post('/api/bookings/', {}, format='json')
+
+            self.assertEqual(
+                response.status_code,
+                status.HTTP_403_FORBIDDEN,
+                f'{role} should not be allowed to create bookings.',
+            )
 
     def test_later_bookings_are_not_counted_in_historical_features(self):
         """Future bookings must not influence earlier booking features."""
@@ -577,6 +620,16 @@ class FraudDetectionTestCase(TestCase):
         )
 
         booking = Booking.objects.get(id=response.data['id'])
+
+        interaction = UserInteraction.objects.filter(
+            event_type='BOOKING_SUBMITTED',
+            user=booking.customer,
+            metadata__booking_id=booking.id,
+        ).first()
+        self.assertIsNotNone(
+            interaction,
+            'Booking submission interaction was not recorded.',
+        )
 
         alert = FraudAlert.objects.get(booking=booking)
 

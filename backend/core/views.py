@@ -4,6 +4,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, action, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from .permissions import IsAuthenticatedCustomer
 from django.contrib.auth import authenticate
 from django.db import transaction
 from django.db.models import Q, Sum
@@ -519,6 +520,7 @@ class VenueViewSet(viewsets.ModelViewSet):
 
 
 class BookingViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticatedCustomer]
     queryset = Booking.objects.all().order_by('-created_at')
     serializer_class = BookingSerializer
 
@@ -556,12 +558,7 @@ class BookingViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
-        # Enforce server-side authenticated customer assignment:
-        # If user is authenticated, customer is authoritatively assigned from request.user
-        if self.request.user and self.request.user.is_authenticated:
-            serializer.save(customer=self.request.user)
-        else:
-            serializer.save()
+        serializer.save(customer=self.request.user)
 
     def create(self, request, *args, **kwargs):
         from django.db import transaction

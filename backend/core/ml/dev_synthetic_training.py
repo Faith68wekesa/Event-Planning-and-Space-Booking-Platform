@@ -199,7 +199,7 @@ def generate_synthetic_anomalies(
             matrix[indices, 6] = 0
 
         elif scenario == 1:
-            # Invalid venue booking exceeding venue capacity.
+            # Valid venue booking with unusually high capacity utilization.
             matrix[indices, 10] = 1
             matrix[indices, 8] = 1
 
@@ -208,7 +208,7 @@ def generate_synthetic_anomalies(
             )
 
             utilization = rng.uniform(
-                1.1, 1.6, size=count
+                0.91, 0.99, size=count
             )
 
             matrix[indices, 2] = np.ceil(
@@ -401,7 +401,7 @@ def test_development_isolation_forest(model_path=None):
 
     scenario_names = {
         0: "new_account_immediate_booking",
-        1: "venue_capacity_overrun",
+        1: "high_venue_capacity_utilization",
         2: "many_same_date_bookings",
         3: "unusually_long_booking_lead_time",
         4: "new_account_high_booking_activity",
