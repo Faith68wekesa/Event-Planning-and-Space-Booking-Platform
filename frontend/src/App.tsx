@@ -510,7 +510,7 @@ export const App: React.FC = () => {
 
           <footer
             style={{
-              background: '#0d8a73',
+              background: '#0F8F7A',
               borderTop: '1px solid rgba(255, 255, 255, 0.15)',
               padding: '48px 24px',
               color: '#ffffff',

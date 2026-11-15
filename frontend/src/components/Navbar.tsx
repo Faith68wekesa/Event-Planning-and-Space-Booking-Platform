@@ -56,14 +56,14 @@ export const Navbar: React.FC<NavbarProps> = ({
             width: '38px',
             height: '38px',
             borderRadius: '10px',
-            background: 'linear-gradient(135deg, #0d8a73 0%, #086957 100%)',
+            background: '#0F8F7A',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             color: '#ffffff',
             fontWeight: 800,
             fontSize: '1.25rem',
-            boxShadow: '0 4px 10px rgba(13, 138, 115, 0.25)'
+            boxShadow: '0 4px 10px rgba(15, 143, 122, 0.25)'
           }}>
             L
           </div>
@@ -290,7 +290,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               style={{
                 padding: '8px 16px',
                 fontSize: '0.88rem',
-                background: activeTab === 'admin-dashboard' ? '#065f46' : '#0d8a73',
+                background: '#0F8F7A',
                 color: '#fff',
                 border: 'none',
                 borderRadius: '8px',
@@ -299,7 +299,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 gap: '6px',
                 cursor: 'pointer',
                 fontWeight: 600,
-                boxShadow: '0 2px 4px rgba(13, 138, 115, 0.25)',
+                boxShadow: '0 2px 4px rgba(15, 143, 122, 0.25)',
               }}
             >
               <ShieldCheck size={16} /> Admin Panel

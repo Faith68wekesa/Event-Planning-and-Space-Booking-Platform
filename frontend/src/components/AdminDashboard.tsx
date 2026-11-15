@@ -742,7 +742,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="admin-dashboard-container">
       {/* Top Banner & Title */}
       <div style={{
-        background: 'linear-gradient(135deg, #0d8a73 0%, #065f46 100%)',
+        background: '#0F8F7A',
         borderRadius: '20px',
         padding: '32px 36px',
         color: '#ffffff',

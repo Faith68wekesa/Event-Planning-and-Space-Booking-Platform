@@ -121,7 +121,7 @@ export const VendorDashboardReviews: React.FC<VendorDashboardReviewsProps> = ({ 
           {hasReviews ? (
             <>
               <div style={{ position: 'relative', width: '120px', height: '120px', margin: '0 auto 24px', borderRadius: '50%', background: 'conic-gradient(#34d399 0% 92%, rgba(255,255,255,0.15) 92% 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div style={{ width: '100px', height: '100px', borderRadius: '50%', background: '#064e3b', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
+                <div style={{ width: '100px', height: '100px', borderRadius: '50%', background: '#0F8F7A', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
                   <div style={{ fontSize: '1.75rem', fontWeight: 800 }}>92%</div>
                 </div>
               </div>

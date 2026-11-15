@@ -17,5 +17,4 @@ class IsAuthenticatedCustomer(BasePermission):
         return (
             user.is_authenticated
             and user.role == 'CUSTOMER'
-            and user.is_customer is True
         )

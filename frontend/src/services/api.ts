@@ -282,7 +282,7 @@ export const ApiService = {
   async createBooking(bookingData: Partial<Booking>): Promise<Booking> {
     const res = await fetch(`${API_BASE}/bookings/`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(bookingData),
     });
     if (res.ok) {

@@ -1117,7 +1117,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                                 position: 'absolute', 
                                 top: '10px', 
                                 left: '10px', 
-                                background: item.itemKind === 'VENUE' ? '#064e3b' : '#0284c7', 
+                                background: item.itemKind === 'VENUE' ? '#0F8F7A' : '#0284c7',
                                 color: '#ffffff', 
                                 fontSize: '0.72rem', 
                                 fontWeight: 700, 

@@ -1,11 +1,11 @@
 :root {
   /* Green & White Signature Theme Tokens */
-  --primary: #0d8a73;
-  --primary-hover: #0a705d;
-  --primary-dark: #042f2a;
+  --primary: #0F8F7A;
+  --primary-hover: #0d826f;
+  --primary-dark: #0F8F7A;
   --primary-light: #14b8a6;
   --primary-soft: #f0fdfa;
-  --primary-tint: rgba(13, 138, 115, 0.08);
+  --primary-tint: rgba(15, 143, 122, 0.08);
   --accent-mint: #34d399;
 
   /* Surfaces & Clean Whites */
@@ -14,7 +14,7 @@
   --bg-subtle: #f1f5f9;
   --border: #e2e8f0;
   --border-light: #f1f5f9;
-  --border-focus: #0d8a73;
+  --border-focus: #0F8F7A;
 
   /* Typography & Text */
   --text-h: #0f172a;
@@ -188,7 +188,7 @@ input:focus, select:focus, textarea:focus {
 /* Verified & Status Badges */
 .badge-verified {
   background: #f0fdfa;
-  color: #0d8a73;
+  color: #0F8F7A;
   border: 1px solid #99f6e4;
   padding: 4px 10px;
   border-radius: 9999px;

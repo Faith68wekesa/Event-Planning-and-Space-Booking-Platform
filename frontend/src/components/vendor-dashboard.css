@@ -8,13 +8,13 @@
 /* Sidebar Styles */
 .vendor-sidebar {
   width: 260px;
-  background-color: #064e3b;
-  background-image: linear-gradient(180deg, #064e3b 0%, #022c22 100%);
+  background-color: #0F8F7A;
+  background-image: none;
   color: #ffffff;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  box-shadow: 3px 0 16px rgba(2, 44, 34, 0.2);
+  box-shadow: 3px 0 16px rgba(15, 143, 122, 0.2);
   z-index: 20;
 }
 

@@ -681,7 +681,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 width: '56px',
                 height: '56px',
                 borderRadius: '16px',
-                background: 'linear-gradient(135deg, #0d8a73 0%, #065f46 100%)',
+                background: '#0F8F7A',
                 color: '#ffffff',
                 display: 'flex',
                 alignItems: 'center',

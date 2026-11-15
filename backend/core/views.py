@@ -1537,7 +1537,7 @@ def register_user(request):
             password=data.get('password'),
             first_name=first_name,
             last_name=last_name,
-            is_customer=False, # Wait for explicit role selection
+            is_customer=True,
             is_vendor=False,
             is_venue_owner=False,
             is_staff=False,

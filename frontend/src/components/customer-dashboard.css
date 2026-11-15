@@ -11,13 +11,13 @@
 /* Sidebar Styles */
 .customer-sidebar {
   width: 260px;
-  background-color: #08332d;
-  background-image: linear-gradient(180deg, #093c35 0%, #062b25 100%);
+  background-color: #0F8F7A;
+  background-image: none;
   color: #ffffff;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  box-shadow: 4px 0 20px rgba(6, 43, 37, 0.25);
+  box-shadow: 4px 0 20px rgba(15, 143, 122, 0.2);
   z-index: 30;
   position: sticky;
   top: 0;
@@ -85,8 +85,8 @@
   height: 44px;
   border-radius: 50%;
   overflow: hidden;
-  border: 2px solid rgba(255, 255, 255, 0.25);
-  background: #134e4a;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.2);
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -165,14 +165,14 @@
 }
 
 .customer-nav-item.active {
-  background: #116053;
+  background: rgba(255, 255, 255, 0.22);
   color: #ffffff;
   font-weight: 700;
-  box-shadow: 0 4px 12px rgba(9, 60, 53, 0.35);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .customer-nav-badge {
-  background: #158372;
+  background: rgba(255, 255, 255, 0.25);
   color: #ffffff;
   font-size: 0.75rem;
   font-weight: 700;

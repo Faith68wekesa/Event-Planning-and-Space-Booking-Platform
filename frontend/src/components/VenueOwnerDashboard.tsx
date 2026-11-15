@@ -269,7 +269,7 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
       {/* Top Banner / Header */}
       <div
         style={{
-          background: 'linear-gradient(135deg, #064e3b 0%, #0d8a73 100%)',
+          background: '#0F8F7A',
           color: '#ffffff',
           padding: '36px 32px 48px',
           boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)',
