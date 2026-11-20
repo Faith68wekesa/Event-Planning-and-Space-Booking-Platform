@@ -20,6 +20,25 @@ class UserSerializer(serializers.ModelSerializer):
 class VenueOwnerProfileSerializer(serializers.ModelSerializer):
     user_details = UserSerializer(source='user', read_only=True)
 
+    def get_fields(self):
+        fields = super().get_fields()
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        is_admin = bool(
+            user
+            and user.is_authenticated
+            and (
+                getattr(user, 'role', '') == 'ADMIN'
+                or getattr(user, 'is_staff', False)
+                or getattr(user, 'is_superuser', False)
+            )
+        )
+        fields['user'].read_only = True
+        if not is_admin:
+            fields['verification_status'].read_only = True
+            fields['is_verified'].read_only = True
+        return fields
+
     class Meta:
         model = VenueOwnerProfile
         fields = [
@@ -28,12 +47,32 @@ class VenueOwnerProfileSerializer(serializers.ModelSerializer):
             'description', 'years_in_business', 'website_url', 'logo_url',
             'verification_status', 'is_verified', 'created_at'
         ]
+        read_only_fields = ['user']
 
 
 class VendorProfileSerializer(serializers.ModelSerializer):
     user_details = UserSerializer(source='user', read_only=True)
     vendor_type_display = serializers.CharField(source='vendor_type', read_only=True)
     starting_price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+
+    def get_fields(self):
+        fields = super().get_fields()
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        is_admin = bool(
+            user
+            and user.is_authenticated
+            and (
+                getattr(user, 'role', '') == 'ADMIN'
+                or getattr(user, 'is_staff', False)
+                or getattr(user, 'is_superuser', False)
+            )
+        )
+        fields['user'].read_only = True
+        if not is_admin:
+            fields['verification_status'].read_only = True
+            fields['is_verified'].read_only = True
+        return fields
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -104,7 +143,17 @@ class VenueSerializer(serializers.ModelSerializer):
             'price_per_hour', 'amenities', 'image_url', 'is_verified', 'approval_status', 'rejection_reason',
             'cancellation_policy', 'is_available', 'rating', 'review_count', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['is_verified', 'rating', 'review_count', 'created_at', 'updated_at']
+        read_only_fields = [
+            'vendor',
+            'owner',
+            'is_verified',
+            'approval_status',
+            'rejection_reason',
+            'rating',
+            'review_count',
+            'created_at',
+            'updated_at',
+        ]
 
 
 class ReviewSerializer(serializers.ModelSerializer):

@@ -36,35 +36,17 @@ from .ml.recommender import (
 from .ml.fraud_detector import create_fraud_alert
 
 def is_admin_user(request):
-    """
-    Verifies if the request is performed by a platform administrator.
-    Checks:
-    1. Django request.user session/token authentication (role=='ADMIN', is_staff, or is_superuser).
-    2. Headers: 'X-User-Id' or 'X-Admin-Id'.
-    3. Query params: 'admin_user_id' or 'user_id'.
-    4. Request body: 'admin_user_id' or 'user_id'.
-    """
     user = getattr(request, 'user', None)
-    if user and user.is_authenticated:
-        if getattr(user, 'role', '') == 'ADMIN' or getattr(user, 'is_staff', False) or getattr(user, 'is_superuser', False):
-            return True
 
-    user_id = (
-        request.headers.get('X-User-Id') or 
-        request.headers.get('X-Admin-Id') or
-        getattr(request, 'query_params', {}).get('admin_user_id') or 
-        getattr(request, 'query_params', {}).get('user_id')
+    return bool(
+        user
+        and user.is_authenticated
+        and (
+            getattr(user, 'role', '') == 'ADMIN'
+            or getattr(user, 'is_staff', False)
+            or getattr(user, 'is_superuser', False)
+        )
     )
-    if not user_id and hasattr(request, 'data') and isinstance(request.data, dict):
-        user_id = request.data.get('admin_user_id') or request.data.get('user_id')
-
-    if user_id:
-        try:
-            u = User.objects.get(pk=int(user_id))
-            return u.role == 'ADMIN' or u.is_staff or u.is_superuser
-        except (User.DoesNotExist, ValueError, TypeError):
-            return False
-    return False
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().order_by('-date_joined')
@@ -121,6 +103,24 @@ class VendorProfileViewSet(viewsets.ModelViewSet):
     queryset = VendorProfile.objects.all().order_by('-rating')
     serializer_class = VendorProfileSerializer
 
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsAuthenticated()]
+        return [AllowAny()]
+
+    def get_object(self):
+        vendor = super().get_object()
+        if (
+            self.action in ['update', 'partial_update', 'destroy']
+            and not is_admin_user(self.request)
+            and vendor.user_id != self.request.user.id
+        ):
+            raise PermissionDenied("You do not have permission to modify this profile.")
+        return vendor
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
     def get_queryset(self):
         queryset = super().get_queryset()
         params = self.request.query_params
@@ -131,31 +131,32 @@ class VendorProfileViewSet(viewsets.ModelViewSet):
         user = params.get('user') or params.get('user_id')
         all_status = params.get('all_status') == 'true'
 
-        # Authenticated user ID (either Django session/token, header X-User-Id, or param)
         is_admin = is_admin_user(self.request)
 
-        # Provider viewing their own account or Admin viewing all
-        if is_admin:
-            pass
-        elif self.action in ['update', 'partial_update', 'toggle_verify', 'set_verification']:
-            pass
-        elif user:
-            queryset = queryset.filter(user_id=user)
-        elif all_status:
-            pass
-        else:
-            # PUBLIC / LANDING PAGE: Only admin-verified and approved vendors
-            today = datetime.date.today()
-            verified_vendor_ids = list(VerificationDocument.objects.filter(
-                vendor__isnull=False,
-                status='APPROVED'
-            ).filter(
-                Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
-            ).values_list('vendor_id', flat=True))
-            queryset = queryset.filter(
-                Q(is_verified=True, verification_status='APPROVED') |
-                Q(id__in=verified_vendor_ids)
-            )
+        if not is_admin:
+            if self.action in ['update', 'partial_update', 'destroy']:
+                pass
+            elif user or all_status:
+                if not self.request.user.is_authenticated:
+                    return queryset.none()
+                if user and str(self.request.user.pk) != str(user):
+                    return queryset.none()
+                queryset = queryset.filter(user_id=self.request.user.pk)
+            else:
+                today = datetime.date.today()
+                verified_vendor_ids = VerificationDocument.objects.filter(
+                    vendor__isnull=False,
+                    status='APPROVED'
+                ).filter(
+                    Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
+                ).values_list('vendor_id', flat=True)
+                public_profiles = (
+                    Q(is_verified=True, verification_status='APPROVED')
+                    | Q(id__in=verified_vendor_ids)
+                )
+                if self.request.user.is_authenticated:
+                    public_profiles |= Q(user_id=self.request.user.pk)
+                queryset = queryset.filter(public_profiles)
 
         if search:
             queryset = queryset.filter(
@@ -167,7 +168,7 @@ class VendorProfileViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(vendor_type=vendor_type)
         if location and location != 'ALL':
             queryset = queryset.filter(location__icontains=location)
-        if user:
+        if user and is_admin:
             queryset = queryset.filter(user_id=user)
         if verified == 'true':
             queryset = queryset.filter(is_verified=True)
@@ -182,11 +183,7 @@ class VendorProfileViewSet(viewsets.ModelViewSet):
         vendor.is_verified = not vendor.is_verified
         vendor.verification_status = 'APPROVED' if vendor.is_verified else 'PENDING'
         vendor.save()
-        # Interconnect: sync all vendor listings and services
-        Venue.objects.filter(vendor=vendor).update(
-            is_verified=vendor.is_verified,
-            approval_status='APPROVED' if vendor.is_verified else 'PENDING'
-        )
+        Venue.objects.filter(vendor=vendor).update(is_verified=vendor.is_verified)
         return Response(VendorProfileSerializer(vendor).data)
 
     @action(detail=True, methods=['post', 'patch'])
@@ -199,11 +196,7 @@ class VendorProfileViewSet(viewsets.ModelViewSet):
             vendor.verification_status = new_status
             vendor.is_verified = (new_status == 'APPROVED')
             vendor.save()
-            # Interconnect: sync all vendor listings and services
-            Venue.objects.filter(vendor=vendor).update(
-                is_verified=vendor.is_verified,
-                approval_status='APPROVED' if vendor.is_verified else ('REJECTED' if new_status == 'REJECTED' else 'PENDING')
-            )
+            Venue.objects.filter(vendor=vendor).update(is_verified=vendor.is_verified)
             return Response(VendorProfileSerializer(vendor).data)
         return Response({'error': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -211,6 +204,24 @@ class VendorProfileViewSet(viewsets.ModelViewSet):
 class VenueOwnerProfileViewSet(viewsets.ModelViewSet):
     queryset = VenueOwnerProfile.objects.all().order_by('-created_at')
     serializer_class = VenueOwnerProfileSerializer
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsAuthenticated()]
+        return [AllowAny()]
+
+    def get_object(self):
+        owner = super().get_object()
+        if (
+            self.action in ['update', 'partial_update', 'destroy']
+            and not is_admin_user(self.request)
+            and owner.user_id != self.request.user.id
+        ):
+            raise PermissionDenied("You do not have permission to modify this profile.")
+        return owner
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -221,30 +232,34 @@ class VenueOwnerProfileViewSet(viewsets.ModelViewSet):
         user = params.get('user') or params.get('user_id')
         all_status = params.get('all_status') == 'true'
 
-        # Authenticated user ID (either Django session/token, header X-User-Id, or param)
         is_admin = is_admin_user(self.request)
 
         if is_admin:
             pass
-        elif self.action in ['update', 'partial_update', 'toggle_verify', 'set_verification']:
-            pass
-        elif user:
-            queryset = queryset.filter(user_id=user)
-        elif all_status:
+        elif self.action in ['update', 'partial_update', 'destroy', 'toggle_verify', 'set_verification']:
             pass
         else:
-            # PUBLIC / LANDING PAGE: Only admin-verified and approved owners
-            today = datetime.date.today()
-            verified_owner_ids = list(VerificationDocument.objects.filter(
-                venue_owner__isnull=False,
-                status='APPROVED'
-            ).filter(
-                Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
-            ).values_list('venue_owner_id', flat=True))
-            queryset = queryset.filter(
-                Q(is_verified=True, verification_status='APPROVED') |
-                Q(id__in=verified_owner_ids)
-            )
+            if user or all_status:
+                if not self.request.user.is_authenticated:
+                    return queryset.none()
+                if user and str(self.request.user.pk) != str(user):
+                    return queryset.none()
+                queryset = queryset.filter(user_id=self.request.user.pk)
+            else:
+                today = datetime.date.today()
+                verified_owner_ids = VerificationDocument.objects.filter(
+                    venue_owner__isnull=False,
+                    status='APPROVED'
+                ).filter(
+                    Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
+                ).values_list('venue_owner_id', flat=True)
+                public_profiles = (
+                    Q(is_verified=True, verification_status='APPROVED')
+                    | Q(id__in=verified_owner_ids)
+                )
+                if self.request.user.is_authenticated:
+                    public_profiles |= Q(user_id=self.request.user.pk)
+                queryset = queryset.filter(public_profiles)
 
         if search:
             queryset = queryset.filter(
@@ -254,7 +269,7 @@ class VenueOwnerProfileViewSet(viewsets.ModelViewSet):
             )
         if location and location != 'ALL':
             queryset = queryset.filter(location__icontains=location)
-        if user:
+        if user and is_admin:
             queryset = queryset.filter(user_id=user)
         if verified == 'true':
             queryset = queryset.filter(is_verified=True)
@@ -269,11 +284,7 @@ class VenueOwnerProfileViewSet(viewsets.ModelViewSet):
         owner.is_verified = not owner.is_verified
         owner.verification_status = 'APPROVED' if owner.is_verified else 'PENDING'
         owner.save()
-        # Interconnect: sync all venue owner physical spaces
-        Venue.objects.filter(owner=owner).update(
-            is_verified=owner.is_verified,
-            approval_status='APPROVED' if owner.is_verified else 'PENDING'
-        )
+        Venue.objects.filter(owner=owner).update(is_verified=owner.is_verified)
         return Response(VenueOwnerProfileSerializer(owner).data)
 
     @action(detail=True, methods=['post', 'patch'])
@@ -286,11 +297,7 @@ class VenueOwnerProfileViewSet(viewsets.ModelViewSet):
             owner.verification_status = new_status
             owner.is_verified = (new_status == 'APPROVED')
             owner.save()
-            # Interconnect: sync all venue owner physical spaces
-            Venue.objects.filter(owner=owner).update(
-                is_verified=owner.is_verified,
-                approval_status='APPROVED' if owner.is_verified else ('REJECTED' if new_status == 'REJECTED' else 'PENDING')
-            )
+            Venue.objects.filter(owner=owner).update(is_verified=owner.is_verified)
             return Response(VenueOwnerProfileSerializer(owner).data)
         return Response({'error': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -299,49 +306,41 @@ class VenueViewSet(viewsets.ModelViewSet):
     queryset = Venue.objects.all().order_by('-created_at')
     serializer_class = VenueSerializer
 
+    def get_permissions(self):
+        if self.action in [
+            'create',
+            'update',
+            'partial_update',
+            'destroy',
+            'toggle_availability',
+        ]:
+            return [IsAuthenticated()]
+
+        return [AllowAny()]
+
     def get_queryset(self):
         queryset = super().get_queryset()
         params = self.request.query_params
-        search = params.get('search')
-        category = params.get('category')
-        location = params.get('location')
-        max_price = params.get('max_price')
-        min_capacity = params.get('min_capacity')
-        verified = params.get('verified')
-        owner_id = params.get('owner')
-        vendor_id = params.get('vendor')
-        user_id = params.get('user')
-        all_status = params.get('all_status') == 'true'
 
-        is_admin = is_admin_user(self.request)
-
-        # Filtering logic for public visibility vs provider/admin dashboard:
-        # If admin, a management action, or provider scoping is requested, allow finding listing
-        if is_admin:
-            pass  # Admin can inspect all statuses and execute actions
-        elif self.action in ['approve', 'reject', 'toggle_verify', 'destroy', 'update', 'partial_update', 'toggle_availability']:
-            pass
-        elif user_id or owner_id or vendor_id or all_status:
-            # Scoped to provider's dashboard or admin all_status view
+        if is_admin_user(self.request):
             pass
         else:
-            # PUBLIC CONSUMER ENDPOINT: Only approved, active/available listings
             today = datetime.date.today()
-            verified_owner_ids = list(VerificationDocument.objects.filter(
+
+            verified_owner_ids = VerificationDocument.objects.filter(
                 venue_owner__isnull=False,
                 status='APPROVED'
             ).filter(
                 Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
-            ).values_list('venue_owner_id', flat=True))
+            ).values_list('venue_owner_id', flat=True)
 
-            verified_vendor_ids = list(VerificationDocument.objects.filter(
+            verified_vendor_ids = VerificationDocument.objects.filter(
                 vendor__isnull=False,
                 status='APPROVED'
             ).filter(
                 Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
-            ).values_list('vendor_id', flat=True))
+            ).values_list('vendor_id', flat=True)
 
-            # Provider must be verified directly or via approved verification documents
             provider_verified_q = (
                 Q(owner__is_verified=True) |
                 Q(owner__verification_status='APPROVED') |
@@ -351,47 +350,81 @@ class VenueViewSet(viewsets.ModelViewSet):
                 Q(vendor_id__in=verified_vendor_ids)
             )
 
-            queryset = queryset.filter(
+            public_catalog = queryset.filter(
                 approval_status='APPROVED',
                 is_available=True,
                 is_verified=True
             ).filter(provider_verified_q)
 
+            if self.request.user.is_authenticated and (
+                getattr(self.request.user, 'is_vendor', False)
+                or getattr(self.request.user, 'is_venue_owner', False)
+                or getattr(self.request.user, 'role', '') in ['PROVIDER', 'VENDOR', 'VENUE_OWNER']
+            ):
+                owned_venues = queryset.filter(
+                    Q(owner__user_id=self.request.user.pk) |
+                    Q(vendor__user_id=self.request.user.pk)
+                )
+                queryset = (public_catalog | owned_venues).distinct()
+            else:
+                queryset = public_catalog
+
+        search = params.get('search')
+        category = params.get('category')
+        location = params.get('location')
+        max_price = params.get('max_price')
+        min_capacity = params.get('min_capacity')
+        verified = params.get('verified')
+
         if search:
             queryset = queryset.filter(
-                Q(title__icontains=search) | 
-                Q(description__icontains=search) | 
+                Q(title__icontains=search) |
+                Q(description__icontains=search) |
                 Q(location__icontains=search)
             )
+
         if category and category != 'ALL':
             queryset = queryset.filter(category=category)
+
         if location and location != 'ALL':
             queryset = queryset.filter(location__icontains=location)
-        if user_id:
-            queryset = queryset.filter(Q(owner__user_id=user_id) | Q(vendor__user_id=user_id))
-        if owner_id:
-            queryset = queryset.filter(owner_id=owner_id)
-        if vendor_id:
-            queryset = queryset.filter(vendor_id=vendor_id)
+
         if max_price:
             try:
                 queryset = queryset.filter(price_per_day__lte=float(max_price))
             except ValueError:
                 pass
+
         if min_capacity:
             try:
                 queryset = queryset.filter(capacity__gte=int(min_capacity))
             except ValueError:
                 pass
+
         if verified == 'true':
-            queryset = queryset.filter(is_verified=True, approval_status='APPROVED')
+            queryset = queryset.filter(
+                is_verified=True,
+                approval_status='APPROVED'
+            )
 
         return queryset
 
     def perform_create(self, serializer):
-        # By default, ALL new venue/service listings must be pending approval
-        # Ordinary users/vendors cannot bypass approval.
-        serializer.save(approval_status='PENDING', is_verified=False)
+        user = self.request.user
+        vendor_profile = getattr(user, 'vendor_profile', None)
+        owner_profile = getattr(user, 'venue_owner_profile', None)
+
+        if not vendor_profile and not owner_profile:
+            raise PermissionDenied(
+                "You need a provider or venue owner profile to create a listing."
+            )
+
+        serializer.save(
+            vendor=vendor_profile,
+            owner=owner_profile,
+            approval_status='PENDING',
+            is_verified=False
+        )
 
     def perform_update(self, serializer):
         instance = serializer.instance
@@ -415,14 +448,8 @@ class VenueViewSet(viewsets.ModelViewSet):
         if not is_admin_user(request):
             raise PermissionDenied("Access Denied: Only platform administrators can verify venues.")
         venue = self.get_object()
-        if venue.approval_status == 'APPROVED':
-            venue.approval_status = 'PENDING'
-            venue.is_verified = False
-        else:
-            venue.approval_status = 'APPROVED'
-            venue.is_verified = True
-            venue.rejection_reason = None
-        venue.save(update_fields=['approval_status', 'is_verified', 'rejection_reason'])
+        Venue.objects.filter(pk=venue.pk).update(is_verified=not venue.is_verified)
+        venue.refresh_from_db()
         return Response({'status': 'updated', 'approval_status': venue.approval_status, 'is_verified': venue.is_verified})
 
     @action(detail=True, methods=['post'])
@@ -434,14 +461,6 @@ class VenueViewSet(viewsets.ModelViewSet):
         venue.is_verified = True
         venue.rejection_reason = None
         venue.save(update_fields=['approval_status', 'is_verified', 'rejection_reason'])
-        if venue.owner and not venue.owner.is_verified:
-            venue.owner.is_verified = True
-            venue.owner.verification_status = 'APPROVED'
-            venue.owner.save(update_fields=['is_verified', 'verification_status'])
-        if venue.vendor and not venue.vendor.is_verified:
-            venue.vendor.is_verified = True
-            venue.vendor.verification_status = 'APPROVED'
-            venue.vendor.save(update_fields=['is_verified', 'verification_status'])
         return Response(VenueSerializer(venue).data)
 
     @action(detail=True, methods=['post'])
@@ -459,64 +478,55 @@ class VenueViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post', 'patch'])
     def toggle_availability(self, request, pk=None):
         venue = self.get_object()
-        # Verify provider or admin
-        if request.user and request.user.is_authenticated and not request.user.is_staff:
-            provider_uid = None
-            if venue.owner and venue.owner.user_id:
-                provider_uid = venue.owner.user_id
-            elif venue.vendor and venue.vendor.user_id:
-                provider_uid = venue.vendor.user_id
-            if provider_uid and provider_uid != request.user.id:
-                raise PermissionDenied("You do not have permission to change this venue's availability.")
+
+        if not is_admin_user(request):
+            user_id = request.user.id
+
+            is_owner = (
+                venue.owner is not None and
+                venue.owner.user_id == user_id
+            )
+            is_vendor = (
+                venue.vendor is not None and
+                venue.vendor.user_id == user_id
+            )
+
+            if not (is_owner or is_vendor):
+                raise PermissionDenied(
+                    "You do not have permission to change this listing's availability."
+                )
 
         venue.is_available = not venue.is_available
         venue.save(update_fields=['is_available'])
-        return Response({'status': 'updated', 'is_available': venue.is_available})
+
+        return Response({
+            'status': 'updated',
+            'is_available': venue.is_available
+        })
 
     def destroy(self, request, *args, **kwargs):
         venue = self.get_object()
-        is_admin = is_admin_user(request)
 
-        # Identify requesting user ID from session or auth headers/params
-        req_user_id = None
-        if request.user and request.user.is_authenticated:
-            req_user_id = request.user.id
-            if getattr(request.user, 'role', '') == 'ADMIN' or getattr(request.user, 'is_staff', False) or getattr(request.user, 'is_superuser', False):
-                is_admin = True
+        if not is_admin_user(request):
+            user_id = request.user.id
 
-        if not req_user_id:
-            raw_uid = (
-                request.headers.get('X-User-Id') or
-                request.headers.get('X-Admin-Id') or
-                getattr(request, 'query_params', {}).get('admin_user_id') or
-                getattr(request, 'query_params', {}).get('user_id')
+            is_owner = (
+                venue.owner is not None and
+                venue.owner.user_id == user_id
             )
-            if raw_uid:
-                try:
-                    req_user_id = int(raw_uid)
-                except (ValueError, TypeError):
-                    pass
+            is_vendor = (
+                venue.vendor is not None and
+                venue.vendor.user_id == user_id
+            )
 
-        if req_user_id and not is_admin:
-            try:
-                u = User.objects.get(pk=req_user_id)
-                if u.role == 'ADMIN' or u.is_staff or u.is_superuser:
-                    is_admin = True
-            except User.DoesNotExist:
-                pass
-
-        is_owner = False
-        if req_user_id:
-            if venue.owner and venue.owner.user_id == req_user_id:
-                is_owner = True
-            elif venue.vendor and venue.vendor.user_id == req_user_id:
-                is_owner = True
-
-        if not is_admin and not is_owner:
-            raise PermissionDenied("Access Denied: Only administrators or the listing owner can delete this venue.")
+            if not (is_owner or is_vendor):
+                raise PermissionDenied(
+                    "Only the listing owner or an administrator can delete this listing."
+                )
 
         venue.delete()
-        return Response({'message': 'Venue listing deleted successfully.'}, status=status.HTTP_204_NO_CONTENT)
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class BookingViewSet(viewsets.ModelViewSet):
@@ -1594,109 +1604,145 @@ def login_user(request):
 
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 @transaction.atomic
 def request_role(request):
+    user = request.user
     user_id = request.data.get('user_id')
-    role = request.data.get('role')
-    
-    if not user_id or not role:
-        return Response({'error': 'User ID and role are required'}, status=status.HTTP_400_BAD_REQUEST)
-        
-    try:
-        user = User.objects.get(id=user_id)
-        
-        if role == 'CUSTOMER':
-            user.role = 'CUSTOMER'
-            user.is_customer = True
-            user.save()
-        elif role in ['PROVIDER', 'BUSINESS']:
-            user.role = 'PROVIDER'
-            user.is_customer = True
-            user.is_vendor = True
-            user.is_venue_owner = True
-            user.save()
-            business_title = f"{user.first_name}'s Business" if user.first_name else f"{user.username}'s Business"
-            VendorProfile.objects.get_or_create(
-                user=user,
-                defaults={
-                    'business_name': business_title,
-                    'vendor_type': 'Event Services',
-                    'location': 'Nairobi',
-                    'contact_email': user.email,
-                    'contact_phone': user.phone_number or ''
-                }
-            )
-            VenueOwnerProfile.objects.get_or_create(
-                user=user,
-                defaults={
-                    'business_name': business_title,
-                    'contact_email': user.email,
-                    'contact_phone': user.phone_number or '',
-                    'business_type': 'Event Spaces'
-                }
-            )
-        elif role == 'VENDOR':
-            user.role = 'VENDOR'
-            if not user.is_vendor:
-                user.is_vendor = True
-                user.save()
-                VendorProfile.objects.get_or_create(
-                    user=user,
-                    defaults={
-                        'business_name': f"{user.first_name}'s Business" if user.first_name else "My Business",
-                        'vendor_type': 'Other',
-                        'location': '',
-                        'contact_email': user.email,
-                        'contact_phone': user.phone_number
-                    }
-                )
-        elif role == 'VENUE_OWNER':
-            user.role = 'VENUE_OWNER'
-            if not user.is_venue_owner:
-                user.is_venue_owner = True
-                user.save()
-                VenueOwnerProfile.objects.get_or_create(
-                    user=user,
-                    defaults={
-                        'business_name': f"{user.first_name}'s Venues" if user.first_name else "My Venues",
-                        'contact_email': user.email,
-                        'contact_phone': user.phone_number,
-                        'business_type': 'Event Venue'
-                    }
-                )
-        elif role == 'ADMIN':
-            user.role = 'ADMIN'
-            user.is_staff = True
-            user.is_superuser = True
-            user.save()
-        else:
-            return Response({'error': 'Invalid role'}, status=status.HTTP_400_BAD_REQUEST)
-            
-        # Refetch to get updated profiles
-        is_provider = user.role == 'PROVIDER' or (user.is_vendor and user.is_venue_owner)
-        response_data = {
-            'user': UserSerializer(user).data,
-            'roles': {
-                'is_customer': user.is_customer,
-                'is_vendor': user.is_vendor,
-                'is_venue_owner': user.is_venue_owner,
-                'is_provider': is_provider,
-                'is_admin': user.role == 'ADMIN' or user.is_staff or user.is_superuser
+    role = (request.data.get('role') or '').strip().upper()
+
+    # Reject attempts to modify another user's account.
+    if user_id and str(user_id) != str(user.id):
+        return Response(
+            {'error': 'You can only change your own account role.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    # Administrator privileges cannot be requested.
+    if role == 'ADMIN':
+        return Response(
+            {'error': 'Administrator roles cannot be requested.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    if not role:
+        return Response(
+            {'error': 'Role is required.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if role == 'CUSTOMER':
+        user.role = 'CUSTOMER'
+        user.is_customer = True
+        user.save()
+
+    elif role in ['PROVIDER', 'BUSINESS']:
+        user.role = 'PROVIDER'
+        user.is_customer = True
+        user.is_vendor = True
+        user.is_venue_owner = True
+        user.save()
+
+        business_title = (
+            f"{user.first_name}'s Business"
+            if user.first_name else f"{user.username}'s Business"
+        )
+
+        VendorProfile.objects.get_or_create(
+            user=user,
+            defaults={
+                'business_name': business_title,
+                'vendor_type': 'Event Services',
+                'location': 'Nairobi',
+                'contact_email': user.email,
+                'contact_phone': user.phone_number or ''
             }
+        )
+
+        VenueOwnerProfile.objects.get_or_create(
+            user=user,
+            defaults={
+                'business_name': business_title,
+                'contact_email': user.email,
+                'contact_phone': user.phone_number or '',
+                'business_type': 'Event Spaces'
+            }
+        )
+
+    elif role == 'VENDOR':
+        user.role = 'VENDOR'
+        user.is_vendor = True
+        user.save()
+
+        VendorProfile.objects.get_or_create(
+            user=user,
+            defaults={
+                'business_name': (
+                    f"{user.first_name}'s Business"
+                    if user.first_name else "My Business"
+                ),
+                'vendor_type': 'Other',
+                'location': '',
+                'contact_email': user.email,
+                'contact_phone': user.phone_number or ''
+            }
+        )
+
+    elif role == 'VENUE_OWNER':
+        user.role = 'VENUE_OWNER'
+        user.is_venue_owner = True
+        user.save()
+
+        VenueOwnerProfile.objects.get_or_create(
+            user=user,
+            defaults={
+                'business_name': (
+                    f"{user.first_name}'s Venues"
+                    if user.first_name else "My Venues"
+                ),
+                'contact_email': user.email,
+                'contact_phone': user.phone_number or '',
+                'business_type': 'Event Venue'
+            }
+        )
+
+    else:
+        return Response(
+            {'error': 'Invalid role.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    is_provider = (
+        user.role == 'PROVIDER'
+        or (user.is_vendor and user.is_venue_owner)
+    )
+
+    response_data = {
+        'user': UserSerializer(user).data,
+        'roles': {
+            'is_customer': user.is_customer,
+            'is_vendor': user.is_vendor,
+            'is_venue_owner': user.is_venue_owner,
+            'is_provider': is_provider,
+            'is_admin': (
+                user.role == 'ADMIN'
+                or user.is_staff
+                or user.is_superuser
+            )
         }
-        
-        if hasattr(user, 'vendor_profile'):
-            response_data['vendor_profile'] = VendorProfileSerializer(user.vendor_profile).data
-            
-        if hasattr(user, 'venue_owner_profile'):
-            response_data['venue_owner_profile'] = VenueOwnerProfileSerializer(user.venue_owner_profile).data
-            
-        return Response(response_data, status=status.HTTP_200_OK)
-        
-    except User.DoesNotExist:
-        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
-    except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    }
+
+    if hasattr(user, 'vendor_profile'):
+        response_data['vendor_profile'] = VendorProfileSerializer(
+            user.vendor_profile
+        ).data
+
+    if hasattr(user, 'venue_owner_profile'):
+        response_data['venue_owner_profile'] = VenueOwnerProfileSerializer(
+            user.venue_owner_profile
+        ).data
+
+    return Response(response_data, status=status.HTTP_200_OK)
 
 
 class NotificationViewSet(viewsets.ModelViewSet):
@@ -1800,20 +1846,13 @@ class VerificationDocumentViewSet(viewsets.ModelViewSet):
     serializer_class = VerificationDocumentSerializer
     parser_classes = (MultiPartParser, FormParser)
 
+    def get_permissions(self):
+        return [IsAuthenticated()]
+
     def get_user_from_request(self):
         user = getattr(self.request, 'user', None)
         if user and user.is_authenticated:
             return user
-        user_id = (
-            self.request.headers.get('X-User-Id') or 
-            self.request.query_params.get('user_id') or 
-            self.request.query_params.get('user')
-        )
-        if user_id:
-            try:
-                return User.objects.get(pk=int(user_id))
-            except (User.DoesNotExist, ValueError, TypeError):
-                return None
         return None
 
     def get_queryset(self):
@@ -1930,7 +1969,7 @@ class VerificationDocumentViewSet(viewsets.ModelViewSet):
         doc.status = 'APPROVED'
         doc.rejection_reason = None
         doc.admin_notes = request.data.get('admin_notes', '')
-        reviewer = self.get_user_from_request() or request.user if getattr(request, 'user', None) and request.user.is_authenticated else None
+        reviewer = request.user
         doc.reviewed_by = reviewer
         doc.reviewed_at = timezone.now()
         doc.save()
@@ -1975,7 +2014,7 @@ class VerificationDocumentViewSet(viewsets.ModelViewSet):
         doc.status = 'REJECTED'
         doc.rejection_reason = reason
         doc.admin_notes = request.data.get('admin_notes', '')
-        reviewer = self.get_user_from_request() or request.user if getattr(request, 'user', None) and request.user.is_authenticated else None
+        reviewer = request.user
         doc.reviewed_by = reviewer
         doc.reviewed_at = timezone.now()
         doc.save()

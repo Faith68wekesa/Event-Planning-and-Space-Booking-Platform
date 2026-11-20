@@ -9,7 +9,7 @@ from django.test import TestCase
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
 django.setup()
 
-from core.models import Venue, VendorProfile, Recommendation, User, Booking
+from core.models import Venue, VendorProfile, Recommendation, User, Booking, UserInteraction
 from core.ml.recommender import (
     get_venue_recommendations,
     get_vendor_recommendations,
@@ -58,9 +58,8 @@ def run_edge_case_tests():
     print("  -> PASSED: reference_scale strictly rejects 0, negative, NaN, Inf, non-numeric, and None.")
 
     # --------------------------------------------------------------------------
-    # 2. Punctuation-Only, Stop-Word-Only, and Empty Text Handling
+    # 2. Punctuation-Only, Stop-Word-Only, and Empty Text HandlinG
     # --------------------------------------------------------------------------
-    print("\n[TEST 2] Punctuation-Only, Stop-Word-Only, and Empty Text:")
     with patch('core.ml.recommender._build_venue_text', return_value="... ,,, !!! ???"):
         invalidate_recommendation_cache()
         recs_punct = get_venue_recommendations(customer=None, preferences={'venue_budget': 200000})
@@ -498,6 +497,45 @@ class RecommenderEdgeCasesTestCase(TestCase):
         """Run complete recommender edge cases, stability, and exception propagation suite."""
         run_edge_case_tests()
 
+    def test_real_interactions_update_preferences_without_changing_vendor_budget(self):
+        customer = User.objects.create_user(
+            username='interaction_customer',
+            email='interaction_customer@locyfy.com',
+            password='testpassword123',
+            role='CUSTOMER'
+        )
+
+        vendor = VendorProfile.objects.first()
+
+        UserInteraction.objects.create(
+            user=customer,
+            event_type='LISTING_VIEW',
+            listing_type='VENDOR',
+            vendor=vendor,
+            category='CATERING',
+            location_filter='Nairobi'
+        )
+
+        prefs = _extract_customer_preferences(customer)
+
+        self.assertTrue(prefs['has_personalization_data'])
+        self.assertIn(vendor.business_name, prefs['text_query'])
+        self.assertIn('CATERING', prefs['text_query'])
+        self.assertIn('Nairobi', prefs['text_query'])
+        self.assertIsNone(prefs['vendor_budget'])
+
+        UserInteraction.objects.create(
+            user=customer,
+            event_type='BOOKING_STATUS_CHANGE',
+            category='STATUS_UPDATE'
+        )
+
+        prefs_after_status = _extract_customer_preferences(customer)
+
+        self.assertNotIn('STATUS_UPDATE', prefs_after_status['text_query'])
+        self.assertIsNone(prefs_after_status['vendor_budget'])
+
 
 if __name__ == '__main__':
     run_edge_case_tests()
+

@@ -5,6 +5,7 @@ import './vendor-dashboard.css';
 import {
   Building2,
   Plus,
+  Pencil,
   X,
   MapPin,
   Trash2,
@@ -20,7 +21,6 @@ import {
   Eye,
   AlertCircle,
   Users,
-  ChevronDown,
   MessageSquare,
   Check,
   Layers,
@@ -48,11 +48,11 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   onLogout,
   onExplore,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'spaces' | 'services' | 'availability' | 'bookings' | 'calendar' | 'reviews' | 'messages' | 'profile' | 'settings' | 'create_listing'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'listings' | 'spaces' | 'services' | 'availability' | 'bookings' | 'calendar' | 'reviews' | 'messages' | 'profile' | 'settings' | 'create_listing'>('overview');
   const [createListingDefaultMode, setCreateListingDefaultMode] = useState<'service' | 'venue'>('service');
+  const [editingListing, setEditingListing] = useState<Venue | null>(null);
   
   // Inspiration UI Navigation and Filter States
-  const [myListingsExpanded, setMyListingsExpanded] = useState(true);
   const [showAddListingDropdown, setShowAddListingDropdown] = useState(false);
   const [listingsCategoryFilter, setListingsCategoryFilter] = useState<string>('ALL');
   
@@ -138,10 +138,11 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   });
 
   // Filter states
-  const [spaceFilter, setSpaceFilter] = useState<'ALL' | 'APPROVED' | 'PENDING'>('ALL');
-  const [serviceFilter, setServiceFilter] = useState<'ALL' | 'APPROVED' | 'PENDING'>('ALL');
   const [bookingFilter, setBookingFilter] = useState<'ALL' | 'SPACES' | 'SERVICES'>('ALL');
   const [bookingStatusFilter, setBookingStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'CANCELLED'>('ALL');
+  const [listingStatusFilter, setListingStatusFilter] = useState<'ALL' | 'APPROVED' | 'PENDING'>('ALL');
+  const [listingTypeFilter, setListingTypeFilter] = useState<'ALL' | 'VENUE' | 'SERVICE'>('ALL');
+  const [listingLoadError, setListingLoadError] = useState(false);
   const [conversations, setConversations] = useState<ConversationThread[]>([]);
   const [selectedPartnerId, setSelectedPartnerId] = useState<number | null>(null);
   const [providerReviews, setProviderReviews] = useState<Review[]>([]);
@@ -154,16 +155,20 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
   const fetchProviderConversations = useCallback(async () => {
     if (!currentUser?.id) return;
+
     try {
       const threads = await ApiService.getConversations(currentUser.id);
       setConversations(threads);
-      if (threads.length > 0 && !selectedPartnerId) {
-        setSelectedPartnerId(threads[0].partner_id);
+
+      if (threads.length > 0) {
+        setSelectedPartnerId(current =>
+          current || threads[0].partner_id
+        );
       }
     } catch (e) {
       console.error("Failed to load provider conversations", e);
     }
-  }, [currentUser?.id, selectedPartnerId]);
+  }, [currentUser?.id]);
 
   const fetchThreadMessages = useCallback(async (partnerId: number) => {
     if (!currentUser?.id) return;
@@ -193,6 +198,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setListingLoadError(false);
     try {
       const ownerId = currentVenueOwner?.id;
       const vendorId = currentVendor?.id;
@@ -246,21 +252,12 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
         }
       }
 
-      const providerVenues = await ApiService.getVenues({
-        user: userId,
-        owner: ownerId,
-        vendor: vendorId,
+      const providerVenues = await ApiService.getProviderVenues().catch((error: unknown) => {
+        setListingLoadError(true);
+        throw error;
       });
 
-      const isMyListing = (v: Venue) => {
-        const vOwnerId = typeof v.owner === 'object' ? (v.owner as any)?.id : v.owner;
-        const vVendorId = typeof v.vendor === 'object' ? (v.vendor as any)?.id : v.vendor;
-        const matchesOwner = Boolean(ownerId && vOwnerId === ownerId);
-        const matchesVendor = Boolean(vendorId && vVendorId === vendorId);
-        return matchesOwner || matchesVendor;
-      };
-
-      const myOwnListings = providerVenues.filter(isMyListing);
+      const myOwnListings = providerVenues;
 
       // If user has listings, ensure any bookings for those listing IDs are also captured
       if (myOwnListings.length > 0) {
@@ -302,27 +299,40 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   }, [fetchData]);
 
   useEffect(() => {
-    if (activeTab === 'messages' && currentUser?.id) {
+    if (activeTab !== 'messages' || !currentUser?.id) return;
+
+    fetchProviderConversations();
+
+    const currentPartner = selectedPartnerId;
+    const activeId = selectedBookingChatId || bookings[0]?.id;
+
+    if (currentPartner) {
+      fetchThreadMessages(currentPartner);
+    } else if (activeId) {
+      fetchChatMessages(Number(activeId));
+    }
+
+    const interval = setInterval(() => {
       fetchProviderConversations();
-      const currentPartner = selectedPartnerId || conversations[0]?.partner_id;
+
       if (currentPartner) {
         fetchThreadMessages(currentPartner);
-      } else if (bookings.length > 0) {
-        const activeId = selectedBookingChatId || bookings[0]?.id;
-        if (activeId) fetchChatMessages(Number(activeId));
+      } else if (activeId) {
+        fetchChatMessages(Number(activeId));
       }
+    }, 4000);
 
-      const interval = setInterval(() => {
-        fetchProviderConversations();
-        if (selectedPartnerId) {
-          fetchThreadMessages(selectedPartnerId);
-        } else if (selectedBookingChatId) {
-          fetchChatMessages(Number(selectedBookingChatId));
-        }
-      }, 4000);
-      return () => clearInterval(interval);
-    }
-  }, [activeTab, currentUser?.id, selectedPartnerId, selectedBookingChatId, bookings, conversations, fetchProviderConversations, fetchThreadMessages, fetchChatMessages]);
+    return () => clearInterval(interval);
+  }, [
+    activeTab,
+    currentUser?.id,
+    selectedPartnerId,
+    selectedBookingChatId,
+    bookings[0]?.id,
+    fetchProviderConversations,
+    fetchThreadMessages,
+    fetchChatMessages
+  ]);
 
   useEffect(() => {
     if (activeTab === 'reviews') {
@@ -562,16 +572,24 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
     .reduce((sum, b) => sum + Number(b.total_price || 0), 0);
 
   // Filtered views
-  const filteredSpaces = spaces.filter(s => {
-    if (spaceFilter === 'APPROVED') return isListingPublished(s);
-    if (spaceFilter === 'PENDING') return !isListingPublished(s);
-    return true;
-  });
+  const allListings = [
+    ...spaces.map(s => ({ ...s, listingType: 'VENUE' as const })),
+    ...services.map(s => ({ ...s, listingType: 'SERVICE' as const }))
+  ];
 
-  const filteredServices = services.filter(s => {
-    if (serviceFilter === 'APPROVED') return isListingPublished(s);
-    if (serviceFilter === 'PENDING') return !isListingPublished(s);
-    return true;
+  const filteredListings = allListings.filter(item => {
+    const matchesType =
+      listingTypeFilter === 'ALL' ||
+      item.listingType === listingTypeFilter;
+
+    const approved = isListingPublished(item);
+
+    const matchesStatus =
+      listingStatusFilter === 'ALL' ||
+      (listingStatusFilter === 'APPROVED' && approved) ||
+      (listingStatusFilter === 'PENDING' && !approved);
+
+    return matchesType && matchesStatus;
   });
 
   const filteredBookings = bookings.filter(b => {
@@ -585,8 +603,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   const getPageTitle = () => {
     switch (activeTab) {
       case 'overview': return 'Vendor Overview';
-      case 'spaces': return 'My Event Venues';
-      case 'services': return 'My Services & Packages';
+      case 'listings': return 'My Listings';
       case 'bookings': return 'Booking Requests';
       case 'calendar': return 'Event Calendar';
       case 'messages': return 'Client Messages';
@@ -600,8 +617,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   const getPageSubtitle = () => {
     switch (activeTab) {
       case 'overview': return 'Manage your venues and services, track bookings, and grow your business.';
-      case 'spaces': return 'List, showcase, and manage your physical event venues and banquet halls.';
-      case 'services': return 'Configure your professional service packages, rates, and coverage.';
+      case 'listings': return 'Manage all your event venues and professional services in one place.';
       case 'bookings': return 'Review incoming customer booking inquiries and confirm schedules.';
       case 'calendar': return 'Track upcoming approved events and venue reservations.';
       case 'messages': return 'Communicate with clients regarding event bookings and custom packages.';
@@ -647,42 +663,26 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
             <LayoutDashboard size={18} /> Overview
           </button>
 
-          {/* My Listings Parent */}
-          <div>
-            <button
-              className={`vendor-sidebar-item ${(activeTab === 'spaces' || activeTab === 'services') ? 'active' : ''}`}
-              onClick={() => setMyListingsExpanded(prev => !prev)}
-              style={{ justifyContent: 'space-between' }}
+          {/* My Listings */}
+          <button
+            className={`vendor-sidebar-item ${activeTab === 'listings' ? 'active' : ''}`}
+            onClick={() => setActiveTab('listings')}
+          >
+            <Layers size={18} /> My Listings
+            <span
+              style={{
+                marginLeft: 'auto',
+                background: 'rgba(255,255,255,0.15)',
+                color: '#ffffff',
+                fontSize: '0.72rem',
+                padding: '1px 7px',
+                borderRadius: '999px',
+                fontWeight: 700
+              }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <Layers size={18} /> My Listings
-              </div>
-              {myListingsExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-            </button>
-
-            {myListingsExpanded && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '2px', marginBottom: '4px' }}>
-                <button
-                  className={`vendor-sidebar-subitem ${activeTab === 'spaces' ? 'active' : ''}`}
-                  onClick={() => setActiveTab('spaces')}
-                >
-                  <Building2 size={16} /> Venues
-                  <span style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.15)', color: '#ffffff', fontSize: '0.72rem', padding: '1px 7px', borderRadius: '999px', fontWeight: 700 }}>
-                    {spaces.length}
-                  </span>
-                </button>
-                <button
-                  className={`vendor-sidebar-subitem ${activeTab === 'services' ? 'active' : ''}`}
-                  onClick={() => setActiveTab('services')}
-                >
-                  <Package size={16} /> Services
-                  <span style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.15)', color: '#ffffff', fontSize: '0.72rem', padding: '1px 7px', borderRadius: '999px', fontWeight: 700 }}>
-                    {services.length}
-                  </span>
-                </button>
-              </div>
-            )}
-          </div>
+              {spaces.length + services.length}
+            </span>
+          </button>
 
           {/* Availability */}
           <button
@@ -719,9 +719,18 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
             onClick={() => setActiveTab('messages')}
           >
             <MessageSquare size={18} /> Messages
-            {bookings.length > 0 && (
-              <span className="vendor-nav-badge-red">{bookings.filter(b => b.status === 'PENDING').length || bookings.length}</span>
-            )}
+            {(() => {
+              const unreadMessagesCount = conversations.reduce(
+                (total, conversation) => total + (conversation.unread_count || 0),
+                0
+              );
+
+              return unreadMessagesCount > 0 ? (
+                <span className="vendor-nav-badge-red">
+                  {unreadMessagesCount}
+                </span>
+              ) : null;
+            })()}
           </button>
 
           {/* Reviews */}
@@ -784,26 +793,16 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
             </div>
 
             <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-              {activeTab === 'spaces' && (
+              {activeTab === 'listings' && (
                 <button
                   onClick={() => {
-                    setCreateListingDefaultMode('venue');
-                    setActiveTab('create_listing');
-                  }}
-                  className="btn-primary-light"
-                >
-                  <Plus size={16} /> Add Venue
-                </button>
-              )}
-              {activeTab === 'services' && (
-                <button
-                  onClick={() => {
+                    setEditingListing(null);
                     setCreateListingDefaultMode('service');
                     setActiveTab('create_listing');
                   }}
                   className="btn-primary-light"
                 >
-                  <Plus size={16} /> Add Service
+                  <Plus size={16} /> Add Listing
                 </button>
               )}
             </div>
@@ -813,15 +812,20 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
         {/* TAB: CREATE A NEW LISTING (FULL PAGE VIEW MATCHING DESIGN) */}
         {activeTab === 'create_listing' && (
           <CreateListingPage
-            onBack={() => setActiveTab('overview')}
+            onBack={() => {
+              setEditingListing(null);
+              setActiveTab(editingListing ? 'listings' : 'overview');
+            }}
             onSuccess={() => {
               fetchData();
-              setActiveTab('overview');
+              setEditingListing(null);
+              setActiveTab(editingListing ? 'listings' : 'overview');
             }}
             defaultMode={createListingDefaultMode}
             currentVendorId={currentVendor?.id}
             currentOwnerId={currentVenueOwner?.id}
             currentUserId={currentUser?.id}
+            editingListing={editingListing}
           />
         )}
 
@@ -965,7 +969,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
             <div className="inspo-stat-grid">
               
               {/* Card 1: Total Listings */}
-              <div className="inspo-stat-card" onClick={() => setActiveTab('spaces')}>
+              <div className="inspo-stat-card" onClick={() => setActiveTab('listings')}>
                 <div className="inspo-stat-icon-wrap mint">
                   <Building2 size={24} />
                 </div>
@@ -1250,134 +1254,106 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
           </div>
         )}
 
-        {/* 5. Tab: MY SPACES */}
-        {activeTab === 'spaces' && (
+        {/* 5. Tab: MY LISTINGS */}
+        {activeTab === 'listings' && (
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button 
-                  className={`filter-pill ${spaceFilter === 'ALL' ? 'active' : ''}`}
-                  onClick={() => setSpaceFilter('ALL')}
-                >
-                  All Spaces ({spaces.length})
-                </button>
-                <button 
-                  className={`filter-pill ${spaceFilter === 'APPROVED' ? 'active' : ''}`}
-                  onClick={() => setSpaceFilter('APPROVED')}
-                >
-                  Verified ({activeSpacesCount})
-                </button>
-                <button 
-                  className={`filter-pill ${spaceFilter === 'PENDING' ? 'active' : ''}`}
-                  onClick={() => setSpaceFilter('PENDING')}
-                >
-                  Pending ({spaces.length - activeSpacesCount})
-                </button>
-              </div>
-            </div>
-
-            {filteredSpaces.length === 0 ? (
-              <div className="dashboard-card" style={{ padding: '48px', textAlign: 'center', color: '#64748b' }}>
-                <Building2 size={40} color="#cbd5e1" style={{ marginBottom: '12px' }} />
-                <h3 style={{ margin: '0 0 8px', color: '#0f172a' }}>No spaces found in this category</h3>
-                <p style={{ margin: '0 0 20px', fontSize: '0.9rem' }}>Add wedding gardens, conference halls, or event spaces to start taking bookings.</p>
+            {/* Listing filters */}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '16px',
+                marginBottom: '24px'
+              }}
+            >
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 <button
-                  onClick={() => {
-                    setCreateListingDefaultMode('venue');
-                    setActiveTab('create_listing');
-                  }}
-                  className="btn-primary-light"
-                  style={{ background: '#0d8a73', color: '#fff' }}
+                  className={`filter-pill ${listingTypeFilter === 'ALL' ? 'active' : ''}`}
+                  onClick={() => setListingTypeFilter('ALL')}
                 >
-                  <Plus size={16} /> Add an Event Space
+                  All Listings ({spaces.length + services.length})
+                </button>
+
+                <button
+                  className={`filter-pill ${listingTypeFilter === 'VENUE' ? 'active' : ''}`}
+                  onClick={() => setListingTypeFilter('VENUE')}
+                >
+                  Venues ({spaces.length})
+                </button>
+
+                <button
+                  className={`filter-pill ${listingTypeFilter === 'SERVICE' ? 'active' : ''}`}
+                  onClick={() => setListingTypeFilter('SERVICE')}
+                >
+                  Services ({services.length})
                 </button>
               </div>
-            ) : (
-              <div className="listing-grid">
-                {filteredSpaces.map(s => (
-                  <div key={s.id} className="listing-card">
-                    <div style={{ position: 'relative', height: '180px', background: '#f1f5f9' }}>
-                      <img 
-                        src={cleanImageUrl(s.image_url) || DEFAULT_SPACE_IMAGE} 
-                        alt={s.title} 
-                        onError={(e) => handleImageError(e, DEFAULT_SPACE_IMAGE)}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                      />
-                      <div style={{ position: 'absolute', top: '12px', right: '12px' }}>
-                        {renderStatusBadge(s)}
-                      </div>
-                    </div>
 
-                    <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
-                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0d8a73', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
-                        {s.category_display || s.category}
-                      </div>
-                      <h3 style={{ margin: '0 0 8px', fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>
-                        {s.title}
-                      </h3>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '0.85rem', marginBottom: '12px' }}>
-                        <MapPin size={14} color="#0d8a73" /> {s.location}
-                      </div>
-
-                      <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', fontSize: '0.85rem', color: '#475569' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Users size={14} /> {s.capacity} Guests</span>
-                      </div>
-
-                      <div style={{ marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Daily Rate</span>
-                          <span style={{ fontWeight: 800, color: '#0d8a73', fontSize: '1.1rem' }}>
-                            KES {Number(s.price_per_day).toLocaleString()}
-                          </span>
-                        </div>
-
-                        <button
-                          onClick={() => handleDeleteListing(s.id, s.title)}
-                          style={{ background: 'none', border: 'none', color: '#ef4444', padding: '6px', cursor: 'pointer', borderRadius: '6px' }}
-                          title="Delete space"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 6. Tab: MY SERVICES */}
-        {activeTab === 'services' && (
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button 
-                  className={`filter-pill ${serviceFilter === 'ALL' ? 'active' : ''}`}
-                  onClick={() => setServiceFilter('ALL')}
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  className={`filter-pill ${listingStatusFilter === 'ALL' ? 'active' : ''}`}
+                  onClick={() => setListingStatusFilter('ALL')}
                 >
-                  All Services ({services.length})
+                  All Statuses
                 </button>
-                <button 
-                  className={`filter-pill ${serviceFilter === 'APPROVED' ? 'active' : ''}`}
-                  onClick={() => setServiceFilter('APPROVED')}
+
+                <button
+                  className={`filter-pill ${listingStatusFilter === 'APPROVED' ? 'active' : ''}`}
+                  onClick={() => setListingStatusFilter('APPROVED')}
                 >
-                  Verified ({activeServicesCount})
+                  Verified ({activeSpacesCount + activeServicesCount})
                 </button>
-                <button 
-                  className={`filter-pill ${serviceFilter === 'PENDING' ? 'active' : ''}`}
-                  onClick={() => setServiceFilter('PENDING')}
+
+                <button
+                  className={`filter-pill ${listingStatusFilter === 'PENDING' ? 'active' : ''}`}
+                  onClick={() => setListingStatusFilter('PENDING')}
                 >
-                  Pending ({services.length - activeServicesCount})
+                  Pending {
+                    (spaces.length - activeSpacesCount) +
+                    (services.length - activeServicesCount)
+                  }
                 </button>
               </div>
             </div>
 
-            {filteredServices.length === 0 ? (
-              <div className="dashboard-card" style={{ padding: '48px', textAlign: 'center', color: '#64748b' }}>
-                <Package size={40} color="#cbd5e1" style={{ marginBottom: '12px' }} />
-                <h3 style={{ margin: '0 0 8px', color: '#0f172a' }}>No services found in this category</h3>
-                <p style={{ margin: '0 0 20px', fontSize: '0.9rem' }}>Add catering packages, DJ setups, or photography services.</p>
+            {/* Empty state */}
+            {listingLoadError ? (
+              <div className="dashboard-card" style={{ padding: '32px', textAlign: 'center' }}>
+                <h3 style={{ margin: '0 0 8px', color: '#b91c1c' }}>
+                  Unable to load your listings
+                </h3>
+                <p style={{ margin: '0 0 20px', color: '#64748b' }}>
+                  Please try again. Your listings have not been changed.
+                </p>
+                <button className="btn-primary-light" onClick={() => fetchData()}>
+                  Retry
+                </button>
+              </div>
+            ) : filteredListings.length === 0 ? (
+              <div
+                className="dashboard-card"
+                style={{
+                  padding: '48px',
+                  textAlign: 'center',
+                  color: '#64748b'
+                }}
+              >
+                <Layers
+                  size={40}
+                  color="#cbd5e1"
+                  style={{ marginBottom: '12px' }}
+                />
+
+                <h3 style={{ margin: '0 0 8px', color: '#0f172a' }}>
+                  No listings found
+                </h3>
+
+                <p style={{ margin: '0 0 20px', fontSize: '0.9rem' }}>
+                  Add an event venue or professional service to start receiving bookings.
+                </p>
+
                 <button
                   onClick={() => {
                     setCreateListingDefaultMode('service');
@@ -1386,55 +1362,224 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                   className="btn-primary-light"
                   style={{ background: '#0d8a73', color: '#fff' }}
                 >
-                  <Plus size={16} /> Add a Service
+                  <Plus size={16} /> Add Your First Listing
                 </button>
               </div>
             ) : (
               <div className="listing-grid">
-                {filteredServices.map(s => (
-                  <div key={s.id} className="listing-card">
-                    <div style={{ position: 'relative', height: '180px', background: '#f1f5f9' }}>
-                      <img 
-                        src={cleanImageUrl(s.image_url) || DEFAULT_SERVICE_IMAGE} 
-                        alt={s.title} 
-                        onError={(e) => handleImageError(e, DEFAULT_SERVICE_IMAGE)}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                      />
-                      <div style={{ position: 'absolute', top: '12px', right: '12px' }}>
-                        {renderStatusBadge(s)}
-                      </div>
-                    </div>
+                {filteredListings.map(item => {
+                  const isVenue = item.listingType === 'VENUE';
 
-                    <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
-                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0d8a73', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
-                        {s.category_display || s.category}
-                      </div>
-                      <h3 style={{ margin: '0 0 8px', fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>
-                        {s.title}
-                      </h3>
-                      <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: '#64748b', lineClamp: 2, WebkitLineClamp: 2, display: '-webkit-box', WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                        {s.description}
-                      </p>
+                  const fallbackImage = isVenue
+                    ? DEFAULT_SPACE_IMAGE
+                    : DEFAULT_SERVICE_IMAGE;
 
-                      <div style={{ marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Starting Package Fee</span>
-                          <span style={{ fontWeight: 800, color: '#0d8a73', fontSize: '1.1rem' }}>
-                            KES {Number(s.price_per_day).toLocaleString()}
-                          </span>
+                  return (
+                    <div
+                      key={`${item.listingType}-${item.id}`}
+                      className="listing-card"
+                    >
+                      <div
+                        style={{
+                          position: 'relative',
+                          height: '180px',
+                          background: '#f1f5f9'
+                        }}
+                      >
+                        <img
+                          src={cleanImageUrl(item.image_url) || fallbackImage}
+                          alt={item.title}
+                          onError={e => handleImageError(e, fallbackImage)}
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover'
+                          }}
+                        />
+
+                        <div
+                          style={{
+                            position: 'absolute',
+                            top: '12px',
+                            right: '12px'
+                          }}
+                        >
+                          {renderStatusBadge(item)}
                         </div>
 
-                        <button
-                          onClick={() => handleDeleteListing(s.id, s.title)}
-                          style={{ background: 'none', border: 'none', color: '#ef4444', padding: '6px', cursor: 'pointer', borderRadius: '6px' }}
-                          title="Delete service"
+                        <div
+                          style={{
+                            position: 'absolute',
+                            top: '12px',
+                            left: '12px',
+                            background: isVenue ? '#14213D' : '#0d8a73',
+                            color: '#fff',
+                            padding: '5px 10px',
+                            borderRadius: '6px',
+                            fontSize: '0.7rem',
+                            fontWeight: 700
+                          }}
                         >
-                          <Trash2 size={16} />
-                        </button>
+                          {isVenue ? 'VENUE' : 'SERVICE'}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          padding: '20px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          flexGrow: 1
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            color: '#0d8a73',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px',
+                            marginBottom: '4px'
+                          }}
+                        >
+                          {item.category_display || item.category}
+                        </div>
+
+                        <h3
+                          style={{
+                            margin: '0 0 8px',
+                            fontSize: '1.2rem',
+                            fontWeight: 800,
+                            color: '#0f172a'
+                          }}
+                        >
+                          {item.title}
+                        </h3>
+
+                        {isVenue ? (
+                          <>
+                            <div
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                color: '#64748b',
+                                fontSize: '0.85rem',
+                                marginBottom: '12px'
+                              }}
+                            >
+                              <MapPin size={14} color="#0d8a73" />
+                              {item.location}
+                            </div>
+
+                            <div
+                              style={{
+                                display: 'flex',
+                                gap: '12px',
+                                marginBottom: '16px',
+                                fontSize: '0.85rem',
+                                color: '#475569'
+                              }}
+                            >
+                              <span
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                              >
+                                <Users size={14} />
+                                {item.capacity} Guests
+                              </span>
+                            </div>
+                          </>
+                        ) : (
+                          <p
+                            style={{
+                              margin: '0 0 16px',
+                              fontSize: '0.85rem',
+                              color: '#64748b',
+                              lineClamp: 2,
+                              WebkitLineClamp: 2,
+                              display: '-webkit-box',
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden'
+                            }}
+                          >
+                            {item.description}
+                          </p>
+                        )}
+
+                        <div
+                          style={{
+                            marginTop: 'auto',
+                            paddingTop: '16px',
+                            borderTop: '1px solid #f1f5f9',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                          }}
+                        >
+                          <div>
+                            <span
+                              style={{
+                                fontSize: '0.75rem',
+                                color: '#64748b',
+                                display: 'block'
+                              }}
+                            >
+                              {isVenue ? 'Daily Rate' : 'Starting Package Fee'}
+                            </span>
+
+                            <span
+                              style={{
+                                fontWeight: 800,
+                                color: '#0d8a73',
+                                fontSize: '1.1rem'
+                              }}
+                            >
+                              KES {Number(item.price_per_day).toLocaleString()}
+                            </span>
+                          </div>
+
+                          <button
+                            onClick={() => {
+                              setEditingListing(item);
+                              setCreateListingDefaultMode(isVenue ? 'venue' : 'service');
+                              setActiveTab('create_listing');
+                            }}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: '#0d8a73',
+                              padding: '6px',
+                              cursor: 'pointer',
+                              borderRadius: '6px'
+                            }}
+                            title="Edit listing"
+                          >
+                            <Pencil size={16} />
+                          </button>
+
+                          <button
+                            onClick={() => handleDeleteListing(item.id, item.title)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: '#ef4444',
+                              padding: '6px',
+                              cursor: 'pointer',
+                              borderRadius: '6px'
+                            }}
+                            title="Delete listing"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1679,7 +1824,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                 <p style={{ color: '#64748b', fontSize: '0.9rem', maxWidth: '380px', margin: '0 auto 20px' }}>
                   When clients submit booking requests or direct inquiries for your listings, you can communicate and coordinate event details with them directly here.
                 </p>
-                <button onClick={() => setActiveTab('spaces')} className="btn-primary-light" style={{ padding: '10px 20px', borderRadius: '10px' }}>
+                <button onClick={() => setActiveTab('listings')} className="btn-primary-light" style={{ padding: '10px 20px', borderRadius: '10px' }}>
                   Manage Listings
                 </button>
               </div>

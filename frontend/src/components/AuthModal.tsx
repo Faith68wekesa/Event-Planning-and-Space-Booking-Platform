@@ -160,30 +160,45 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess, initia
 
   const handleRoleSelection = async (role: 'CUSTOMER' | 'PROVIDER') => {
     if (!userId) return;
+
     setLoading(true);
     setErrorNotice(null);
+
     try {
-      const data = await ApiService.requestRole(userId, role);
-      if (data && data.user) {
-        toast.success(`Role selected! Logging you in...`);
-        // Log in automatically with stored credentials
-        const loginData = await ApiService.loginUser({
-          email: formData.email,
-          password: formData.password,
+      // First, log in to obtain an authentication token.
+      const loginData = await ApiService.loginUser({
+        email: formData.email,
+        password: formData.password,
+      });
+
+      if (!loginData || !loginData.user || !loginData.token) {
+        const msg = loginData?.error || 'Login failed. Please log in manually.';
+        setErrorNotice(msg);
+        toast.error(msg);
+        setMode('login');
+        return;
+      }
+
+      // Then request the selected role using the authenticated account.
+      const roleData = await ApiService.requestRole(userId, role);
+
+      if (roleData && roleData.user) {
+        toast.success('Role selected successfully!');
+
+        // Preserve the login token and use the updated role/profile data.
+        onSuccess({
+          ...loginData,
+          ...roleData,
+          token: loginData.token,
         });
-        if (loginData && loginData.user) {
-          onSuccess(loginData);
-        } else {
-          setMode('login');
-        }
       } else {
-        const msg = data?.error || "Failed to select role.";
+        const msg = roleData?.error || 'Failed to select role.';
         setErrorNotice(msg);
         toast.error(msg);
       }
     } catch {
-      setErrorNotice("An error occurred configuring your account.");
-      toast.error("An error occurred configuring your account.");
+      setErrorNotice('An error occurred configuring your account.');
+      toast.error('An error occurred configuring your account.');
     } finally {
       setLoading(false);
     }

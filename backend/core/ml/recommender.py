@@ -441,6 +441,10 @@ def _extract_customer_preferences(customer, preferences_override=None):
     ).order_by('-timestamp')[:10]
 
     for inter in interactions:
+        # Ignore booking status updates; they are not new preferences.
+        if inter.event_type == 'BOOKING_STATUS_CHANGE':
+            continue
+
         if inter.search_query:
             text_tokens.append(inter.search_query)
             prefs['has_personalization_data'] = True
@@ -450,6 +454,25 @@ def _extract_customer_preferences(customer, preferences_override=None):
         if inter.location_filter:
             text_tokens.append(inter.location_filter)
             prefs['has_personalization_data'] = True
+
+        # Learn preferences from actual listings the customer interacted with.
+        if inter.event_type in (
+            'LISTING_VIEW',
+            'LISTING_CLICK',
+            'BOOKING_FORM_OPEN',
+            'BOOKING_SUBMITTED',
+        ):
+            if inter.vendor:
+                listing_text = _build_vendor_text(inter.vendor)
+                if listing_text:
+                    text_tokens.append(listing_text)
+                    prefs['has_personalization_data'] = True
+
+            elif inter.venue:
+                listing_text = _build_venue_text(inter.venue)
+                if listing_text:
+                    text_tokens.append(listing_text)
+                    prefs['has_personalization_data'] = True
 
     prefs['text_query'] = " ".join([t.strip() for t in text_tokens if t.strip()])
     return prefs

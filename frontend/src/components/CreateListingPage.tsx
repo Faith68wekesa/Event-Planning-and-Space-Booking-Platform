@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ApiService } from '../services/api';
-import type { VenueCategory } from '../types';
+import type { Venue, VenueCategory } from '../types';
 import { cleanImageUrl, DEFAULT_SPACE_IMAGE, DEFAULT_SERVICE_IMAGE } from '../utils/imageUtils';
 
 interface CreateListingPageProps {
@@ -18,6 +18,7 @@ interface CreateListingPageProps {
   currentOwnerId?: number;
   currentUserId?: number;
   defaultMode?: 'service' | 'venue';
+  editingListing?: Venue | null;
 }
 
 export const CreateListingPage: React.FC<CreateListingPageProps> = ({
@@ -27,36 +28,37 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
   currentOwnerId,
   currentUserId,
   defaultMode = 'service',
+  editingListing = null,
 }) => {
   const [activeMode, setActiveMode] = useState<'service' | 'venue'>(defaultMode);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Service form fields
-  const [serviceName, setServiceName] = useState('');
+  const [serviceName, setServiceName] = useState(editingListing?.title || '');
   const [servicePricingBasis, setServicePricingBasis] = useState('Per Event');
-  const serviceCategory: VenueCategory = 'PHOTOGRAPHY';
-  const [serviceDesc, setServiceDesc] = useState('');
-  const [servicePrice, setServicePrice] = useState<number | ''>('');
-  const [serviceCoverUrl, setServiceCoverUrl] = useState('');
+  const [serviceCategory, setServiceCategory] = useState<VenueCategory>(editingListing?.category || 'PHOTOGRAPHY');
+  const [serviceDesc, setServiceDesc] = useState(editingListing?.description || '');
+  const [servicePrice, setServicePrice] = useState<number | ''>(editingListing?.price_per_day ?? '');
+  const [serviceCoverUrl, setServiceCoverUrl] = useState(editingListing?.image_url || '');
   const [serviceInclusions, setServiceInclusions] = useState('');
   const [serviceEventTypes, setServiceEventTypes] = useState('Weddings, Birthdays, Corporate Events');
   const [serviceDuration, setServiceDuration] = useState('4 hours');
   const [serviceMaxGuests, setServiceMaxGuests] = useState<number | ''>('');
-  const [serviceArea, setServiceArea] = useState('Nairobi & Surrounding Areas');
+  const [serviceArea, setServiceArea] = useState(editingListing?.location || 'Nairobi & Surrounding Areas');
   const [serviceAvailability, setServiceAvailability] = useState('Weekdays & Weekends (Flexible)');
   const [serviceEquipment, setServiceEquipment] = useState('');
 
   // Venue form fields
-  const [venueName, setVenueName] = useState('');
+  const [venueName, setVenueName] = useState(editingListing?.title || '');
   const [venuePricingBasis, setVenuePricingBasis] = useState('Per Day');
-  const [venueCategory, setVenueCategory] = useState<VenueCategory>('WEDDING');
-  const [venueDesc, setVenueDesc] = useState('');
-  const [venuePrice, setVenuePrice] = useState<number | ''>('');
-  const [venueLocation, setVenueLocation] = useState('Nairobi, Kenya');
-  const [venueCoverUrl, setVenueCoverUrl] = useState('');
-  const [venueCapacity, setVenueCapacity] = useState<number | ''>('');
+  const [venueCategory, setVenueCategory] = useState<VenueCategory>(editingListing?.category || 'WEDDING');
+  const [venueDesc, setVenueDesc] = useState(editingListing?.description || '');
+  const [venuePrice, setVenuePrice] = useState<number | ''>(editingListing?.price_per_day ?? '');
+  const [venueLocation, setVenueLocation] = useState(editingListing?.location || 'Nairobi, Kenya');
+  const [venueCoverUrl, setVenueCoverUrl] = useState(editingListing?.image_url || '');
+  const [venueCapacity, setVenueCapacity] = useState<number | ''>(editingListing?.capacity || '');
   const [venueLayout, setVenueLayout] = useState('');
-  const [venueFacilities, setVenueFacilities] = useState('Parking, Wi-Fi, Restrooms, Standby Generator, Kitchen');
+  const [venueFacilities, setVenueFacilities] = useState(editingListing?.amenities?.join(', ') || 'Parking, Wi-Fi, Restrooms, Standby Generator, Kitchen');
   const [venueEventTypes, setVenueEventTypes] = useState('Weddings, Corporate Conferences, Banquets, Private Celebrations');
   const [venueBookingDuration, setVenueBookingDuration] = useState('Full Day (8:00 AM - 11:00 PM) including setup');
   const [venueAvailability, setVenueAvailability] = useState('Available All Days (Subject to advance booking)');
@@ -96,9 +98,7 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
 
     setIsSubmitting(true);
     try {
-      const { vendorId, ownerId } = await resolveIds();
-      
-      const fullDescription = [
+      const fullDescription = editingListing ? serviceDesc.trim() : [
         serviceDesc.trim(),
         serviceInclusions ? `\n\nWhat's Included / Package Details:\n${serviceInclusions.trim()}` : '',
         serviceEquipment ? `\n\nSpecial Equipment & Capabilities:\n${serviceEquipment.trim()}` : '',
@@ -108,9 +108,7 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
         serviceAvailability ? `\nAvailability: ${serviceAvailability}` : '',
       ].filter(Boolean).join('');
 
-      await ApiService.addVenue({
-        vendor: vendorId,
-        owner: ownerId,
+      const listingData = {
         title: serviceName.trim(),
         category: serviceCategory,
         location: serviceArea || 'Nairobi',
@@ -118,9 +116,17 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
         price_per_day: Number(servicePrice),
         description: fullDescription,
         image_url: cleanImageUrl(serviceCoverUrl) || DEFAULT_SERVICE_IMAGE,
-      });
+      };
 
-      toast.success('Service listing created and submitted for review!');
+      if (editingListing) {
+        await ApiService.updateVenue(editingListing.id, listingData);
+        toast.success('Service listing updated.');
+      } else {
+        const { vendorId, ownerId } = await resolveIds();
+        await ApiService.addVenue({ ...listingData, vendor: vendorId, owner: ownerId });
+        toast.success('Service listing created and submitted for review!');
+      }
+
       onSuccess();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to submit service listing.');
@@ -146,13 +152,11 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
 
     setIsSubmitting(true);
     try {
-      const { vendorId, ownerId } = await resolveIds();
-
       const amenitiesList = venueFacilities
         ? venueFacilities.split(',').map((f) => f.trim()).filter(Boolean)
         : ['Parking', 'Restrooms', 'Security'];
 
-      const fullDescription = [
+      const fullDescription = editingListing ? venueDesc.trim() : [
         venueDesc.trim(),
         venueLayout ? `\n\nLayout & Spaces:\n${venueLayout.trim()}` : '',
         venueEventTypes ? `\n\nEvent Types Supported:\n${venueEventTypes.trim()}` : '',
@@ -161,9 +165,7 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
         venueAvailability ? `\nAvailability: ${venueAvailability}` : '',
       ].filter(Boolean).join('');
 
-      await ApiService.addVenue({
-        owner: ownerId,
-        vendor: vendorId,
+      const listingData = {
         title: venueName.trim(),
         category: venueCategory,
         location: venueLocation || 'Nairobi',
@@ -174,9 +176,17 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
         description: fullDescription,
         amenities: amenitiesList,
         image_url: cleanImageUrl(venueCoverUrl) || DEFAULT_SPACE_IMAGE,
-      });
+      };
 
-      toast.success('Venue listing created and submitted for review!');
+      if (editingListing) {
+        await ApiService.updateVenue(editingListing.id, listingData);
+        toast.success('Venue listing updated.');
+      } else {
+        const { vendorId, ownerId } = await resolveIds();
+        await ApiService.addVenue({ ...listingData, owner: ownerId, vendor: vendorId });
+        toast.success('Venue listing created and submitted for review!');
+      }
+
       onSuccess();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to submit venue listing.');
@@ -229,14 +239,14 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
                 <Wrench size={22} />
               </div>
               <div>
-                <h2 className="listing-card-title">Add a Service</h2>
+                <h2 className="listing-card-title">{editingListing ? 'Edit Service Listing' : 'Add a Service'}</h2>
                 <p className="listing-card-subtitle">
                   Tell customers what service you provide and what to expect.
                 </p>
               </div>
             </div>
             <form onSubmit={handleServiceSubmit} className="listing-form-body">
-            {/* Service Name & Pricing Basis */}
+            {/* Service Name, Category & Pricing Basis */}
             <div className="listing-field-row-split">
               <div className="listing-field-group">
                 <label className="listing-field-label">Service Name *</label>
@@ -251,20 +261,40 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
               </div>
 
               <div className="listing-field-group">
-                <label className="listing-field-label">Pricing Basis *</label>
+                <label className="listing-field-label">Service Category *</label>
                 <div className="listing-select-wrapper">
                   <select
+                    required
                     className="listing-select"
-                    value={servicePricingBasis}
-                    onChange={(e) => setServicePricingBasis(e.target.value)}
+                    value={serviceCategory}
+                    onChange={(e) => setServiceCategory(e.target.value as VenueCategory)}
                   >
-                    <option value="Per Event">Per Event</option>
-                    <option value="Per Hour">Per Hour</option>
-                    <option value="Per Guest">Per Guest / Plate</option>
-                    <option value="Fixed Package">Fixed Package</option>
+                    <option value="PHOTOGRAPHY">Photography &amp; Videography</option>
+                    <option value="CATERING">Catering &amp; Bar Service</option>
+                    <option value="DECORATION">Event Decoration &amp; Styling</option>
+                    <option value="ENTERTAINMENT">DJ &amp; Entertainment</option>
+                    <option value="PLANNING">Event Planning &amp; Coordination</option>
+                    <option value="SOUND">Sound &amp; Lighting Equipment</option>
                   </select>
                   <ChevronDown className="select-chevron" size={16} />
                 </div>
+              </div>
+            </div>
+
+            <div className="listing-field-group">
+              <label className="listing-field-label">Pricing Basis *</label>
+              <div className="listing-select-wrapper">
+                <select
+                  className="listing-select"
+                  value={servicePricingBasis}
+                  onChange={(e) => setServicePricingBasis(e.target.value)}
+                >
+                  <option value="Per Event">Per Event</option>
+                  <option value="Per Hour">Per Hour</option>
+                  <option value="Per Guest">Per Guest / Plate</option>
+                  <option value="Fixed Package">Fixed Package</option>
+                </select>
+                <ChevronDown className="select-chevron" size={16} />
               </div>
             </div>
 
@@ -454,19 +484,21 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
 
             {/* Action buttons */}
             <div className="listing-card-actions">
-              <button
-                type="button"
-                onClick={handleSaveDraft}
-                className="btn-listing-draft"
-              >
-                Save as Draft
-              </button>
+              {!editingListing && (
+                <button
+                  type="button"
+                  onClick={handleSaveDraft}
+                  className="btn-listing-draft"
+                >
+                  Save as Draft
+                </button>
+              )}
               <button
                 type="submit"
                 disabled={isSubmitting}
                 className="btn-listing-submit"
               >
-                {isSubmitting ? 'Submitting...' : 'Submit for Review'}
+                {isSubmitting ? (editingListing ? 'Saving...' : 'Submitting...') : (editingListing ? 'Save Changes' : 'Submit for Review')}
               </button>
             </div>
           </form>
@@ -481,7 +513,7 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
               <Building2 size={22} />
             </div>
             <div>
-              <h2 className="listing-card-title">Add a Venue</h2>
+              <h2 className="listing-card-title">{editingListing ? 'Edit Venue Listing' : 'Add a Venue'}</h2>
               <p className="listing-card-subtitle">
                 Showcase your space and help customers plan their events.
               </p>
@@ -715,19 +747,21 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
 
             {/* Action buttons */}
             <div className="listing-card-actions">
-              <button
-                type="button"
-                onClick={handleSaveDraft}
-                className="btn-listing-draft"
-              >
-                Save as Draft
-              </button>
+              {!editingListing && (
+                <button
+                  type="button"
+                  onClick={handleSaveDraft}
+                  className="btn-listing-draft"
+                >
+                  Save as Draft
+                </button>
+              )}
               <button
                 type="submit"
                 disabled={isSubmitting}
                 className="btn-listing-submit"
               >
-                {isSubmitting ? 'Submitting...' : 'Submit for Review'}
+                {isSubmitting ? (editingListing ? 'Saving...' : 'Submitting...') : (editingListing ? 'Save Changes' : 'Submit for Review')}
               </button>
             </div>
           </form>

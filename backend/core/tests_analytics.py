@@ -99,13 +99,24 @@ class InteractionTrackingAndAnalyticsTests(TestCase):
         self.assertEqual(res.status_code, 400)
 
     def test_admin_analytics_authorization(self):
-        # Customer should be forbidden
-        res_denied = self.client.get('/api/analytics/admin/', HTTP_X_USER_ID=str(self.customer.id))
+        # An unauthenticated request must be denied,
+        # even if it supplies an administrator's ID.
+        res_unauthorized = self.client.get(
+            '/api/analytics/admin/',
+            HTTP_X_USER_ID=str(self.admin.id)
+        )
+        self.assertEqual(res_unauthorized.status_code, 403)
+
+        # An authenticated customer must be denied.
+        self.client.force_login(self.customer)
+        res_denied = self.client.get('/api/analytics/admin/')
         self.assertEqual(res_denied.status_code, 403)
 
-        # Admin should succeed
-        res_admin = self.client.get('/api/analytics/admin/', HTTP_X_USER_ID=str(self.admin.id))
+        # An authenticated administrator should succeed.
+        self.client.force_login(self.admin)
+        res_admin = self.client.get('/api/analytics/admin/')
         self.assertEqual(res_admin.status_code, 200)
+
         data = res_admin.json()
         self.assertIn('summary', data)
         self.assertIn('funnel', data)
@@ -132,14 +143,25 @@ class InteractionTrackingAndAnalyticsTests(TestCase):
         self.assertEqual(res_allowed.json().get('owner_id'), self.owner_profile.id)
 
     def test_csv_exports(self):
-        res_admin_csv = self.client.get('/api/analytics/admin/export-csv/', HTTP_X_USER_ID=str(self.admin.id))
+        # Admin CSV export requires an authenticated administrator.
+        self.client.force_login(self.admin)
+        res_admin_csv = self.client.get('/api/analytics/admin/export-csv/')
         self.assertEqual(res_admin_csv.status_code, 200)
         self.assertEqual(res_admin_csv['Content-Type'], 'text/csv')
 
-        res_vendor_csv = self.client.get(f'/api/analytics/vendor/{self.vendor_profile.id}/export-csv/', HTTP_X_USER_ID=str(self.vendor_user.id))
+        # Log out before testing the existing vendor and owner flows.
+        self.client.logout()
+
+        res_vendor_csv = self.client.get(
+            f'/api/analytics/vendor/{self.vendor_profile.id}/export-csv/',
+            HTTP_X_USER_ID=str(self.vendor_user.id)
+        )
         self.assertEqual(res_vendor_csv.status_code, 200)
         self.assertEqual(res_vendor_csv['Content-Type'], 'text/csv')
 
-        res_owner_csv = self.client.get(f'/api/analytics/venue-owner/{self.owner_profile.id}/export-csv/', HTTP_X_USER_ID=str(self.owner_user.id))
+        res_owner_csv = self.client.get(
+            f'/api/analytics/venue-owner/{self.owner_profile.id}/export-csv/',
+            HTTP_X_USER_ID=str(self.owner_user.id)
+        )
         self.assertEqual(res_owner_csv.status_code, 200)
         self.assertEqual(res_owner_csv['Content-Type'], 'text/csv')

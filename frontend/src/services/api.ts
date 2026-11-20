@@ -112,6 +112,29 @@ export const ApiService = {
     return [];
   },
 
+  async getProviderVenues(): Promise<Venue[]> {
+    const res = await fetch(`${API_BASE}/venues/`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to fetch provider listings (${res.status}).`);
+    }
+
+    const data: unknown = await res.json();
+    if (Array.isArray(data)) {
+      return data;
+    }
+    if (
+      data &&
+      typeof data === 'object' &&
+      'results' in data &&
+      Array.isArray(data.results)
+    ) {
+      return data.results;
+    }
+    throw new Error('Unexpected response while loading provider listings.');
+  },
+
   async getVendors(filters: Partial<FilterState> & { user?: number; all_status?: boolean } = {}): Promise<Vendor[]> {
     try {
       const q = new URLSearchParams();
@@ -194,17 +217,20 @@ export const ApiService = {
     }
   },
 
-  async requestRole(userId: number, role: 'CUSTOMER' | 'PROVIDER' | 'VENDOR' | 'VENUE_OWNER' | 'ADMIN'): Promise<any> {
+  async requestRole(userId: number, role: 'CUSTOMER' | 'PROVIDER' | 'VENDOR' | 'VENUE_OWNER'): Promise<any> {
     try {
       const res = await fetch(`${API_BASE}/auth/request-role/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ user_id: userId, role }),
       });
+
       const resData = await res.json();
+
       if (res.ok) {
         return resData;
       }
+
       return { error: resData.error || resData.detail || 'Failed to select role' };
     } catch (e: any) {
       console.error('Failed to request role:', e);
@@ -462,7 +488,7 @@ export const ApiService = {
     try {
       const res = await fetch(`${API_BASE}/venues/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(venueData),
       });
       if (res.ok) return await res.json();
@@ -524,7 +550,7 @@ export const ApiService = {
     try {
       const res = await fetch(`${API_BASE}/venues/${id}/`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(venueData),
       });
       if (res.ok) return await res.json();
@@ -537,9 +563,7 @@ export const ApiService = {
 
   async deleteVenue(id: number): Promise<boolean> {
     try {
-      const uid = getApiCurrentUserId();
-      const queryParam = uid ? `?admin_user_id=${uid}&user_id=${uid}` : '';
-      const res = await fetch(`${API_BASE}/venues/${id}/${queryParam}`, {
+      const res = await fetch(`${API_BASE}/venues/${id}/`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
