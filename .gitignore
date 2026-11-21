@@ -57,3 +57,6 @@ backend/private_documents/
 
 # Machine learning model artifacts
 backend/ml_models/
+
+# Local database backups
+*.dump
