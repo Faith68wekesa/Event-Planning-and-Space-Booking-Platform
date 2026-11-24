@@ -126,6 +126,7 @@ export type VenueCategory =
 
 export interface Venue {
   id: number;
+  listing_type?: 'VENUE' | 'SERVICE';
   vendor?: number;
   vendor_name?: string;
   owner?: number;

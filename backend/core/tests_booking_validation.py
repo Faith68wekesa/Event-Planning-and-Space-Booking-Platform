@@ -68,7 +68,7 @@ class BookingCapacityValidationTestCase(TestCase):
             'venue': self.venue.id,
             'event_title': 'Massive Gala',
             'event_type': 'Wedding Reception',
-            'event_date': '2026-11-15',
+            'event_date': '2026-12-15',
             'guest_count': 150,
             'total_price': 50000
         }
@@ -99,7 +99,7 @@ class BookingCapacityValidationTestCase(TestCase):
             customer=self.customer,
             venue=self.venue,
             event_title='Morning Session',
-            event_date='2026-11-20',
+            event_date='2026-12-20',
             guest_count=70,
             status='APPROVED',
             total_price=35000
@@ -111,7 +111,7 @@ class BookingCapacityValidationTestCase(TestCase):
             'venue': self.venue.id,
             'event_title': 'Evening Session',
             'event_type': 'Wedding Reception',
-            'event_date': '2026-11-20',
+            'event_date': '2026-12-20',
             'guest_count': 40,
             'total_price': 20000
         }
@@ -131,7 +131,7 @@ class BookingCapacityValidationTestCase(TestCase):
             customer=self.customer,
             venue=self.venue,
             event_title='Request A',
-            event_date='2026-11-22',
+            event_date='2026-12-22',
             guest_count=60,
             status='PENDING',
             total_price=30000
@@ -140,7 +140,7 @@ class BookingCapacityValidationTestCase(TestCase):
             customer=self.customer,
             venue=self.venue,
             event_title='Request B',
-            event_date='2026-11-22',
+            event_date='2026-12-22',
             guest_count=60,
             status='PENDING',
             total_price=30000
@@ -619,3 +619,29 @@ class BookingCapacityValidationTestCase(TestCase):
             'guest_count': 50
         }, format='json')
         self.assertEqual(res_now_valid.status_code, status.HTTP_201_CREATED)
+
+    def test_booking_list_is_restricted_to_authenticated_customer(self):
+        """14. Booking list must not expose another customer's bookings through query parameters."""
+        other_customer = User.objects.create_user(username='other_customer', email='other_customer@example.com', password='Password123!', role='CUSTOMER')
+
+        own_booking = Booking.objects.create(customer=self.customer, venue=self.venue, event_type='Wedding Reception', event_date='2026-12-15', guest_count=40, total_price=30000, status='PENDING')
+        other_booking = Booking.objects.create(customer=other_customer, venue=self.venue, event_type='Birthday Celebration', event_date='2026-12-20', guest_count=30, total_price=30000, status='PENDING')
+
+        self.client.force_authenticate(user=self.customer)
+        response = self.client.get('/api/bookings/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        returned_ids = [item['id'] for item in response.data['results']]
+        self.assertIn(own_booking.id, returned_ids)
+        self.assertNotIn(other_booking.id, returned_ids)
+
+        response_other_filter = self.client.get(f'/api/bookings/?customer_id={other_customer.id}')
+        self.assertEqual(response_other_filter.status_code, status.HTTP_200_OK)
+        returned_ids = [item['id'] for item in response_other_filter.data['results']]
+        self.assertNotIn(other_booking.id, returned_ids)
+
+        self.client.force_authenticate(user=other_customer)
+        response_other = self.client.get('/api/bookings/')
+        self.assertEqual(response_other.status_code, status.HTTP_200_OK)
+        returned_ids = [item['id'] for item in response_other.data['results']]
+        self.assertIn(other_booking.id, returned_ids)
+        self.assertNotIn(own_booking.id, returned_ids)

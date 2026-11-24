@@ -84,6 +84,19 @@ const getAuthHeaders = (extraHeaders: Record<string, string> = {}): Record<strin
   return headers;
 };
 
+export interface ProviderAvailabilitySetting {
+  id: number;
+  user: number;
+  max_guests: number;
+  working_hours_start: string;
+  working_hours_end: string;
+  buffer_time_minutes: number;
+  unavailable_dates: string[];
+  day_statuses: Record<string, string>;
+  created_at: string;
+  updated_at: string;
+}
+
 export const ApiService = {
   async getVenues(filters: Partial<FilterState> & { owner?: number; vendor?: number; user?: number; all_status?: boolean } = {}): Promise<Venue[]> {
     try {
@@ -113,7 +126,7 @@ export const ApiService = {
   },
 
   async getProviderVenues(): Promise<Venue[]> {
-    const res = await fetch(`${API_BASE}/venues/`, {
+    const res = await fetch(`${API_BASE}/venues/my-listings/`, {
       headers: getAuthHeaders(),
     });
     if (!res.ok) {
@@ -294,7 +307,7 @@ export const ApiService = {
         if (params.status) sp.append('status', params.status);
         url = `${API_BASE}/bookings/?${sp.toString()}`;
       }
-      const res = await fetch(url);
+      const res = await fetch(url, { headers: getAuthHeaders() });
       if (res.ok) {
         const data = await res.json();
         return Array.isArray(data) ? data : data.results || [];
@@ -1322,12 +1335,13 @@ export const ApiService = {
     return `${API_BASE}/analytics/venue-owner/${ownerId}/export-csv/?${q.toString()}`;
   },
 
-  async getVenueRecommendations(): Promise<(Venue & {
+  async getVenueRecommendations(query: string): Promise<(Venue & {
     match_score: number;
     is_cold_start: boolean;
     recommendation_type: string;
   })[]> {
-    const res = await fetch(`${API_BASE}/recommendations/venues/`, {
+    const params = new URLSearchParams({ query });
+    const res = await fetch(`${API_BASE}/recommendations/venues/?${params.toString()}`, {
       headers: getAuthHeaders(),
     });
 
@@ -1339,12 +1353,13 @@ export const ApiService = {
     return data.results || [];
   },
 
-  async getVendorRecommendations(): Promise<(Vendor & {
+  async getVendorRecommendations(query: string): Promise<(Vendor & {
     match_score: number;
     is_cold_start: boolean;
     recommendation_type: string;
   })[]> {
-    const res = await fetch(`${API_BASE}/recommendations/vendors/`, {
+    const params = new URLSearchParams({ query });
+    const res = await fetch(`${API_BASE}/recommendations/vendors/?${params.toString()}`, {
       headers: getAuthHeaders(),
     });
 
@@ -1354,5 +1369,51 @@ export const ApiService = {
 
     const data = await res.json();
     return data.results || [];
+  },
+
+  async getProviderAvailability(): Promise<ProviderAvailabilitySetting> {
+    const res = await fetch(`${API_BASE}/provider/availability/`, {
+      headers: getAuthHeaders(),
+    });
+
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      throw new Error(
+        formatApiError(data, 'Failed to load availability settings.')
+      );
+    }
+
+    return data as ProviderAvailabilitySetting;
+  },
+
+  async updateProviderAvailability(
+    settings: Partial<Pick<
+      ProviderAvailabilitySetting,
+      | 'max_guests'
+      | 'working_hours_start'
+      | 'working_hours_end'
+      | 'buffer_time_minutes'
+      | 'unavailable_dates'
+      | 'day_statuses'
+    >>
+  ): Promise<ProviderAvailabilitySetting> {
+    const res = await fetch(`${API_BASE}/provider/availability/`, {
+      method: 'PUT',
+      headers: getAuthHeaders({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify(settings),
+    });
+
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      throw new Error(
+        formatApiError(data, 'Failed to save availability settings.')
+      );
+    }
+
+    return data as ProviderAvailabilitySetting;
   },
 };

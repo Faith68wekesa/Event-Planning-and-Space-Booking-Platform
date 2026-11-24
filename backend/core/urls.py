@@ -13,7 +13,7 @@ from .views import (
     track_user_interaction, admin_analytics, export_admin_analytics_csv,
     vendor_analytics, export_vendor_analytics_csv,
     venue_owner_analytics, export_venue_owner_analytics_csv,
-    venue_recommendations, vendor_recommendations
+    venue_recommendations, vendor_recommendations, ProviderAvailabilitySettingView
 )
 
 router = DefaultRouter()
@@ -30,6 +30,8 @@ router.register(r'notifications', NotificationViewSet, basename='notification')
 router.register(r'documents', VerificationDocumentViewSet, basename='verification-document')
 
 urlpatterns = [
+    path('provider/availability/', ProviderAvailabilitySettingView.as_view(), name='provider-availability'),
+
     path('auth/register/', register_user, name='register-user'),
     path('auth/login/', login_user, name='login-user'),
     path('auth/request-role/', request_role, name='request-role'),

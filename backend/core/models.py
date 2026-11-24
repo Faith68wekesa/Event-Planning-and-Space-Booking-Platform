@@ -130,6 +130,10 @@ class Venue(models.Model):
         ('PLANNING', 'Event Planning & Coordination'),
         ('SOUND', 'Sound & Lighting Equipment'),
     ]
+    LISTING_TYPE_CHOICES = [
+        ('VENUE', 'Venue'),
+        ('SERVICE', 'Service'),
+    ]
     APPROVAL_STATUS_CHOICES = [
         ('PENDING', 'Pending Approval'),
         ('APPROVED', 'Approved'),
@@ -140,6 +144,12 @@ class Venue(models.Model):
         ('MODERATE', 'Moderate - Full cancellation up to 3 days before event'),
         ('STRICT', 'Strict - Full cancellation up to 7 days before event'),
     ]
+    listing_type = models.CharField(
+        max_length=10,
+        choices=LISTING_TYPE_CHOICES,
+        default='VENUE',
+        db_index=True,
+    )
     vendor = models.ForeignKey(VendorProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='venues')
     owner = models.ForeignKey(VenueOwnerProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='venues')
     title = models.CharField(max_length=200)
@@ -590,6 +600,7 @@ class UserInteraction(models.Model):
 class Recommendation(models.Model):
     RECOMMENDATION_TYPE_CHOICES = [
         ('VENUE', 'Venue'),
+        ('SERVICE', 'Service'),
         ('VENDOR', 'Vendor'),
     ]
 
@@ -607,7 +618,11 @@ class Recommendation(models.Model):
         constraints = [
             models.CheckConstraint(
                 condition=(
-                    models.Q(venue__isnull=False, vendor__isnull=True, recommendation_type='VENUE') |
+                    models.Q(
+                        venue__isnull=False,
+                        vendor__isnull=True,
+                        recommendation_type__in=['VENUE', 'SERVICE']
+                    ) |
                     models.Q(venue__isnull=True, vendor__isnull=False, recommendation_type='VENDOR')
                 ),
                 name='recommendation_target_valid'

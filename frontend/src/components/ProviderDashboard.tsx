@@ -200,11 +200,9 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
     setLoading(true);
     setListingLoadError(false);
     try {
-      const ownerId = currentVenueOwner?.id;
-      const vendorId = currentVendor?.id;
       const userId = currentUser?.id;
 
-      if (!ownerId && !vendorId && !userId) {
+      if (!userId) {
         setSpaces([]);
         setServices([]);
         setBookings([]);
@@ -214,25 +212,6 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
       let fetchedBookings: Booking[] = [];
 
-      if (ownerId) {
-        try {
-          const ownerBookings = await ApiService.getVenueOwnerBookings(ownerId);
-          fetchedBookings = [...fetchedBookings, ...ownerBookings];
-        } catch (e) {
-          console.error("Failed to load owner bookings", e);
-        }
-      }
-      if (vendorId) {
-        try {
-          const vendorBookings = await ApiService.getVendorBookings(vendorId);
-          const existingIds = new Set(fetchedBookings.map(b => b.id));
-          vendorBookings.forEach(b => {
-            if (!existingIds.has(b.id)) fetchedBookings.push(b);
-          });
-        } catch (e) {
-          console.error("Failed to load vendor bookings", e);
-        }
-      }
       if (userId) {
         try {
           const [userBookings, liveVendors, liveOwners] = await Promise.all([
@@ -259,28 +238,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
       const myOwnListings = providerVenues;
 
-      // If user has listings, ensure any bookings for those listing IDs are also captured
-      if (myOwnListings.length > 0) {
-        try {
-          const myVenueIds = new Set(myOwnListings.map(v => v.id));
-          const allSystemBookings = await ApiService.getBookings();
-          const existingIds = new Set(fetchedBookings.map(b => b.id));
-          allSystemBookings.forEach(b => {
-            const venueId = typeof b.venue === 'object' ? (b.venue as any)?.id : b.venue;
-            if (venueId && myVenueIds.has(venueId) && !existingIds.has(b.id)) {
-              fetchedBookings.push(b);
-              existingIds.add(b.id);
-            }
-          });
-        } catch (e) {
-          console.error("Failed to load venue bookings", e);
-        }
-      }
-
-      const isServiceListing = (v: Venue) => {
-        const serviceCategories = ['PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'];
-        return Boolean(v.vendor) || serviceCategories.includes((v.category || '').toUpperCase()) || (v.capacity ?? 0) === 0;
-      };
+      const isServiceListing = (v: Venue) => v.listing_type === 'SERVICE';
       const mySpaces = myOwnListings.filter(v => !isServiceListing(v));
       const myServices = myOwnListings.filter(v => isServiceListing(v));
 
@@ -593,9 +551,9 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   });
 
   const filteredBookings = bookings.filter(b => {
-    const venueCapacity = b.venue_details?.capacity;
-    if (bookingFilter === 'SPACES' && venueCapacity === 0) return false;
-    if (bookingFilter === 'SERVICES' && venueCapacity !== undefined && venueCapacity > 0) return false;
+    const listingType = b.venue_details?.listing_type;
+    if (bookingFilter === 'SPACES' && listingType !== 'VENUE') return false;
+    if (bookingFilter === 'SERVICES' && listingType !== 'SERVICE') return false;
     if (bookingStatusFilter !== 'ALL' && b.status !== bookingStatusFilter) return false;
     return true;
   });

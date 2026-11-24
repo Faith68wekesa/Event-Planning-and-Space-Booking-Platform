@@ -369,6 +369,14 @@ def _extract_customer_preferences(customer, preferences_override=None):
             prefs['overall_budget'] = valid_overall_b
             prefs['has_personalization_data'] = True
 
+    # An explicit customer search takes priority over historical preferences.
+    # Do not mix the current search with old events, bookings, or interactions.
+    if preferences_override and preferences_override.get('query'):
+        prefs['text_query'] = " ".join(
+            token.strip() for token in text_tokens if token.strip()
+        )
+        return prefs
+
     if not customer:
         prefs['text_query'] = " ".join(text_tokens)
         return prefs
@@ -564,6 +572,12 @@ def get_venue_recommendations(customer=None, preferences=None, top_k=10):
         target_venue_budget = prefs['overall_budget'] * venue_share
 
     has_text = bool(prefs['text_query'].strip()) and (cache.venue_vectorizer is not None) and (cache.venue_tfidf_matrix is not None)
+    has_explicit_search = bool(
+        preferences and str(preferences.get('query', '')).strip()
+    )
+    if has_explicit_search and not has_text:
+        return []
+
     has_cap = prefs['guest_count'] is not None
     has_budget = target_venue_budget is not None
     has_any_feature = has_text or has_cap or has_budget
@@ -591,6 +605,8 @@ def get_venue_recommendations(customer=None, preferences=None, top_k=10):
         user_vec = cache.venue_vectorizer.transform([prefs['text_query']])
         cos_sim = cosine_similarity(user_vec, cache.venue_tfidf_matrix)[0]
         text_sims = np.maximum(cos_sim, 0.0)
+        if has_explicit_search and not np.any(text_sims > 0):
+            return []
         active_weights.append(0.50)
         active_sims.append(text_sims)
 
@@ -631,6 +647,8 @@ def get_venue_recommendations(customer=None, preferences=None, top_k=10):
 
     # Since all sim_arr in (0.0, 1.0] and sum(norm_weights) == 1.0, composite is naturally in (0.0, 1.0]
     for idx, v in enumerate(venues):
+        if has_explicit_search and text_sims[idx] <= 0:
+            continue
         score = round(float(composite[idx]), 4)
         results.append({
             'venue': v,
@@ -678,6 +696,12 @@ def get_vendor_recommendations(customer=None, preferences=None, top_k=10):
         target_vendor_budget = prefs['overall_budget'] * vendor_share
 
     has_text = bool(prefs['text_query'].strip()) and (cache.vendor_vectorizer is not None) and (cache.vendor_tfidf_matrix is not None)
+    has_explicit_search = bool(
+        preferences and str(preferences.get('query', '')).strip()
+    )
+    if has_explicit_search and not has_text:
+        return []
+
     has_budget = target_vendor_budget is not None
     has_any_feature = has_text or has_budget
 
@@ -704,6 +728,8 @@ def get_vendor_recommendations(customer=None, preferences=None, top_k=10):
         user_vec = cache.vendor_vectorizer.transform([prefs['text_query']])
         cos_sim = cosine_similarity(user_vec, cache.vendor_tfidf_matrix)[0]
         text_sims = np.maximum(cos_sim, 0.0)
+        if has_explicit_search and not np.any(text_sims > 0):
+            return []
         active_weights.append(0.65)
         active_sims.append(text_sims)
     # 2. Budget similarity (normalized by constant reference scale)
@@ -734,6 +760,8 @@ def get_vendor_recommendations(customer=None, preferences=None, top_k=10):
         composite += w * sim_arr
 
     for idx, vnd in enumerate(vendors):
+        if has_explicit_search and text_sims[idx] <= 0:
+            continue
         score = round(float(composite[idx]), 4)
         results.append({
             'vendor': vnd,

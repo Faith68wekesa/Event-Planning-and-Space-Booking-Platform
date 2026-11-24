@@ -109,6 +109,7 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
       ].filter(Boolean).join('');
 
       const listingData = {
+        listing_type: 'SERVICE' as const,
         title: serviceName.trim(),
         category: serviceCategory,
         location: serviceArea || 'Nairobi',
@@ -166,6 +167,7 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
       ].filter(Boolean).join('');
 
       const listingData = {
+        listing_type: 'VENUE' as const,
         title: venueName.trim(),
         category: venueCategory,
         location: venueLocation || 'Nairobi',

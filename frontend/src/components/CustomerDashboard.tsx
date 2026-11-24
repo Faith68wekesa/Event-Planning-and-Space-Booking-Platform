@@ -88,8 +88,10 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
   const [recommendedVendors, setRecommendedVendors] = useState<RecommendedVendor[]>([]);
   const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
   const [recommendationsError, setRecommendationsError] = useState<string | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [lastSearchQuery, setLastSearchQuery] = useState('');
 
-  const fetchRecommendations = useCallback(async () => {
+  const fetchRecommendations = useCallback(async (query: string) => {
     if (!currentUser?.id) return;
 
     setIsLoadingRecommendations(true);
@@ -97,8 +99,8 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
 
     try {
       const [venueResult, vendorResult] = await Promise.allSettled([
-        ApiService.getVenueRecommendations(),
-        ApiService.getVendorRecommendations(),
+        ApiService.getVenueRecommendations(query),
+        ApiService.getVendorRecommendations(query),
       ]);
 
       let failed = false;
@@ -132,9 +134,39 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
     }
   }, [currentUser?.id]);
 
-  useEffect(() => {
-    fetchRecommendations();
-  }, [fetchRecommendations]);
+  const handleSearch = async () => {
+    const query = searchQuery.trim();
+
+    if (!query) {
+      toast.error('Please enter something to search for.');
+      return;
+    }
+
+    if (!currentUser?.id) {
+      toast.error('Please log in to search.');
+      return;
+    }
+
+    try {
+      const tracked = await ApiService.trackInteraction({
+        event_type: 'SEARCH',
+        search_query: query,
+        source: 'CUSTOMER_DASHBOARD',
+      });
+
+      if (!tracked) {
+        toast.error('Your search could not be recorded. Please try again.');
+        return;
+      }
+
+      setLastSearchQuery(query);
+      setHasSearched(true);
+      await fetchRecommendations(query);
+    } catch (error) {
+      console.error('Error processing customer search:', error);
+      toast.error('Search failed. Please try again.');
+    }
+  };
 
   const fetchEvents = useCallback(async () => {
     if (!currentUser?.id) return;
@@ -741,8 +773,8 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && searchQuery.trim() && onNavigate) {
-                  onNavigate('venues');
+                if (e.key === 'Enter') {
+                  handleSearch();
                 }
               }}
             />
@@ -1188,28 +1220,23 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                   </p>
                 </div>
 
-                <button
-                  onClick={fetchRecommendations}
-                  disabled={isLoadingRecommendations}
-                  style={{
-                    padding: '9px 15px',
-                    border: '1px solid #0F8F7A',
-                    borderRadius: '8px',
-                    background: '#ffffff',
-                    color: '#0F8F7A',
-                    cursor: isLoadingRecommendations ? 'not-allowed' : 'pointer',
-                    fontWeight: 600,
-                  }}
-                >
-                  <RotateCw
-                    size={14}
-                    style={{ marginRight: '6px', verticalAlign: 'middle' }}
-                  />
-                  Refresh
-                </button>
               </div>
 
-              {isLoadingRecommendations ? (
+              {!hasSearched ? (
+                <div style={{
+                  textAlign: 'center',
+                  padding: '35px 15px',
+                  color: '#64748b',
+                }}>
+                  <Search size={35} color="#94a3b8" />
+                  <p style={{ fontWeight: 600, color: '#334155' }}>
+                    Discover recommendations tailored to your interests
+                  </p>
+                  <p style={{ fontSize: '0.88rem' }}>
+                    Search for an event, venue, or service to see recommendations selected for you.
+                  </p>
+                </div>
+              ) : isLoadingRecommendations ? (
                 <div style={{
                   textAlign: 'center',
                   padding: '35px 15px',
@@ -1229,7 +1256,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                   <AlertTriangle size={24} />
                   <p>{recommendationsError}</p>
                   <button
-                    onClick={fetchRecommendations}
+                    onClick={() => fetchRecommendations(lastSearchQuery)}
                     style={{
                       padding: '9px 18px',
                       border: 'none',

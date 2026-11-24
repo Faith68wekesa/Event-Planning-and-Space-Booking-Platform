@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { Booking, Venue } from '../types';
 import {
   CalendarDays,
@@ -14,6 +14,7 @@ import {
   X
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { ApiService } from '../services/api';
 
 interface ProviderAvailabilityDashboardProps {
   bookings: Booking[];
@@ -24,115 +25,168 @@ export const ProviderAvailabilityDashboard: React.FC<ProviderAvailabilityDashboa
   bookings
 }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
-
-  // Load saved provider capacity configuration
-  const savedCapacity = (() => {
-    try {
-      const saved = localStorage.getItem('locyfy_provider_capacity');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  })();
-
-  // Unified Capacity & Schedule configuration state (Vendor customizable)
-  const [maxGuests, setMaxGuests] = useState<number>(savedCapacity?.maxGuests ?? 100);
-  const [staffOnDuty, setStaffOnDuty] = useState<number>(savedCapacity?.staffOnDuty ?? 2);
-  const [bufferTime, setBufferTime] = useState<number>(savedCapacity?.bufferTime ?? 30); // minutes
-
-  // Working hours configurable by vendor
-  const [workingHoursStart, setWorkingHoursStart] = useState<string>(savedCapacity?.workingHoursStart ?? '08:00');
-  const [workingHoursEnd, setWorkingHoursEnd] = useState<string>(savedCapacity?.workingHoursEnd ?? '18:00');
-
-  // Vendor's manually controlled calendar statuses per date key "YYYY-MM-DD"
-  // Status: 'AVAILABLE' | 'UNAVAILABLE' | 'BOOKED' | 'PENDING'
-  const [vendorDayStatuses, setVendorDayStatuses] = useState<Record<string, 'AVAILABLE' | 'UNAVAILABLE' | 'BOOKED' | 'PENDING'>>(() => {
-    try {
-      const saved = localStorage.getItem('locyfy_vendor_day_statuses');
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
-
-  // Selected day for status popover/dialog
+  const [maxGuests, setMaxGuests] = useState<number>(100);
+  const [bufferTime, setBufferTime] = useState<number>(30);
+  const [workingHoursStart, setWorkingHoursStart] = useState<string>('08:00');
+  const [workingHoursEnd, setWorkingHoursEnd] = useState<string>('18:00');
+  const [vendorDayStatuses, setVendorDayStatuses] = useState<Record<string, 'UNAVAILABLE'>>({});
   const [selectedDayForEdit, setSelectedDayForEdit] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Calendar calculations (Monday = 0 ... Sunday = 6)
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadAvailability = async () => {
+      try {
+        const saved = await ApiService.getProviderAvailability();
+
+        if (cancelled) return;
+
+        setMaxGuests(saved.max_guests ?? 100);
+        setBufferTime(saved.buffer_time_minutes ?? 30);
+        setWorkingHoursStart(saved.working_hours_start ?? '08:00');
+        setWorkingHoursEnd(saved.working_hours_end ?? '18:00');
+
+        const unavailable: Record<string, 'UNAVAILABLE'> = {};
+
+        (saved.unavailable_dates ?? []).forEach(date => {
+          unavailable[date] = 'UNAVAILABLE';
+        });
+
+        Object.entries(saved.day_statuses ?? {}).forEach(([date, status]) => {
+          if (status === 'UNAVAILABLE') {
+            unavailable[date] = 'UNAVAILABLE';
+          }
+        });
+
+        setVendorDayStatuses(unavailable);
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(error instanceof Error ? error.message : 'Failed to load availability settings.');
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+
+    void loadAvailability();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const rawFirstDay = new Date(year, month, 1).getDay(); // 0 is Sunday
-  const firstDayIndex = rawFirstDay === 0 ? 6 : rawFirstDay - 1; // 0 is Monday
+  const rawFirstDay = new Date(year, month, 1).getDay();
+  const firstDayIndex = rawFirstDay === 0 ? 6 : rawFirstDay - 1;
 
-  // Month navigation
-  const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
-  const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+  const prevMonth = () => {
+    setSelectedDayForEdit(null);
+    setCurrentDate(new Date(year, month - 1, 1));
+  };
+
+  const nextMonth = () => {
+    setSelectedDayForEdit(null);
+    setCurrentDate(new Date(year, month + 1, 1));
+  };
 
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'
   ];
 
-  // Helper to format date key YYYY-MM-DD
   const getDateKey = (day: number) => {
     const mStr = String(month + 1).padStart(2, '0');
     const dStr = String(day).padStart(2, '0');
     return `${year}-${mStr}-${dStr}`;
   };
 
-  // Get status for a day (vendor has 100% control)
   const getDayStatus = (day: number): 'AVAILABLE' | 'UNAVAILABLE' | 'BOOKED' | 'PENDING' => {
     const key = getDateKey(day);
-    if (vendorDayStatuses[key]) {
-      return vendorDayStatuses[key];
+
+    const matchingBookings = bookings.filter(
+      booking => String(booking.event_date).slice(0, 10) === key
+    );
+
+    if (matchingBookings.some(booking =>
+      booking.status === 'APPROVED' || booking.status === 'COMPLETED'
+    )) {
+      return 'BOOKED';
     }
-    // Check if there is an actual live booking for this day
-    const matchingBooking = bookings.find(b => {
-      const d = new Date(b.event_date);
-      return d.getFullYear() === year && d.getMonth() === month && d.getDate() === day;
-    });
-    if (matchingBooking) {
-      if (matchingBooking.status === 'APPROVED' || matchingBooking.status === 'COMPLETED') return 'BOOKED';
-      if (matchingBooking.status === 'PENDING') return 'PENDING';
+
+    if (matchingBookings.some(booking => booking.status === 'PENDING')) {
+      return 'PENDING';
     }
-    // Default is completely free / available
-    return 'AVAILABLE';
+
+    return vendorDayStatuses[key] ? 'UNAVAILABLE' : 'AVAILABLE';
   };
 
-  // Set day status
-  const setDayStatus = (day: number, status: 'AVAILABLE' | 'UNAVAILABLE' | 'BOOKED' | 'PENDING') => {
+  const setDayStatus = (day: number, status: 'AVAILABLE' | 'UNAVAILABLE') => {
+    const currentStatus = getDayStatus(day);
+
+    if (currentStatus === 'BOOKED' || currentStatus === 'PENDING') {
+      toast.error('This date has a booking and its status cannot be changed here.');
+      setSelectedDayForEdit(null);
+      return;
+    }
+
     const key = getDateKey(day);
+
     setVendorDayStatuses(prev => {
-      const updated = { ...prev, [key]: status };
-      try {
-        localStorage.setItem('locyfy_vendor_day_statuses', JSON.stringify(updated));
-      } catch (err) {
-        console.error(err);
+      const updated = { ...prev };
+
+      if (status === 'UNAVAILABLE') {
+        updated[key] = 'UNAVAILABLE';
+      } else {
+        delete updated[key];
       }
+
       return updated;
     });
+
     setSelectedDayForEdit(null);
-    toast.success(`Day ${day} set to ${status.toLowerCase()}`);
+    toast.success(`Date ${day} updated. Select Save Changes to apply it.`);
   };
 
-  const handleSaveChanges = () => {
-    try {
-      localStorage.setItem('locyfy_vendor_day_statuses', JSON.stringify(vendorDayStatuses));
-      localStorage.setItem('locyfy_provider_capacity', JSON.stringify({
-        maxGuests,
-        staffOnDuty,
-        bufferTime,
-        workingHoursStart,
-        workingHoursEnd
-      }));
-    } catch (err) {
-      console.error(err);
+  const handleSaveChanges = async () => {
+    if (maxGuests < 1) {
+      toast.error('Guest capacity must be at least 1.');
+      return;
     }
-    toast.success('Your schedule and capacity preferences have been saved!');
+
+    if (bufferTime < 0) {
+      toast.error('Buffer time cannot be negative.');
+      return;
+    }
+
+    if (!workingHoursStart || !workingHoursEnd || workingHoursStart >= workingHoursEnd) {
+      toast.error('Closing time must be later than opening time.');
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      await ApiService.updateProviderAvailability({
+        max_guests: maxGuests,
+        buffer_time_minutes: bufferTime,
+        working_hours_start: workingHoursStart,
+        working_hours_end: workingHoursEnd,
+        unavailable_dates: Object.keys(vendorDayStatuses),
+        day_statuses: vendorDayStatuses
+      });
+
+      toast.success('Availability settings saved successfully.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to save availability settings.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  // Calculate live counts based on actual calendar days in this month
   let availableDaysCount = 0;
   let bookedDaysCount = 0;
   let unavailableDaysCount = 0;
@@ -146,7 +200,6 @@ export const ProviderAvailabilityDashboard: React.FC<ProviderAvailabilityDashboa
     else if (st === 'PENDING') pendingDaysCount++;
   }
 
-  // Calculate capacity percentage based on booked days
   const capacityUsagePercent = Math.round((bookedDaysCount / daysInMonth) * 100);
 
   return (
@@ -404,29 +457,6 @@ export const ProviderAvailabilityDashboard: React.FC<ProviderAvailabilityDashboa
 
                 <button
                   type="button"
-                  onClick={() => setDayStatus(selectedDayForEdit, 'BOOKED')}
-                  style={{
-                    flex: '1',
-                    minWidth: '110px',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid #0284c7',
-                    background: getDayStatus(selectedDayForEdit) === 'BOOKED' ? '#0284c7' : '#f0f9ff',
-                    color: getDayStatus(selectedDayForEdit) === 'BOOKED' ? '#fff' : '#0369a1',
-                    fontWeight: 700,
-                    fontSize: '0.82rem',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px'
-                  }}
-                >
-                  Mark as Booked
-                </button>
-
-                <button
-                  type="button"
                   onClick={() => setDayStatus(selectedDayForEdit, 'UNAVAILABLE')}
                   style={{
                     flex: '1',
@@ -468,35 +498,15 @@ export const ProviderAvailabilityDashboard: React.FC<ProviderAvailabilityDashboa
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                if (selectedDayForEdit === null) {
-                  setSelectedDayForEdit(1);
-                  toast('Select any date on the calendar above to change its status.');
-                }
-              }}
-              className="btn-primary-light"
-              style={{
-                background: '#0d8a73',
-                color: '#ffffff',
-                border: 'none',
-                padding: '9px 18px',
-                borderRadius: '8px',
-                fontWeight: 700,
-                fontSize: '0.88rem',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                boxShadow: '0 2px 4px rgba(13, 138, 115, 0.2)'
-              }}
-            >
-              <CalendarDays size={16} /> Manage Availability
-            </button>
-          </div>
+
 
         </div>
+
+        {isLoading && (
+          <p style={{ color: '#64748b', fontSize: '0.85rem' }}>
+            Loading your saved availability settings...
+          </p>
+        )}
 
         {/* Capacity & Resources Card */}
         <div className="dashboard-card" style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -542,30 +552,8 @@ export const ProviderAvailabilityDashboard: React.FC<ProviderAvailabilityDashboa
           </div>
 
           {/* Staff & Travel Buffer Row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-              <span style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', marginBottom: '6px' }}>Staff On Duty</span>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <button
-                  type="button"
-                  onClick={() => setStaffOnDuty(prev => Math.max(1, prev - 1))}
-                  style={{ width: '28px', height: '28px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <Minus size={12} />
-                </button>
-                <span style={{ fontWeight: 800 }}>{staffOnDuty}</span>
-                <button
-                  type="button"
-                  onClick={() => setStaffOnDuty(prev => prev + 1)}
-                  style={{ width: '28px', height: '28px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <Plus size={12} />
-                </button>
-              </div>
-            </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
 
-            <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-              <span style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', marginBottom: '6px' }}>Setup / Travel Buffer</span>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <button
                   type="button"
@@ -619,7 +607,7 @@ export const ProviderAvailabilityDashboard: React.FC<ProviderAvailabilityDashboa
                 <strong style={{ color: '#0d8a73', fontSize: '0.95rem' }}>{maxGuests} Attendees</strong>
               </div>
               <div style={{ fontSize: '0.78rem', color: '#64748b', lineHeight: 1.4, background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                💡 <strong>How this works:</strong> If you can serve <strong>{maxGuests} guests</strong> in total, and one customer books an event for <strong>70 guests</strong>, the platform automatically knows you still have capacity for <strong>{Math.max(0, maxGuests - 70)} more guests</strong> on that same day.
+                <strong>How this works:</strong> This is your maximum total guest capacity for a single day. Booking validation uses this limit when checking whether you can accommodate a new booking.
               </div>
             </div>
           </div>
@@ -628,6 +616,7 @@ export const ProviderAvailabilityDashboard: React.FC<ProviderAvailabilityDashboa
           <button
             type="button"
             onClick={handleSaveChanges}
+            disabled={isLoading || isSaving}
             className="btn-primary-light"
             style={{
               background: '#0d8a73',
@@ -640,11 +629,12 @@ export const ProviderAvailabilityDashboard: React.FC<ProviderAvailabilityDashboa
               alignItems: 'center',
               justifyContent: 'center',
               gap: '8px',
-              cursor: 'pointer',
+              cursor: isLoading || isSaving ? 'not-allowed' : 'pointer',
+              opacity: isLoading || isSaving ? 0.6 : 1,
               marginTop: 'auto',
             }}
           >
-            <Save size={18} /> Save Changes
+            <Save size={18} /> {isSaving ? 'Saving...' : isLoading ? 'Loading...' : 'Save Changes'}
           </button>
 
         </div>

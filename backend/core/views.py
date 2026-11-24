@@ -48,6 +48,36 @@ def is_admin_user(request):
         )
     )
 
+class ProviderAvailabilitySettingView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from .models import ProviderAvailabilitySetting
+        from .serializers import ProviderAvailabilitySettingSerializer
+
+        setting, _ = ProviderAvailabilitySetting.objects.get_or_create(user=request.user)
+        serializer = ProviderAvailabilitySettingSerializer(setting, context={'request': request})
+        return Response(serializer.data)
+
+    def put(self, request):
+        from .models import ProviderAvailabilitySetting
+        from .serializers import ProviderAvailabilitySettingSerializer
+
+        setting, _ = ProviderAvailabilitySetting.objects.get_or_create(user=request.user)
+        serializer = ProviderAvailabilitySettingSerializer(
+            setting,
+            data=request.data,
+            partial=True,
+            context={'request': request}
+        )
+
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return Response(serializer.data)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().order_by('-date_joined')
     serializer_class = UserSerializer
@@ -313,10 +343,30 @@ class VenueViewSet(viewsets.ModelViewSet):
             'partial_update',
             'destroy',
             'toggle_availability',
+            'my_listings',
         ]:
             return [IsAuthenticated()]
 
         return [AllowAny()]
+
+    @action(detail=False, methods=['get'], url_path='my-listings')
+    def my_listings(self, request):
+        user = request.user
+        if not (
+            getattr(user, 'is_vendor', False)
+            or getattr(user, 'is_venue_owner', False)
+            or getattr(user, 'role', '') in ['PROVIDER', 'VENDOR', 'VENUE_OWNER']
+        ):
+            raise PermissionDenied(
+                "Only providers can access their own listings."
+            )
+
+        listings = Venue.objects.filter(
+            Q(owner__user_id=user.pk) |
+            Q(vendor__user_id=user.pk)
+        ).distinct().order_by('-created_at')
+        serializer = self.get_serializer(listings, many=True)
+        return Response(serializer.data)
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -543,6 +593,17 @@ class BookingViewSet(viewsets.ModelViewSet):
         user_id = params.get('user') or params.get('user_id')
         status_param = params.get('status')
 
+        # Restrict non-admin users to bookings they are actually allowed to see.
+        # Query parameters below can only narrow this authorized queryset.
+        if not is_admin_user(self.request):
+            authenticated_user_id = self.request.user.id
+            queryset = queryset.filter(
+                Q(customer_id=authenticated_user_id) |
+                Q(venue__owner__user_id=authenticated_user_id) |
+                Q(venue__vendor__user_id=authenticated_user_id) |
+                Q(vendor__user_id=authenticated_user_id)
+            )
+
         if customer_id:
             queryset = queryset.filter(customer_id=customer_id)
         if vendor_id:
@@ -551,8 +612,8 @@ class BookingViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(venue__owner_id=owner_id)
         if user_id:
             queryset = queryset.filter(
-                Q(venue__owner__user_id=user_id) | 
-                Q(venue__vendor__user_id=user_id) | 
+                Q(venue__owner__user_id=user_id) |
+                Q(venue__vendor__user_id=user_id) |
                 Q(vendor__user_id=user_id)
             )
         today = datetime.date.today()
@@ -2780,44 +2841,64 @@ def export_venue_owner_analytics_csv(request, owner_id):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def venue_recommendations(request):
+    query = request.query_params.get('query', '').strip()
+
+    if not query:
+        return Response({'results': []})
+
     recommendations = get_venue_recommendations(
         customer=request.user,
+        preferences={'query': query},
         top_k=10
     )
+
     results = []
     for item in recommendations:
         venue = item.get('venue')
         if not venue:
             continue
+
         venue_data = VenueSerializer(
             venue,
             context={'request': request}
         ).data
+
         venue_data['match_score'] = item.get('match_score', 0)
         venue_data['is_cold_start'] = item.get('is_cold_start', False)
         venue_data['recommendation_type'] = 'VENUE'
         results.append(venue_data)
+
     return Response({'results': results})
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def vendor_recommendations(request):
+    query = request.query_params.get('query', '').strip()
+
+    if not query:
+        return Response({'results': []})
+
     recommendations = get_vendor_recommendations(
         customer=request.user,
+        preferences={'query': query},
         top_k=10
     )
+
     results = []
     for item in recommendations:
         vendor = item.get('vendor')
         if not vendor:
             continue
+
         vendor_data = VendorProfileSerializer(
             vendor,
             context={'request': request}
         ).data
+
         vendor_data['match_score'] = item.get('match_score', 0)
         vendor_data['is_cold_start'] = item.get('is_cold_start', False)
         vendor_data['recommendation_type'] = 'VENDOR'
         results.append(vendor_data)
+
     return Response({'results': results})

@@ -2,8 +2,20 @@
 # pyrefly: ignore[missing-import]
 from .models import (
     User, VendorProfile, VenueOwnerProfile, Venue, Booking, Review, Message, Event, EventService,
-    Notification, CustomerReminderPreference, VerificationDocument, UserInteraction, Recommendation, FraudAlert
+    Notification, CustomerReminderPreference, VerificationDocument, UserInteraction, Recommendation, FraudAlert, ProviderAvailabilitySetting
 )
+
+class ProviderAvailabilitySettingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProviderAvailabilitySetting
+        fields = [
+            'id', 'user', 'max_guests', 'working_hours_start',
+            'working_hours_end', 'buffer_time_minutes',
+            'unavailable_dates', 'day_statuses',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'user', 'created_at', 'updated_at']
+
 
 class UserSerializer(serializers.ModelSerializer):
     is_provider = serializers.BooleanField(read_only=True)
@@ -138,7 +150,7 @@ class VenueSerializer(serializers.ModelSerializer):
     class Meta:
         model = Venue
         fields = [
-            'id', 'vendor', 'vendor_name', 'owner', 'owner_name', 'owner_user_id', 'title', 'description', 'category', 
+            'id', 'vendor', 'vendor_name', 'owner', 'owner_name', 'owner_user_id', 'listing_type', 'title', 'description', 'category',
             'category_display', 'location', 'address', 'capacity', 'price_per_day', 
             'price_per_hour', 'amenities', 'image_url', 'is_verified', 'approval_status', 'rejection_reason',
             'cancellation_policy', 'is_available', 'rating', 'review_count', 'created_at', 'updated_at'
