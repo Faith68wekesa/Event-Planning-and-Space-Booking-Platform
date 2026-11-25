@@ -2,6 +2,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from core.models import User, VendorProfile, VenueOwnerProfile, Venue, VerificationDocument
+from core.serializers import VenueSerializer
 
 
 class BackendAccessControlTests(TestCase):
@@ -81,6 +82,120 @@ class BackendAccessControlTests(TestCase):
     def response_items(self, response):
         data = response.data
         return data.get('results', data) if isinstance(data, dict) else data
+
+    def test_venue_serializer_accepts_matching_listing_categories(self):
+        base_data = {
+            'title': 'Category test',
+            'location': 'Nairobi',
+            'capacity': 100,
+            'price_per_day': '10000',
+        }
+
+        service = VenueSerializer(data={
+            **base_data,
+            'listing_type': 'SERVICE',
+            'category': 'PHOTOGRAPHY',
+        })
+        venue = VenueSerializer(data={
+            **base_data,
+            'listing_type': 'VENUE',
+            'category': 'WEDDING',
+        })
+
+        self.assertTrue(service.is_valid(), service.errors)
+        self.assertTrue(venue.is_valid(), venue.errors)
+
+    def test_venue_serializer_validates_capacity_by_listing_type(self):
+        base_data = {
+            'title': 'Capacity test',
+            'location': 'Nairobi',
+            'price_per_day': '10000',
+        }
+
+        # Services may have no specified guest limit.
+        service_zero = VenueSerializer(data={
+            **base_data,
+            'listing_type': 'SERVICE',
+            'category': 'PHOTOGRAPHY',
+            'capacity': 0,
+        })
+
+        # Venues must have a positive guest capacity.
+        venue_zero = VenueSerializer(data={
+            **base_data,
+            'listing_type': 'VENUE',
+            'category': 'WEDDING',
+            'capacity': 0,
+        })
+
+        # Neither listing type may have negative capacity.
+        service_negative = VenueSerializer(data={
+            **base_data,
+            'listing_type': 'SERVICE',
+            'category': 'CATERING',
+            'capacity': -1,
+        })
+
+        venue_negative = VenueSerializer(data={
+            **base_data,
+            'listing_type': 'VENUE',
+            'category': 'WEDDING',
+            'capacity': -1,
+        })
+
+        self.assertTrue(service_zero.is_valid(), service_zero.errors)
+
+        self.assertFalse(venue_zero.is_valid())
+        self.assertIn('capacity', venue_zero.errors)
+
+        self.assertFalse(service_negative.is_valid())
+        self.assertIn('capacity', service_negative.errors)
+
+        self.assertFalse(venue_negative.is_valid())
+        self.assertIn('capacity', venue_negative.errors)
+
+    def test_venue_serializer_rejects_mismatched_listing_categories(self):
+        base_data = {
+            'title': 'Category test',
+            'location': 'Nairobi',
+            'capacity': 100,
+            'price_per_day': '10000',
+        }
+
+        service = VenueSerializer(data={
+            **base_data,
+            'listing_type': 'SERVICE',
+            'category': 'WEDDING',
+        })
+        venue = VenueSerializer(data={
+            **base_data,
+            'listing_type': 'VENUE',
+            'category': 'PHOTOGRAPHY',
+        })
+
+        self.assertFalse(service.is_valid())
+        self.assertFalse(venue.is_valid())
+        self.assertIn('category', service.errors)
+        self.assertIn('category', venue.errors)
+
+    def test_venue_serializer_uses_instance_values_for_partial_updates(self):
+        venue = self.create_venue('Partial category test', 'PENDING')
+
+        missing_category = VenueSerializer(
+            venue,
+            data={'listing_type': 'SERVICE'},
+            partial=True,
+        )
+        mismatched_category = VenueSerializer(
+            venue,
+            data={'category': 'CATERING'},
+            partial=True,
+        )
+
+        self.assertFalse(missing_category.is_valid())
+        self.assertFalse(mismatched_category.is_valid())
+        self.assertIn('category', missing_category.errors)
+        self.assertIn('category', mismatched_category.errors)
 
     def test_vendor_profile_writes_are_owner_or_admin_only_and_protected_fields_are_read_only(self):
         url = f'/api/vendors/{self.vendor_profile.pk}/'
@@ -237,6 +352,7 @@ class BackendAccessControlTests(TestCase):
             vendor=self.vendor_profile,
             title='Vendor pending venue',
             category='CATERING',
+            listing_type='SERVICE',
             location='Nairobi',
             capacity=0,
             price_per_day=10000,
@@ -246,6 +362,7 @@ class BackendAccessControlTests(TestCase):
             vendor=self.vendor_profile,
             title='Vendor rejected venue',
             category='CATERING',
+            listing_type='SERVICE',
             location='Nairobi',
             capacity=0,
             price_per_day=10000,

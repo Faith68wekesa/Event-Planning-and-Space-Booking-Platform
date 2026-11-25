@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { Venue, Vendor, Booking, User } from '../types';
 import { ApiService } from '../services/api';
-import { X, ShieldCheck, MapPin, Star, Users, Clock } from 'lucide-react';
+import { X, ShieldCheck, MapPin, Star, Users, Clock, ImageOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface BookingModalProps {
@@ -24,7 +24,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const targetLocation = venue ? venue.location : 'Nairobi Central';
   const targetRating = venue ? Number(venue.rating || 0) : (vendor ? Number(vendor.rating || 0) : 0);
   const targetReviews = venue ? Number(venue.review_count || 0) : (vendor ? Number(vendor.review_count || 0) : 0);
-  const imageUrl = venue?.image_url || vendor?.logo_url || vendor?.portfolio_images?.[0] || 'https://images.unsplash.com/photo-1555244162-803834f70033?auto=format&fit=crop&q=80&w=300&h=200';
+  const imageUrl = venue?.image_url || vendor?.logo_url || vendor?.portfolio_images?.[0] || '';
 
   const [eventTitle, setEventTitle] = useState('');
   const [eventType, setEventType] = useState('Birthday Party');
@@ -160,11 +160,55 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             marginBottom: '16px',
             background: '#fff'
           }}>
-            <img
-              src={imageUrl}
-              alt={targetTitle}
-              style={{ width: '120px', height: '90px', objectFit: 'cover', borderRadius: '8px' }}
-            />
+            <div
+              style={{
+                width: '120px',
+                height: '90px',
+                flexShrink: 0,
+                position: 'relative',
+                overflow: 'hidden',
+                borderRadius: '8px',
+                background: '#f1f5f9',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              {imageUrl.trim() ? (
+                <img
+                  src={imageUrl}
+                  alt={targetTitle}
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    const placeholder = e.currentTarget.nextElementSibling;
+                    if (placeholder instanceof HTMLElement) {
+                      placeholder.style.display = 'flex';
+                    }
+                  }}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover'
+                  }}
+                />
+              ) : null}
+
+              <div
+                style={{
+                  display: imageUrl.trim() ? 'none' : 'flex',
+                  position: 'absolute',
+                  inset: 0,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: 'column',
+                  gap: '4px',
+                  color: '#94a3b8'
+                }}
+              >
+                <ImageOff size={24} />
+                <span style={{ fontSize: '0.65rem' }}>No image</span>
+              </div>
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '4px' }}>
               <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>{targetTitle}</h3>
 

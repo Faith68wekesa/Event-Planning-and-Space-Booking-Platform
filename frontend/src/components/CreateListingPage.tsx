@@ -9,7 +9,7 @@ import {
 import toast from 'react-hot-toast';
 import { ApiService } from '../services/api';
 import type { Venue, VenueCategory } from '../types';
-import { cleanImageUrl, DEFAULT_SPACE_IMAGE, DEFAULT_SERVICE_IMAGE } from '../utils/imageUtils';
+import { cleanImageUrl } from '../utils/imageUtils';
 
 interface CreateListingPageProps {
   onBack: () => void;
@@ -30,13 +30,21 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
   defaultMode = 'service',
   editingListing = null,
 }) => {
-  const [activeMode, setActiveMode] = useState<'service' | 'venue'>(defaultMode);
+  const [activeMode, setActiveMode] = useState<'service' | 'venue'>(
+    editingListing
+      ? editingListing.listing_type === 'SERVICE'
+        ? 'service'
+        : 'venue'
+      : defaultMode
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Service form fields
   const [serviceName, setServiceName] = useState(editingListing?.title || '');
   const [servicePricingBasis, setServicePricingBasis] = useState('Per Event');
-  const [serviceCategory, setServiceCategory] = useState<VenueCategory>(editingListing?.category || 'PHOTOGRAPHY');
+  const [serviceCategory, setServiceCategory] = useState<VenueCategory>(
+    editingListing?.category || 'PLANNING'
+  );
   const [serviceDesc, setServiceDesc] = useState(editingListing?.description || '');
   const [servicePrice, setServicePrice] = useState<number | ''>(editingListing?.price_per_day ?? '');
   const [serviceCoverUrl, setServiceCoverUrl] = useState(editingListing?.image_url || '');
@@ -80,11 +88,6 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
     return { vendorId, ownerId };
   };
 
-  const handleSaveDraft = () => {
-    toast.success(`${activeMode === 'service' ? 'Service' : 'Venue'} listing saved as draft!`);
-    onSuccess();
-  };
-
   const handleServiceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!serviceName.trim()) {
@@ -116,7 +119,7 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
         capacity: serviceMaxGuests ? Number(serviceMaxGuests) : 0,
         price_per_day: Number(servicePrice),
         description: fullDescription,
-        image_url: cleanImageUrl(serviceCoverUrl) || DEFAULT_SERVICE_IMAGE,
+        image_url: cleanImageUrl(serviceCoverUrl),
       };
 
       if (editingListing) {
@@ -177,7 +180,7 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
         price_per_hour: Math.round(Number(venuePrice) / 8),
         description: fullDescription,
         amenities: amenitiesList,
-        image_url: cleanImageUrl(venueCoverUrl) || DEFAULT_SPACE_IMAGE,
+        image_url: cleanImageUrl(venueCoverUrl),
       };
 
       if (editingListing) {
@@ -212,7 +215,8 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
         </div>
 
         {/* Switcher buttons matching screenshot */}
-        <div className="listing-type-toggle-pill">
+        {!editingListing && (
+          <div className="listing-type-toggle-pill">
           <button
             type="button"
             className={`toggle-option-btn ${activeMode === 'service' ? 'active' : ''}`}
@@ -227,7 +231,8 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
           >
             <Building2 size={16} /> Venue
           </button>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Display Single Dedicated Form Card depending on selected mode (Service vs Venue) */}
@@ -256,7 +261,7 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
                   type="text"
                   required
                   className="listing-input"
-                  placeholder="e.g. Event planning, Photography, Catering..."
+                  placeholder="e.g. Event planning, Catering, Decoration..."
                   value={serviceName}
                   onChange={(e) => setServiceName(e.target.value)}
                 />
@@ -427,6 +432,7 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
                 <label className="listing-field-label">Service Area *</label>
                 <div className="listing-select-wrapper">
                   <select
+                    required
                     className="listing-select"
                     value={serviceArea}
                     onChange={(e) => setServiceArea(e.target.value)}
@@ -449,6 +455,7 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
                 <label className="listing-field-label">Availability *</label>
                 <div className="listing-select-wrapper">
                   <select
+                    required
                     className="listing-select"
                     value={serviceAvailability}
                     onChange={(e) => setServiceAvailability(e.target.value)}
@@ -486,15 +493,6 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
 
             {/* Action buttons */}
             <div className="listing-card-actions">
-              {!editingListing && (
-                <button
-                  type="button"
-                  onClick={handleSaveDraft}
-                  className="btn-listing-draft"
-                >
-                  Save as Draft
-                </button>
-              )}
               <button
                 type="submit"
                 disabled={isSubmitting}
@@ -541,6 +539,7 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
                 <label className="listing-field-label">Pricing Basis *</label>
                 <div className="listing-select-wrapper">
                   <select
+                    required
                     className="listing-select"
                     value={venuePricingBasis}
                     onChange={(e) => setVenuePricingBasis(e.target.value)}
@@ -728,6 +727,7 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
               <label className="listing-field-label">Availability *</label>
               <div className="listing-select-wrapper">
                 <select
+                  required
                   className="listing-select"
                   value={venueAvailability}
                   onChange={(e) => setVenueAvailability(e.target.value)}
@@ -749,15 +749,6 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
 
             {/* Action buttons */}
             <div className="listing-card-actions">
-              {!editingListing && (
-                <button
-                  type="button"
-                  onClick={handleSaveDraft}
-                  className="btn-listing-draft"
-                >
-                  Save as Draft
-                </button>
-              )}
               <button
                 type="submit"
                 disabled={isSubmitting}

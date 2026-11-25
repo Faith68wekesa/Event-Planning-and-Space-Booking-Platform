@@ -5,7 +5,7 @@ import { SlidersHorizontal, ShieldCheck, RotateCcw } from 'lucide-react';
 interface FilterSidebarProps {
   filters: FilterState;
   setFilters: React.Dispatch<React.SetStateAction<FilterState>>;
-  activeTab: 'venues' | 'vendors';
+  activeTab: 'venues' | 'services' | 'vendors';
 }
 
 export const FilterSidebar: React.FC<FilterSidebarProps> = ({
@@ -20,7 +20,7 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
       category: 'ALL',
       vendor_type: 'ALL',
       location: 'ALL',
-      max_price: 200000,
+      max_price: 5000000,
       min_capacity: 0,
       verified_only: false,
     });
@@ -71,7 +71,7 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
           />
         </div>
 
-        {activeTab === 'venues' ? (
+        {activeTab === 'venues' || activeTab === 'services' ? (
           <>
             <div>
               <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
@@ -150,7 +150,7 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
           <input
             type="range"
             min={10000}
-            max={200000}
+            max={5000000}
             step={5000}
             value={filters.max_price}
             onChange={(e) => setFilters({ ...filters, max_price: Number(e.target.value) })}
@@ -161,3 +161,4 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
     </div>
   );
 };
+

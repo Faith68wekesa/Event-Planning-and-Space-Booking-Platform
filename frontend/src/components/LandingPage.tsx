@@ -14,21 +14,20 @@ import {
   Utensils,
   Music,
   Palette,
-  ShieldCheck
+  ShieldCheck,
+  ImageOff
 } from 'lucide-react';
-import type { FilterState, Venue, Vendor, VenueCategory, User } from '../types';
+import type { FilterState, Venue, VenueCategory, User } from '../types';
 import { ApiService } from '../services/api';
-import { cleanImageUrl, handleImageError, getCategoryFallback } from '../utils/imageUtils';
+import { cleanImageUrl } from '../utils/imageUtils';
 
 export interface LandingPageProps {
   onSearch: (filters: FilterState) => void;
   filters: FilterState;
   onExploreVenues?: () => void;
-  onExploreVendors?: () => void;
+  onExploreServices?: () => void;
   onSelectVenue?: (venue: Venue) => void;
   onBookVenue?: (venue: Venue) => void;
-  onSelectVendor?: (vendor: Vendor) => void;
-  onBookVendor?: (vendor: Vendor) => void;
   onOpenAdmin?: () => void;
   currentUser?: User | null;
 }
@@ -46,46 +45,47 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   onSearch,
   filters,
   onExploreVenues,
-  onExploreVendors,
+  onExploreServices,
   onSelectVenue,
   onBookVenue,
-  onSelectVendor,
-  onBookVendor,
   onOpenAdmin,
   currentUser,
 }) => {
   const isNonAdminUser = Boolean(currentUser && currentUser.role !== 'ADMIN' && !currentUser.is_staff && !currentUser.is_superuser);
   const [spaces, setSpaces] = useState<Venue[]>([]);
-  const [services, setServices] = useState<Vendor[]>([]);
+  const [services, setServices] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
     setLoading(true);
 
-    Promise.all([
-      ApiService.getVenues(),
-      ApiService.getVendors(),
-    ])
-      .then(([allVenues, allVendors]) => {
+    ApiService.getVenues()
+      .then((allListings) => {
         if (!isMounted) return;
 
-        // 1. Physical spaces: Must NOT be a vendor service category (Catering, Decoration, Photography, etc.)
-        const rawSpaces = allVenues.filter((item) => {
-          const isServiceCategory = ['PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'].includes(item.category);
-          const isVendorService = Boolean(item.vendor) || isServiceCategory;
-          return !isVendorService && Number(item.capacity) > 0;
-        });
+        // Physical venues
+        const rawSpaces = allListings.filter(
+          (item) => item.listing_type === 'VENUE' && Number(item.capacity) > 0
+        );
+
         const seenSpaceTitles = new Set<string>();
-        const uniqueSpaces = rawSpaces.filter((s) => {
-          const key = s.title.toLowerCase().trim();
+        const uniqueSpaces = rawSpaces.filter((space) => {
+          const key = space.title.toLowerCase().trim();
+
           if (seenSpaceTitles.has(key)) return false;
+
           seenSpaceTitles.add(key);
           return true;
         });
 
+        // Actual service listings created through Create Listings
+        const actualServices = allListings.filter(
+          (item) => item.listing_type === 'SERVICE'
+        );
+
         setSpaces(uniqueSpaces.slice(0, 6));
-        setServices(allVendors.slice(0, 6));
+        setServices(actualServices.slice(0, 6));
       })
       .catch((err) => {
         console.error("Failed to load listings for landing page:", err);
@@ -156,9 +156,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <MapPin size={18} /> Explore Venues ({spaces.length > 0 ? `${spaces.length}+ Listed` : 'All'})
             </button>
           )}
-          {onExploreVendors && (
+          {onExploreServices && (
             <button 
-              onClick={onExploreVendors} 
+              onClick={onExploreServices} 
               style={{ 
                 padding: '10px 22px', 
                 borderRadius: '999px', 
@@ -326,13 +326,36 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                     e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.04)';
                   }}
                 >
-                  <div style={{ height: '210px', position: 'relative', overflow: 'hidden', background: '#f1f5f9' }}>
-                    <img
-                      src={cleanImageUrl(venue.image_url, venue.category) || getCategoryFallback(venue.category, 'VENUE')}
-                      onError={(e) => handleImageError(e, venue.category || 'WEDDING')}
-                      alt={venue.title}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    />
+                  <div style={{
+                    height: '210px',
+                    position: 'relative',
+                    overflow: 'hidden',
+                    background: '#f1f5f9',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    {cleanImageUrl(venue.image_url) ? (
+                      <img
+                        src={cleanImageUrl(venue.image_url)}
+                        alt={venue.title}
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                    ) : (
+                      <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '8px',
+                        color: '#94a3b8'
+                      }}>
+                        <ImageOff size={32} />
+                        <span style={{ fontSize: '0.8rem' }}>No image available</span>
+                      </div>
+                    )}
                     <div style={{ position: 'absolute', top: '12px', left: '12px', display: 'flex', gap: '6px' }}>
                       <span style={{ background: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(4px)', color: '#fff', fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '999px' }}>
                         {venue.category_display || venue.category}
@@ -442,9 +465,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>Top Services & Packages</h2>
               <p style={{ color: '#64748b', fontSize: '1.05rem', margin: 0 }}>Hire verified photographers, caterers, decorators, and planners.</p>
             </div>
-            {onExploreVendors && (
+            {onExploreServices && (
               <button 
-                onClick={onExploreVendors} 
+                onClick={onExploreServices} 
                 style={{ 
                   background: 'none', 
                   border: 'none', 
@@ -471,22 +494,21 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           ) : services.length > 0 ? (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '28px' }}>
               {services.map((service) => {
-                const rawImg = (service.portfolio_images && service.portfolio_images.length > 0) ? service.portfolio_images[0] : service.logo_url;
-                const coverImg = cleanImageUrl(rawImg, service.vendor_type) || getCategoryFallback(service.vendor_type, 'SERVICE');
+                const coverImg = cleanImageUrl(service.image_url);
 
                 return (
-                  <div 
-                    key={service.id} 
-                    onClick={() => onSelectVendor && onSelectVendor(service)}
-                    style={{ 
-                      background: '#ffffff', 
-                      borderRadius: '16px', 
-                      overflow: 'hidden', 
-                      border: '1px solid #e2e8f0', 
+                  <div
+                    key={service.id}
+                    onClick={() => onSelectVenue && onSelectVenue(service)}
+                    style={{
+                      background: '#ffffff',
+                      borderRadius: '16px',
+                      overflow: 'hidden',
+                      border: '1px solid #e2e8f0',
                       boxShadow: '0 4px 16px rgba(0,0,0,0.04)',
                       display: 'flex',
                       flexDirection: 'column',
-                      cursor: onSelectVendor ? 'pointer' : 'default',
+                      cursor: onSelectVenue ? 'pointer' : 'default',
                       transition: 'transform 0.2s ease, box-shadow 0.2s ease'
                     }}
                     onMouseEnter={(e) => {
@@ -498,17 +520,42 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                       e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.04)';
                     }}
                   >
-                    <div style={{ height: '210px', position: 'relative', overflow: 'hidden', background: '#f1f5f9' }}>
-                      <img
-                        src={coverImg}
-                        onError={(e) => handleImageError(e, service.vendor_type || 'DECORATION')}
-                        alt={service.business_name}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      />
+                    <div style={{
+                      height: '210px',
+                      position: 'relative',
+                      overflow: 'hidden',
+                      background: '#f1f5f9',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      {coverImg ? (
+                        <img
+                          src={coverImg}
+                          alt={service.title}
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                          }}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <div style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          gap: '8px',
+                          color: '#94a3b8'
+                        }}>
+                          <ImageOff size={32} />
+                          <span style={{ fontSize: '0.8rem' }}>No image available</span>
+                        </div>
+                      )}
+
                       <div style={{ position: 'absolute', top: '12px', left: '12px', display: 'flex', gap: '6px' }}>
                         <span style={{ background: '#0F8F7A', color: '#fff', fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '999px' }}>
-                          {service.vendor_type_display || service.vendor_type}
+                          {service.category_display || service.category}
                         </span>
+
                         {service.is_verified && (
                           <span style={{ background: '#16a34a', color: '#fff', fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '999px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <CheckCircle size={12} /> Verified
@@ -519,21 +566,23 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
                     <div style={{ padding: '22px', display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
                       <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0', lineHeight: 1.3 }}>
-                        {service.business_name}
+                        {service.title}
                       </h3>
-                      
+
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '0.88rem', marginBottom: '12px' }}>
                         <MapPin size={15} color="#0F8F7A" /> {service.location}
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', borderRadius: '10px', marginBottom: '16px', fontSize: '0.85rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#334155', fontWeight: 600 }}>
-                          <Briefcase size={15} color="#0F8F7A" /> {service.vendor_type_display || service.vendor_type}
+                          <Briefcase size={15} color="#0F8F7A" /> {service.category_display || service.category}
                         </div>
+
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: (service.review_count || 0) > 0 ? '#d97706' : '#64748b', fontWeight: 700 }}>
                           {(service.review_count || 0) > 0 ? (
                             <>
-                              <Star size={14} fill="#fbbf24" stroke="#d97706" /> {Number(service.rating).toFixed(1)} ({service.review_count} {service.review_count === 1 ? 'review' : 'reviews'})
+                              <Star size={14} fill="#fbbf24" stroke="#d97706" />
+                              {Number(service.rating).toFixed(1)} ({service.review_count} {service.review_count === 1 ? 'review' : 'reviews'})
                             </>
                           ) : (
                             <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>No reviews yet</span>
@@ -541,32 +590,32 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                         </div>
                       </div>
 
-                      <p style={{ 
-                        margin: '0 0 16px', 
-                        color: '#64748b', 
-                        fontSize: '0.85rem', 
+                      <p style={{
+                        margin: '0 0 16px',
+                        color: '#64748b',
+                        fontSize: '0.85rem',
                         lineHeight: 1.5,
                         display: '-webkit-box',
                         WebkitLineClamp: 2,
                         WebkitBoxOrient: 'vertical',
                         overflow: 'hidden'
                       }}>
-                        {service.description || 'Full professional event service with guaranteed delivery, direct communication, and quality assurance.'}
+                        {service.description}
                       </p>
 
                       <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
                         <div>
-                          <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Starting Rate</span>
+                          <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Starting Rate / Event</span>
                           <span style={{ color: '#0F8F7A', fontWeight: 800, fontSize: '1.15rem' }}>
-                            KES {Number(service.starting_price || 0).toLocaleString()}
+                            KES {Number(service.price_per_day || 0).toLocaleString()}
                           </span>
                         </div>
-                        
+
                         <div style={{ display: 'flex', gap: '8px' }}>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (onSelectVendor) onSelectVendor(service);
+                              if (onSelectVenue) onSelectVenue(service);
                             }}
                             style={{
                               padding: '8px 14px',
@@ -581,11 +630,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                           >
                             Details
                           </button>
-                          {onBookVendor && (
+
+                          {onBookVenue && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                onBookVendor(service);
+                                onBookVenue(service);
                               }}
                               style={{
                                 padding: '8px 16px',

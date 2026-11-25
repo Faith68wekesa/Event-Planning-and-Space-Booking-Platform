@@ -85,13 +85,14 @@ export const App: React.FC = () => {
     category: 'ALL',
     vendor_type: 'ALL',
     location: 'ALL',
-    max_price: 200000,
+    max_price: 5000000,
     min_capacity: 0,
     verified_only: false,
   });
 
   const [venues, setVenues] = useState<Venue[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [services, setServices] = useState<Venue[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [stats, setStats] = useState<PlatformStats>({
     total_venues: 0,
@@ -127,7 +128,14 @@ export const App: React.FC = () => {
     const fetchedVendors = await ApiService.getVendors(filters);
     const fetchedStats = await ApiService.getStats();
 
-    setVenues(fetchedVenues);
+    setVenues(fetchedVenues.filter(
+      (listing) => listing.listing_type === 'VENUE'
+    ));
+
+    setServices(fetchedVenues.filter(
+      (listing) => listing.listing_type === 'SERVICE'
+    ));
+
     setVendors(fetchedVendors);
     setStats(fetchedStats);
 
@@ -275,7 +283,7 @@ export const App: React.FC = () => {
     setSelectedVenue(venue);
     ApiService.trackInteraction({
       event_type: 'LISTING_CLICK',
-      listing_type: 'VENUE',
+      listing_type: venue.listing_type || 'VENUE',
       venue: venue.id,
       category: venue.category,
       source: source,
@@ -328,17 +336,15 @@ export const App: React.FC = () => {
                 }}
                 filters={filters}
                 onExploreVenues={() => setActiveTab('venues')}
-                onExploreVendors={() => setActiveTab('vendors')}
+                onExploreServices={() => setActiveTab('services')}
                 onSelectVenue={(venue) => handleSelectVenueWithTracking(venue, 'landing_page')}
                 onBookVenue={(venue) => handleInterceptBook(venue, 'venue')}
-                onSelectVendor={(vendor) => handleSelectVendorWithTracking(vendor, 'landing_page')}
-                onBookVendor={(vendor) => handleInterceptBook(vendor, 'vendor')}
                 onOpenAdmin={handleOpenAdmin}
                 currentUser={currentUser}
               />
             ) : (
               <>
-                {(activeTab === 'venues' || activeTab === 'vendors') && (
+                {(activeTab === 'venues' || activeTab === 'services' || activeTab === 'vendors') && (
                   <>
                     <HeroSearch
                       filters={filters}
@@ -361,13 +367,17 @@ export const App: React.FC = () => {
                       <FilterSidebar
                         filters={filters}
                         setFilters={setFilters}
-                        activeTab={activeTab as 'venues' | 'vendors'}
+                        activeTab={activeTab as 'venues' | 'services' | 'vendors'}
                       />
 
                       <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                           <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1e293b' }}>
-                            {activeTab === 'venues' ? `Available Event Venues (${venues.length})` : `Verified Planners & Services (${vendors.length})`}
+                            {activeTab === 'venues'
+                              ? `Available Event Venues (${venues.length})`
+                              : activeTab === 'services'
+                                ? `Available Event Services (${services.length})`
+                                : `Verified Planners & Services (${vendors.length})`}
                           </h2>
                         </div>
 
@@ -376,6 +386,13 @@ export const App: React.FC = () => {
                             venues={venues}
                             onSelectVenue={(venue) => handleSelectVenueWithTracking(venue, 'catalog_grid')}
                             onBookVenue={(venue) => handleInterceptBook(venue, 'venue')}
+                          />
+                        ) : activeTab === 'services' ? (
+                          <VenueGrid
+                            venues={services}
+                            onSelectVenue={(service) => handleSelectVenueWithTracking(service, 'catalog_grid')}
+                            onBookVenue={(service) => handleInterceptBook(service, 'venue')}
+                            emptyMessage="No Services Found"
                           />
                         ) : (
                           <VendorGrid
@@ -609,3 +626,4 @@ export const App: React.FC = () => {
 };
 
 export default App;
+

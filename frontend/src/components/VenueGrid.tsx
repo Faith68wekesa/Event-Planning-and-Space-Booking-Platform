@@ -1,20 +1,26 @@
 import React from 'react';
 import type { Venue } from '../types';
 import { VenueCard } from './VenueCard';
-import { MapPin } from 'lucide-react';
 
 interface VenueGridProps {
   venues: Venue[];
   onSelectVenue: (venue: Venue) => void;
   onBookVenue: (venue: Venue) => void;
+  emptyMessage?: string;
 }
 
-export const VenueGrid: React.FC<VenueGridProps> = ({ venues, onSelectVenue, onBookVenue }) => {
+export const VenueGrid: React.FC<VenueGridProps> = ({
+  venues,
+  onSelectVenue,
+  onBookVenue,
+  emptyMessage = 'No Venues Found'
+}) => {
   if (venues.length === 0) {
     return (
       <div className="card" style={{ padding: '48px', textAlign: 'center', margin: '20px 0' }}>
-        <MapPin size={48} color="var(--text-muted)" style={{ marginBottom: '16px', display: 'inline-block' }} />
-        <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '8px' }}>No Venues Found</h3>
+        <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '8px' }}>
+          {emptyMessage}
+        </h3>
         <p style={{ color: 'var(--text-muted)' }}>Try adjusting your search filters or selecting a different location.</p>
       </div>
     );
@@ -38,3 +44,4 @@ export const VenueGrid: React.FC<VenueGridProps> = ({ venues, onSelectVenue, onB
     </div>
   );
 };
+

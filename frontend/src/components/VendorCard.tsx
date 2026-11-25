@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Vendor } from '../types';
-import { ShieldCheck, MapPin, Star, Award, ArrowRight } from 'lucide-react';
+import { ShieldCheck, MapPin, Star, Award, ArrowRight, ImageOff } from 'lucide-react';
 
 interface VendorCardProps {
   vendor: Vendor;
@@ -9,9 +9,7 @@ interface VendorCardProps {
 }
 
 export const VendorCard: React.FC<VendorCardProps> = ({ vendor, onSelect, onBook }) => {
-  const imageCover = vendor.portfolio_images && vendor.portfolio_images.length > 0 
-    ? vendor.portfolio_images[0] 
-    : 'https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&w=800&q=80';
+  const imageCover = vendor.portfolio_images?.[0]?.trim() || '';
 
   return (
     <div style={{
@@ -24,12 +22,36 @@ export const VendorCard: React.FC<VendorCardProps> = ({ vendor, onSelect, onBook
       border: '1px solid #e2e8f0',
       boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)'
     }}>
-      <div style={{ position: 'relative', height: '180px', overflow: 'hidden' }}>
-        <img
-          src={imageCover}
-          alt={vendor.business_name}
-          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-        />
+      <div style={{
+        position: 'relative',
+        height: '180px',
+        overflow: 'hidden',
+        background: '#f1f5f9',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        {imageCover ? (
+          <img
+            src={imageCover}
+            alt={vendor.business_name}
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+            }}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        ) : (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '8px',
+            color: '#94a3b8'
+          }}>
+            <ImageOff size={32} />
+            <span style={{ fontSize: '0.8rem' }}>No image available</span>
+          </div>
+        )}
         <div style={{ position: 'absolute', top: '12px', left: '12px' }}>
           {vendor.is_verified ? (
             <span className="badge-verified">

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import type { Venue, Review } from '../types';
-import { X, ShieldCheck, MapPin, Users, Star, CheckCircle2, ArrowRight, MessageCircle, Sparkles, UserCheck, Calendar, AlertCircle } from 'lucide-react';
+import { X, ShieldCheck, MapPin, Users, Star, CheckCircle2, ArrowRight, MessageCircle, Sparkles, UserCheck, Calendar, AlertCircle, ImageOff } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { cleanImageUrl, handleImageError, getCategoryFallback } from '../utils/imageUtils';
+import { cleanImageUrl } from '../utils/imageUtils';
 import { ApiService } from '../services/api';
 
 interface VenueModalProps {
@@ -171,13 +171,38 @@ export const VenueModal: React.FC<VenueModalProps> = ({ venue, currentUser, onCl
           <X size={18} />
         </button>
 
-        <div style={{ height: '300px', borderRadius: '16px', overflow: 'hidden', position: 'relative', marginBottom: '24px' }}>
-          <img
-            src={cleanImageUrl(venue.image_url, venue.category) || getCategoryFallback(venue.category, 'VENUE')}
-            onError={(e) => handleImageError(e, venue.category || 'VENUE')}
-            alt={venue.title}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          />
+        <div style={{
+          height: '300px',
+          borderRadius: '16px',
+          overflow: 'hidden',
+          position: 'relative',
+          marginBottom: '24px',
+          background: '#f1f5f9',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          {cleanImageUrl(venue.image_url) ? (
+            <img
+              src={cleanImageUrl(venue.image_url)}
+              alt={venue.title}
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          ) : (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '8px',
+              color: '#94a3b8'
+            }}>
+              <ImageOff size={36} />
+              <span style={{ fontSize: '0.85rem' }}>No image available</span>
+            </div>
+          )}
           <div style={{ position: 'absolute', top: '16px', left: '16px' }}>
             {venue.is_verified ? (
               <span className="badge-verified">

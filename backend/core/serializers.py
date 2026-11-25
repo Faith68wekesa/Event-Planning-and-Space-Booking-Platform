@@ -138,6 +138,64 @@ class VenueSerializer(serializers.ModelSerializer):
             return obj.vendor.user_id
         return None
 
+    def validate(self, attrs):
+        listing_type = attrs.get(
+            'listing_type',
+            self.instance.listing_type if self.instance
+            else Venue._meta.get_field('listing_type').get_default()
+        )
+
+        category = attrs.get(
+            'category',
+            self.instance.category if self.instance else None
+        )
+
+        capacity = attrs.get(
+            'capacity',
+            self.instance.capacity if self.instance else None
+        )
+
+        service_categories = {
+            'PHOTOGRAPHY',
+            'CATERING',
+            'DECORATION',
+            'ENTERTAINMENT',
+            'PLANNING',
+            'SOUND',
+        }
+
+        venue_categories = {
+            'WEDDING',
+            'CONFERENCE',
+            'BIRTHDAY',
+            'OUTDOOR',
+            'PARTY',
+            'EXHIBITION',
+        }
+
+        if listing_type == 'SERVICE' and category not in service_categories:
+            raise serializers.ValidationError({
+                'category': 'Select a valid service category.'
+            })
+
+        if listing_type == 'VENUE' and category not in venue_categories:
+            raise serializers.ValidationError({
+                'category': 'Select a valid venue category.'
+            })
+
+        if capacity is not None:
+            if capacity < 0:
+                raise serializers.ValidationError({
+                    'capacity': 'Capacity cannot be negative.'
+                })
+
+            if listing_type == 'VENUE' and capacity <= 0:
+                raise serializers.ValidationError({
+                    'capacity': 'Venue capacity must be greater than zero.'
+                })
+
+        return attrs
+
     def to_internal_value(self, data):
         if hasattr(data, 'copy'):
             data = data.copy()

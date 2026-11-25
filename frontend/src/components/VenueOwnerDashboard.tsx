@@ -18,7 +18,7 @@ import {
   BarChart3
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { cleanImageUrl, handleImageError, DEFAULT_SPACE_IMAGE } from '../utils/imageUtils';
+import { cleanImageUrl } from '../utils/imageUtils';
 import { CreateListingPage } from './CreateListingPage';
 import { VerificationDocumentsSection } from './VerificationDocumentsSection';
 import { VenueOwnerAnalyticsSection } from './VenueOwnerAnalyticsSection';
@@ -239,7 +239,7 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
         price_per_hour: Number(newVenue.price_per_hour),
         description: newVenue.description,
         amenities: amenitiesList,
-        image_url: cleanImageUrl(newVenue.image_url) || DEFAULT_SPACE_IMAGE,
+        image_url: cleanImageUrl(newVenue.image_url),
       });
 
       setShowAddModal(false);
@@ -681,13 +681,44 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
                       flexDirection: 'column',
                     }}
                   >
-                    <div style={{ height: '180px', position: 'relative', overflow: 'hidden' }}>
-                      <img
-                        src={venue.image_url || DEFAULT_SPACE_IMAGE}
-                        onError={(e) => handleImageError(e, DEFAULT_SPACE_IMAGE)}
-                        alt={venue.title}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      />
+                    <div
+                      style={{
+                        height: '180px',
+                        position: 'relative',
+                        overflow: 'hidden',
+                        background: '#f1f5f9'
+                      }}
+                    >
+                      {venue.image_url?.trim() ? (
+                        <img
+                          src={venue.image_url}
+                          alt={venue.title}
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                            const placeholder = e.currentTarget.nextElementSibling;
+                            if (placeholder instanceof HTMLElement) {
+                              placeholder.style.display = 'flex';
+                            }
+                          }}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : null}
+
+                      <div
+                        style={{
+                          display: venue.image_url?.trim() ? 'none' : 'flex',
+                          position: 'absolute',
+                          inset: 0,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexDirection: 'column',
+                          gap: '6px',
+                          color: '#94a3b8'
+                        }}
+                      >
+                        <ImageIcon size={28} />
+                        <span style={{ fontSize: '0.75rem' }}>No image available</span>
+                      </div>
                       <div
                         style={{
                           position: 'absolute',
@@ -1512,13 +1543,46 @@ export const VenueOwnerDashboard: React.FC<VenueOwnerDashboardProps> = ({
                     <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0F8F7A', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <ImageIcon size={14} /> Live Image Preview:
                     </div>
-                    <div style={{ height: '140px', borderRadius: '8px', overflow: 'hidden', background: '#e2e8f0' }}>
-                      <img 
-                        src={newVenue.image_url} 
-                        alt="Preview" 
-                        onError={(e) => handleImageError(e, DEFAULT_SPACE_IMAGE)}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                    <div
+                      style={{
+                        height: '140px',
+                        borderRadius: '8px',
+                        overflow: 'hidden',
+                        background: '#f1f5f9',
+                        position: 'relative'
+                      }}
+                    >
+                      <img
+                        src={newVenue.image_url}
+                        alt="Preview"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          const placeholder = e.currentTarget.nextElementSibling;
+                          if (placeholder instanceof HTMLElement) {
+                            placeholder.style.display = 'flex';
+                          }
+                        }}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover'
+                        }}
                       />
+                      <div
+                        style={{
+                          display: 'none',
+                          position: 'absolute',
+                          inset: 0,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexDirection: 'column',
+                          gap: '6px',
+                          color: '#94a3b8'
+                        }}
+                      >
+                        <ImageIcon size={28} />
+                        <span style={{ fontSize: '0.75rem' }}>Image unavailable</span>
+                      </div>
                     </div>
                   </div>
                 ) : (

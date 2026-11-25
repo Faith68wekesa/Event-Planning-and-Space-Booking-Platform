@@ -2185,6 +2185,65 @@ def get_actor_user(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+def upload_listing_image(request):
+    user = getattr(request, 'user', None)
+    if not user or not user.is_authenticated:
+        return Response(
+            {'error': 'Authentication required.'},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
+
+    if user.role not in ['PROVIDER', 'VENDOR', 'VENUE_OWNER']:
+        return Response(
+            {'error': 'Only providers can upload listing images.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    upload = request.FILES.get('file')
+
+    if not upload:
+        return Response(
+            {'error': 'No image file provided.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    allowed_extensions = ['.jpg', '.jpeg', '.png', '.webp']
+    extension = os.path.splitext(upload.name)[1].lower()
+
+    if (
+        extension not in allowed_extensions
+        or not (upload.content_type or '').startswith('image/')
+    ):
+        return Response(
+            {'error': 'Only JPG, JPEG, PNG, and WEBP images are allowed.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if upload.size > 5 * 1024 * 1024:
+        return Response(
+            {'error': 'Image size must not exceed 5 MB.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    fs = FileSystemStorage(location=settings.MEDIA_ROOT)
+    filename = (
+        f"listing_{user.id}_"
+        f"{timezone.now().strftime('%Y%m%d%H%M%S%f')}"
+        f"{extension}"
+    )
+    saved_name = fs.save(filename, upload)
+    file_url = request.build_absolute_uri(
+        settings.MEDIA_URL + saved_name
+    )
+
+    return Response(
+        {'url': file_url},
+        status=status.HTTP_201_CREATED
+    )
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
 def track_user_interaction(request):
     """
     Endpoint for recording customer interactions securely.

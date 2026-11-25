@@ -376,7 +376,7 @@ export interface UserInteractionEvent {
   event_type: InteractionEventType;
   user?: number | null;
   session_id?: string;
-  listing_type?: 'VENUE' | 'VENDOR';
+  listing_type?: 'VENUE' | 'SERVICE' | 'VENDOR';
   venue?: number | null;
   vendor?: number | null;
   category?: string;

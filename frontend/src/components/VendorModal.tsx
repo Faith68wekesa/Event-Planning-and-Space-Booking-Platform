@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import type { Vendor, Review } from '../types';
-import { X, ShieldCheck, MapPin, Star, ArrowRight, MessageCircle, UserCheck, Calendar, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, ShieldCheck, MapPin, Star, ArrowRight, MessageCircle, UserCheck, Calendar, CheckCircle2, AlertCircle, ImageOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ApiService } from '../services/api';
-import { cleanImageUrl, handleImageError, getCategoryFallback } from '../utils/imageUtils';
+import { cleanImageUrl } from '../utils/imageUtils';
 
 interface VendorModalProps {
   vendor: Vendor;
@@ -142,8 +142,11 @@ export const VendorModal: React.FC<VendorModalProps> = ({ vendor, currentUser, o
     };
   }, [vendor.id]);
 
-  const rawCover = (vendor.portfolio_images && vendor.portfolio_images.length > 0) ? vendor.portfolio_images[0] : vendor.logo_url;
-  const cover = cleanImageUrl(rawCover, vendor.vendor_type) || getCategoryFallback(vendor.vendor_type, 'SERVICE');
+  const rawCover = (vendor.portfolio_images && vendor.portfolio_images.length > 0)
+    ? vendor.portfolio_images[0]
+    : vendor.logo_url;
+
+  const cover = cleanImageUrl(rawCover);
 
   const displayRating = reviews.length > 0
     ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1)
@@ -175,8 +178,38 @@ export const VendorModal: React.FC<VendorModalProps> = ({ vendor, currentUser, o
           <X size={18} />
         </button>
 
-        <div style={{ height: '260px', borderRadius: '16px', overflow: 'hidden', position: 'relative', marginBottom: '20px' }}>
-          <img src={cover} onError={(e) => handleImageError(e, vendor.vendor_type || 'DECORATION')} alt={vendor.business_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        <div style={{
+          height: '260px',
+          borderRadius: '16px',
+          overflow: 'hidden',
+          position: 'relative',
+          marginBottom: '20px',
+          background: '#f1f5f9',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          {cover ? (
+            <img
+              src={cover}
+              alt={vendor.business_name}
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          ) : (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '8px',
+              color: '#94a3b8'
+            }}>
+              <ImageOff size={36} />
+              <span style={{ fontSize: '0.85rem' }}>No image available</span>
+            </div>
+          )}
           <div style={{ position: 'absolute', top: '16px', left: '16px' }}>
             {vendor.is_verified ? (
               <span className="badge-verified"><ShieldCheck size={16} /> Verified Platform Vendor</span>

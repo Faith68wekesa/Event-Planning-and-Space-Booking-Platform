@@ -1,7 +1,7 @@
 import React from 'react';
 import type { Venue } from '../types';
-import { ShieldCheck, MapPin, Users, Star, ArrowRight, CheckCircle2 } from 'lucide-react';
-import { cleanImageUrl, handleImageError, getCategoryFallback } from '../utils/imageUtils';
+import { ShieldCheck, MapPin, Users, Star, ArrowRight, CheckCircle2, ImageOff } from 'lucide-react';
+import { cleanImageUrl } from '../utils/imageUtils';
 
 interface VenueCardProps {
   venue: Venue;
@@ -10,6 +10,8 @@ interface VenueCardProps {
 }
 
 export const VenueCard: React.FC<VenueCardProps> = ({ venue, onSelect, onBook }) => {
+  const isService = venue.listing_type === 'SERVICE';
+
   return (
     <div style={{
       display: 'flex',
@@ -21,13 +23,36 @@ export const VenueCard: React.FC<VenueCardProps> = ({ venue, onSelect, onBook })
       border: '1px solid #e2e8f0',
       boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)'
     }}>
-      <div style={{ position: 'relative', height: '220px', overflow: 'hidden' }}>
-        <img
-          src={cleanImageUrl(venue.image_url, venue.category) || getCategoryFallback(venue.category, 'VENUE')}
-          onError={(e) => handleImageError(e, venue.category || 'VENUE')}
-          alt={venue.title}
-          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-        />
+      <div style={{
+        position: 'relative',
+        height: '220px',
+        overflow: 'hidden',
+        background: '#f1f5f9',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        {cleanImageUrl(venue.image_url) ? (
+          <img
+            src={cleanImageUrl(venue.image_url)}
+            alt={venue.title}
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+            }}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        ) : (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '8px',
+            color: '#94a3b8'
+          }}>
+            <ImageOff size={32} />
+            <span style={{ fontSize: '0.8rem' }}>No image available</span>
+          </div>
+        )}
         <div style={{
           position: 'absolute',
           top: '12px',
@@ -37,7 +62,7 @@ export const VenueCard: React.FC<VenueCardProps> = ({ venue, onSelect, onBook })
         }}>
           {venue.approval_status === 'APPROVED' || venue.is_verified ? (
             <span className="badge-verified">
-              <ShieldCheck size={14} /> Verified Venue
+              <ShieldCheck size={14} /> {isService ? 'Verified Service' : 'Verified Venue'}
             </span>
           ) : (
             <span className="badge-unverified" style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a' }}>
@@ -82,9 +107,11 @@ export const VenueCard: React.FC<VenueCardProps> = ({ venue, onSelect, onBook })
           <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <MapPin size={14} color="#0d8a73" /> {venue.location}
           </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#ecfdf5', color: '#059669', padding: '2px 8px', borderRadius: '6px', fontWeight: 700, fontSize: '0.78rem' }}>
-            <Users size={13} color="#059669" /> Capacity: {venue.capacity} guests
-          </span>
+          {!isService && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#ecfdf5', color: '#059669', padding: '2px 8px', borderRadius: '6px', fontWeight: 700, fontSize: '0.78rem' }}>
+              <Users size={13} color="#059669" /> Capacity: {venue.capacity} guests
+            </span>
+          )}
         </div>
 
         <p style={{
@@ -125,7 +152,7 @@ export const VenueCard: React.FC<VenueCardProps> = ({ venue, onSelect, onBook })
 
         <div style={{ marginTop: 'auto', paddingTop: '12px', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Rate / Day</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>{isService ? 'Starting Rate / Event' : 'Rate / Day'}</span>
             <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#059669' }}>
               KES {venue.price_per_day.toLocaleString()}
             </span>
@@ -146,7 +173,7 @@ export const VenueCard: React.FC<VenueCardProps> = ({ venue, onSelect, onBook })
                 onClick={() => onBook(venue)}
                 style={{ padding: '8px 14px', fontSize: '0.82rem' }}
               >
-                Book <ArrowRight size={14} />
+                {isService ? 'Book Service' : 'Book Venue'} <ArrowRight size={14} />
               </button>
             ) : (
               <button

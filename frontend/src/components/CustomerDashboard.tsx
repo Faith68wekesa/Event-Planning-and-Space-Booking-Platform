@@ -25,7 +25,8 @@ import {
   RotateCw,
   Send,
   CalendarDays,
-  AlertTriangle
+  AlertTriangle,
+  ImageOff
 } from 'lucide-react';
 import { ApiService } from '../services/api';
 import toast from 'react-hot-toast';
@@ -526,7 +527,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
       ? `${b.vendor_details.business_name} (Vendor)`
       : `${b.event_title} (${b.event_type})`;
     const location = b.venue_details?.location || b.vendor_details?.location || 'Not specified';
-    const img = b.venue_details?.image_url || 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=600&q=80';
+    const img = b.venue_details?.image_url || '';
     
     const displayStatus = (b.status === 'APPROVED' || (b.status as any) === 'CONFIRMED')
       ? 'Confirmed'
@@ -608,7 +609,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
     location: v.location || 'Nairobi, Kenya',
     rating: v.rating || 5.0,
     reviews: v.review_count || 0,
-    image: v.image_url || 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=600&q=80',
+    image: v.image_url || '',
   }));
 
   return (
@@ -1592,11 +1593,49 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                       upcomingDisplayList.slice(0, 3).map((item) => (
                         <div key={item.id} className="customer-booking-row">
                           <div className="customer-booking-main">
-                            <img
-                              src={item.image}
-                              alt={item.title}
-                              className="customer-booking-thumb"
-                            />
+                            <div
+                              style={{
+                                width: '80px',
+                                height: '80px',
+                                flexShrink: 0,
+                                position: 'relative',
+                                overflow: 'hidden',
+                                borderRadius: '8px',
+                                background: '#f1f5f9',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
+                            >
+                              {item.image?.trim() ? (
+                                <img
+                                  src={item.image}
+                                  alt={item.title}
+                                  className="customer-booking-thumb"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                    const placeholder = e.currentTarget.nextElementSibling;
+                                    if (placeholder instanceof HTMLElement) {
+                                      placeholder.style.display = 'flex';
+                                    }
+                                  }}
+                                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                />
+                              ) : null}
+
+                              <div
+                                style={{
+                                  display: item.image?.trim() ? 'none' : 'flex',
+                                  position: 'absolute',
+                                  inset: 0,
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  color: '#94a3b8'
+                                }}
+                              >
+                                <ImageOff size={24} />
+                              </div>
+                            </div>
                             <div className="customer-booking-info">
                               <h3 className="customer-booking-name">{item.title}</h3>
                               <div className="customer-booking-subtext">
@@ -1824,7 +1863,45 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                           className="customer-featured-card"
                           onClick={() => (onNavigate ? onNavigate('venues') : null)}
                         >
-                          <img src={ven.image} alt={ven.name} className="customer-featured-img" />
+                          <div
+                            style={{
+                              height: '120px',
+                              position: 'relative',
+                              overflow: 'hidden',
+                              background: '#f1f5f9',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}
+                          >
+                            {ven.image?.trim() ? (
+                              <img
+                                src={ven.image}
+                                alt={ven.name}
+                                className="customer-featured-img"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                  const placeholder = e.currentTarget.nextElementSibling;
+                                  if (placeholder instanceof HTMLElement) {
+                                    placeholder.style.display = 'flex';
+                                  }
+                                }}
+                              />
+                            ) : null}
+
+                            <div
+                              style={{
+                                display: ven.image?.trim() ? 'none' : 'flex',
+                                position: 'absolute',
+                                inset: 0,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: '#94a3b8'
+                              }}
+                            >
+                              <ImageOff size={26} />
+                            </div>
+                          </div>
                           <div className="customer-featured-body">
                             <div className="customer-featured-name">{ven.name}</div>
                             <div className="customer-featured-loc">

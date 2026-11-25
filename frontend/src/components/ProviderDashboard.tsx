@@ -26,10 +26,11 @@ import {
   Layers,
   Send,
   ShieldCheck,
-  Clock
+  Clock,
+  ImageOff
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { cleanImageUrl, handleImageError, DEFAULT_SPACE_IMAGE, DEFAULT_SERVICE_IMAGE } from '../utils/imageUtils';
+import { cleanImageUrl } from '../utils/imageUtils';
 import { CreateListingPage } from './CreateListingPage';
 import { ProviderAvailabilityDashboard } from './ProviderAvailabilityDashboard';
 
@@ -369,7 +370,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
         price_per_hour: Number(newSpace.price_per_hour),
         description: newSpace.description,
         amenities: amenitiesList,
-        image_url: cleanImageUrl(newSpace.image_url) || DEFAULT_SPACE_IMAGE,
+        image_url: cleanImageUrl(newSpace.image_url),
       });
 
       toast.success("Event space submitted! Awaiting verification.");
@@ -429,7 +430,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
         capacity: 0,
         price_per_day: Number(newService.price_per_day),
         description: `${newService.description} (${newService.pricing_type})`,
-        image_url: cleanImageUrl(newService.image_url) || DEFAULT_SERVICE_IMAGE,
+        image_url: cleanImageUrl(newService.image_url),
       });
 
       if (currentVendor && (Number(currentVendor.starting_price || 0) <= 0 || Number(newService.price_per_day) < Number(currentVendor.starting_price))) {
@@ -1067,13 +1068,34 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '16px' }}>
                       {filtered.slice(0, 6).map(item => (
                         <div key={`${item.itemKind}-${item.id}`} className="listing-card" style={{ background: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
-                          <div style={{ position: 'relative', height: '150px', background: '#f1f5f9' }}>
-                            <img
-                              src={cleanImageUrl(item.image_url) || (item.itemKind === 'VENUE' ? DEFAULT_SPACE_IMAGE : DEFAULT_SERVICE_IMAGE)}
-                              alt={item.title}
-                              onError={(e) => handleImageError(e, item.itemKind === 'VENUE' ? DEFAULT_SPACE_IMAGE : DEFAULT_SERVICE_IMAGE)}
-                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                            />
+                          <div style={{ position: 'relative', height: '150px', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {cleanImageUrl(item.image_url) ? (
+                              <img
+                                src={cleanImageUrl(item.image_url)}
+                                alt={item.title}
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                  const placeholder = e.currentTarget.nextElementSibling;
+                                  if (placeholder instanceof HTMLElement) placeholder.style.display = 'flex';
+                                }}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              />
+                            ) : null}
+                            <div
+                              style={{
+                                display: cleanImageUrl(item.image_url) ? 'none' : 'flex',
+                                position: 'absolute',
+                                inset: 0,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexDirection: 'column',
+                                gap: '6px',
+                                color: '#94a3b8'
+                              }}
+                            >
+                              <ImageOff size={28} />
+                              <span style={{ fontSize: '0.75rem' }}>No image available</span>
+                            </div>
                             <span 
                               style={{ 
                                 position: 'absolute', 
@@ -1327,10 +1349,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
               <div className="listing-grid">
                 {filteredListings.map(item => {
                   const isVenue = item.listingType === 'VENUE';
-
-                  const fallbackImage = isVenue
-                    ? DEFAULT_SPACE_IMAGE
-                    : DEFAULT_SERVICE_IMAGE;
+                  const imageUrl = cleanImageUrl(item.image_url);
 
                   return (
                     <div
@@ -1344,16 +1363,40 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                           background: '#f1f5f9'
                         }}
                       >
-                        <img
-                          src={cleanImageUrl(item.image_url) || fallbackImage}
-                          alt={item.title}
-                          onError={e => handleImageError(e, fallbackImage)}
+                        {imageUrl ? (
+                          <img
+                            src={imageUrl}
+                            alt={item.title}
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                              const placeholder = e.currentTarget.nextElementSibling;
+                              if (placeholder instanceof HTMLElement) {
+                                placeholder.style.display = 'flex';
+                              }
+                            }}
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover'
+                            }}
+                          />
+                        ) : null}
+
+                        <div
                           style={{
-                            width: '100%',
-                            height: '100%',
-                            objectFit: 'cover'
+                            display: imageUrl ? 'none' : 'flex',
+                            position: 'absolute',
+                            inset: 0,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexDirection: 'column',
+                            gap: '6px',
+                            color: '#94a3b8'
                           }}
-                        />
+                        >
+                          <ImageOff size={28} />
+                          <span style={{ fontSize: '0.75rem' }}>No image available</span>
+                        </div>
 
                         <div
                           style={{

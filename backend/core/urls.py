@@ -6,7 +6,7 @@ from .views import (
     VendorDashboardView, VendorBookingsView,
     VenueOwnerDashboardView, VenueOwnerBookingsView,
     send_otp, verify_otp, reset_password,
-    upload_profile_picture,
+    upload_profile_picture, upload_listing_image,
     register_user, login_user, request_role,
     NotificationViewSet, CustomerReminderPreferenceView,
     refresh_all_ratings, VerificationDocumentViewSet,
@@ -58,6 +58,7 @@ urlpatterns = [
     path('otp/verify/', verify_otp, name='verify-otp'),
     path('otp/reset-password/', reset_password, name='reset-password'),
     path('users/<int:user_id>/upload-avatar/', upload_profile_picture, name='upload-avatar'),
+    path('upload-image/', upload_listing_image, name='upload-image'),
     path('reminder-preferences/', CustomerReminderPreferenceView.as_view(), name='reminder-preferences'),
 ]
 

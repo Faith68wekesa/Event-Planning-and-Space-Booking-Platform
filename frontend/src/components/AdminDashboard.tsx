@@ -6,7 +6,7 @@ import {
   Users, Calendar, Star, Trash2, Edit3, RefreshCw,
   Search, CheckCircle2, ArrowUpRight, DollarSign,
   UserX, Shield, AlertCircle, ShieldAlert, Lock, ArrowLeft, FileText, AlertTriangle, Menu,
-  Download, BarChart3
+  Download, BarChart3, ImageOff
 } from 'lucide-react';
 import { ApiService } from '../services/api';
 import { toast } from 'react-hot-toast';
@@ -14,7 +14,7 @@ import { AdminSidebar } from './AdminSidebar';
 import type { AdminMenuItemId } from './AdminSidebar';
 import { TrendLineChart, HorizontalBarChart, StatusDistributionChart, ConversionFunnelChart, PeakDaysBarChart } from './AnalyticsCharts';
 import './admin-sidebar.css';
-import { cleanImageUrl, handleImageError, getCategoryFallback } from '../utils/imageUtils';
+import { cleanImageUrl } from '../utils/imageUtils';
 
 interface AdminDashboardProps {
   venues: Venue[];
@@ -1654,12 +1654,43 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <tr key={v.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                         <td style={{ padding: '14px 16px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <img
-                              src={cleanImageUrl(v.image_url, v.category) || getCategoryFallback(v.category, 'SERVICE')}
-                              onError={(e) => handleImageError(e, v.category || 'SERVICE')}
-                              alt={v.title}
-                              style={{ width: '48px', height: '48px', borderRadius: '10px', objectFit: 'cover' }}
-                            />
+                            <div
+                              style={{
+                                width: '48px',
+                                height: '48px',
+                                borderRadius: '10px',
+                                overflow: 'hidden',
+                                background: '#f1f5f9',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0
+                              }}
+                            >
+                              {cleanImageUrl(v.image_url) ? (
+                                <>
+                                  <img
+                                    src={cleanImageUrl(v.image_url)}
+                                    alt={v.title}
+                                    onError={(e) => {
+                                      e.currentTarget.style.display = 'none';
+                                      const placeholder = e.currentTarget.nextElementSibling;
+                                      if (placeholder instanceof HTMLElement) placeholder.style.display = 'flex';
+                                    }}
+                                    style={{
+                                      width: '100%',
+                                      height: '100%',
+                                      objectFit: 'cover'
+                                    }}
+                                  />
+                                  <div style={{ display: 'none', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
+                                    <ImageOff size={20} color="#94a3b8" />
+                                  </div>
+                                </>
+                              ) : (
+                                <ImageOff size={20} color="#94a3b8" />
+                              )}
+                            </div>
                             <div>
                               <div style={{ fontWeight: 700, color: '#1e293b' }}>{v.title}</div>
                               <div style={{ fontSize: '0.78rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
@@ -3193,16 +3224,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '0.9rem' }}>
-              {inspectVenueModal.image_url && (
-                <div style={{ textAlign: 'center', marginBottom: '8px' }}>
+              <div
+                style={{
+                  height: '200px',
+                  width: '100%',
+                  borderRadius: '10px',
+                  overflow: 'hidden',
+                  background: '#f1f5f9',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginBottom: '8px'
+                }}
+              >
+                {cleanImageUrl(inspectVenueModal.image_url) ? (
                   <img
-                    src={cleanImageUrl(inspectVenueModal.image_url, inspectVenueModal.category) || getCategoryFallback(inspectVenueModal.category, 'SERVICE')}
-                    onError={(e) => handleImageError(e, inspectVenueModal.category || 'SERVICE')}
+                    src={cleanImageUrl(inspectVenueModal.image_url)}
                     alt={inspectVenueModal.title}
-                    style={{ maxHeight: '200px', width: '100%', borderRadius: '10px', objectFit: 'cover' }}
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                      const placeholder = e.currentTarget.nextElementSibling;
+                      if (placeholder instanceof HTMLElement) placeholder.style.display = 'flex';
+                    }}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                   />
+                ) : null}
+                <div
+                  style={{
+                    display: cleanImageUrl(inspectVenueModal.image_url) ? 'none' : 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '8px',
+                    color: '#94a3b8'
+                  }}
+                >
+                  <ImageOff size={32} />
+                  <span style={{ fontSize: '0.8rem' }}>No image available</span>
                 </div>
-              )}
+              </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>

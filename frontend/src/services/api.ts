@@ -613,15 +613,21 @@ export const ApiService = {
       formData.append('file', file);
       const res = await fetch(`${API_BASE}/upload-image/`, {
         method: 'POST',
+        headers: getAuthHeaders(),
         body: formData,
       });
+
+      const data = await res.json();
+
       if (res.ok) {
-        const data = await res.json();
         return data.url;
       }
+
+      console.error('Failed to upload image:', data);
     } catch (e) {
       console.error('Failed to upload image:', e);
     }
+
     return null;
   },
   async uploadProfilePicture(userId: number, file: File): Promise<string | null> {
