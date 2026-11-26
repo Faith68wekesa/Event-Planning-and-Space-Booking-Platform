@@ -192,7 +192,15 @@ export const Navbar: React.FC<NavbarProps> = ({
                       </button>
 
                       <button 
-                        onClick={() => { setShowAccountMenu(false); setActiveTab('my-bookings'); setActiveRole('CUSTOMER'); }}
+                        onClick={() => {
+                          setShowAccountMenu(false);
+                          if (onRequestRole) {
+                            onRequestRole('CUSTOMER');
+                          } else {
+                            setActiveTab('my-bookings');
+                            setActiveRole('CUSTOMER');
+                          }
+                        }}
                         style={{ 
                           width: '100%', 
                           textAlign: 'left', 

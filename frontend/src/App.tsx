@@ -248,7 +248,10 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleRequestRole = async (role: 'CUSTOMER' | 'VENDOR' | 'VENUE_OWNER' | 'PROVIDER' | 'ADMIN') => {
+  const handleRequestRole = async (
+    role: 'CUSTOMER' | 'VENDOR' | 'VENUE_OWNER' | 'PROVIDER' | 'ADMIN',
+    nextTab: string = 'my-bookings'
+  ) => {
     if (!currentUser) return;
     if (role === 'ADMIN') {
       toast.error('Access Denied: Administrator roles cannot be requested.');
@@ -266,7 +269,7 @@ export const App: React.FC = () => {
         
         if (role === 'CUSTOMER') {
           setActiveRole('CUSTOMER');
-          setActiveTab('my-bookings');
+          setActiveTab(nextTab);
         } else {
           setActiveRole('PROVIDER');
           setActiveTab('provider-dashboard');
@@ -442,11 +445,7 @@ export const App: React.FC = () => {
                       setActiveRole('CUSTOMER');
                       setActiveTab('landing');
                     }}
-                    onExplore={() => {
-                      loadData();
-                      setActiveRole('CUSTOMER');
-                      setActiveTab('venues');
-                    }}
+                    onExplore={() => handleRequestRole('CUSTOMER', 'venues')}
                   />
                 )}
 
