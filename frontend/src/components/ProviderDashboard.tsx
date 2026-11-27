@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import type { Booking, Venue, BookingStatus, Vendor, VenueOwner, VenueCategory, User, Message, ConversationThread, Review } from '../types';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import type { Booking, Venue, BookingStatus, Vendor, VenueOwner, User, Message, ConversationThread, Review } from '../types';
 import { ApiService } from '../services/api';
 import './vendor-dashboard.css';
 import {
@@ -17,8 +17,12 @@ import {
   Star,
   Settings,
   LogOut,
+  Search,
+  Bell,
+  ChevronDown,
   ChevronRight,
-  Eye,
+  PanelLeftClose,
+  PanelLeftOpen,
   AlertCircle,
   Users,
   MessageSquare,
@@ -33,6 +37,8 @@ import toast from 'react-hot-toast';
 import { cleanImageUrl } from '../utils/imageUtils';
 import { CreateListingPage } from './CreateListingPage';
 import { ProviderAvailabilityDashboard } from './ProviderAvailabilityDashboard';
+
+const NYERI_COUNTY_LOCATION = 'Nyeri County, Kenya';
 
 interface ProviderDashboardProps {
   currentUser?: User | null;
@@ -50,6 +56,10 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   onExplore,
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'listings' | 'spaces' | 'services' | 'availability' | 'bookings' | 'calendar' | 'reviews' | 'messages' | 'profile' | 'settings' | 'create_listing'>('overview');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [providerSearchQuery, setProviderSearchQuery] = useState('');
+  const [showAccountMenu, setShowAccountMenu] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
   const [createListingDefaultMode, setCreateListingDefaultMode] = useState<'service' | 'venue'>('service');
   const [editingListing, setEditingListing] = useState<Venue | null>(null);
   
@@ -68,6 +78,26 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   const [liveVenueOwner, setLiveVenueOwner] = useState<VenueOwner | null>(currentVenueOwner || null);
 
   useEffect(() => {
+    if (!showAccountMenu) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && !accountMenuRef.current?.contains(event.target)) {
+        setShowAccountMenu(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowAccountMenu(false);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showAccountMenu]);
+
+  useEffect(() => {
     if (currentVendor) setLiveVendor(currentVendor);
   }, [currentVendor]);
 
@@ -77,8 +107,6 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
   const effectiveVendor = liveVendor || currentVendor;
   const effectiveVenueOwner = liveVenueOwner || currentVenueOwner;
-  const isLiveVerified = Boolean(effectiveVendor?.is_verified || effectiveVenueOwner?.is_verified);
-  const verificationStatus = effectiveVendor?.verification_status || effectiveVenueOwner?.verification_status || (isLiveVerified ? 'APPROVED' : 'PENDING');
 
   const businessName = effectiveVenueOwner?.business_name || effectiveVendor?.business_name || 'My Business';
   const location = effectiveVenueOwner?.location || effectiveVendor?.location || 'Nairobi';
@@ -117,8 +145,8 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   // New Space Form
   const [newSpace, setNewSpace] = useState({
     title: '',
-    category: 'WEDDING' as VenueCategory,
-    location: location || 'Nairobi',
+    category: 'WEDDING',
+    custom_category: '',
     address: '',
     capacity: 250,
     price_per_day: 65000,
@@ -132,6 +160,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   const [newService, setNewService] = useState({
     title: '',
     category: 'PHOTOGRAPHY',
+    custom_category: '',
     pricing_type: 'Per Event',
     price_per_day: 25000,
     description: '',
@@ -333,6 +362,14 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   // Add Space Submit
   const handleAddSpaceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const spaceCategory = newSpace.category === 'OTHER'
+      ? newSpace.custom_category.trim()
+      : newSpace.category;
+    if (!spaceCategory) {
+      setSpaceErrorNotice('Enter a category for your venue.');
+      return;
+    }
+
     let ownerId = currentVenueOwner?.id;
     let vendorId = currentVendor?.id;
     if (!ownerId && !vendorId && currentUser?.id) {
@@ -362,8 +399,8 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
         owner: ownerId,
         vendor: vendorId,
         title: newSpace.title,
-        category: newSpace.category,
-        location: newSpace.location,
+        category: spaceCategory,
+        location: NYERI_COUNTY_LOCATION,
         address: newSpace.address,
         capacity: Number(newSpace.capacity),
         price_per_day: Number(newSpace.price_per_day),
@@ -379,7 +416,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
       setNewSpace({
         title: '',
         category: 'WEDDING',
-        location: location || 'Nairobi',
+        custom_category: '',
         address: '',
         capacity: 250,
         price_per_day: 65000,
@@ -401,6 +438,14 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   // Add Service Submit
   const handleAddServiceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const serviceCategory = newService.category === 'OTHER'
+      ? newService.custom_category.trim()
+      : newService.category;
+    if (!serviceCategory) {
+      setServiceErrorNotice('Enter a category for your service.');
+      return;
+    }
+
     let vendorId = currentVendor?.id;
     let ownerId = currentVenueOwner?.id;
     if (!vendorId && !ownerId && currentUser?.id) {
@@ -424,8 +469,9 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
       await ApiService.addVenue({
         vendor: vendorId,
         owner: ownerId,
+        listing_type: 'SERVICE',
         title: newService.title,
-        category: newService.category as any,
+        category: serviceCategory,
         location: location || 'Nairobi',
         capacity: 0,
         price_per_day: Number(newService.price_per_day),
@@ -443,6 +489,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
       setNewService({
         title: '',
         category: 'PHOTOGRAPHY',
+        custom_category: '',
         pricing_type: 'Per Event',
         price_per_day: 25000,
         description: '',
@@ -542,13 +589,16 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
       item.listingType === listingTypeFilter;
 
     const approved = isListingPublished(item);
+    const searchTerm = providerSearchQuery.trim().toLowerCase();
+    const matchesSearch = !searchTerm || [item.title, item.category, item.location]
+      .some(value => String(value || '').toLowerCase().includes(searchTerm));
 
     const matchesStatus =
       listingStatusFilter === 'ALL' ||
       (listingStatusFilter === 'APPROVED' && approved) ||
       (listingStatusFilter === 'PENDING' && !approved);
 
-    return matchesType && matchesStatus;
+    return matchesType && matchesStatus && matchesSearch;
   });
 
   const filteredBookings = bookings.filter(b => {
@@ -592,22 +642,37 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   const vendorFirstName = currentUser?.first_name || (currentUser?.username ? currentUser.username.charAt(0).toUpperCase() + currentUser.username.slice(1) : 'Susan');
 
   return (
-    <div className="vendor-dashboard-layout">
+    <div className={`vendor-dashboard-layout ${isSidebarCollapsed ? 'vendor-sidebar-collapsed' : ''}`}>
       
       {/* 1. Signature Vendor Green Sidebar */}
       <aside className="vendor-sidebar">
         
         {/* Header Branding */}
         <div className="vendor-sidebar-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ width: '36px', height: '36px', background: 'rgba(255, 255, 255, 0.2)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff', fontWeight: 800, fontSize: '1.15rem' }}>
-              L
+          <button
+            type="button"
+            className="vendor-sidebar-brand"
+            onClick={() => setActiveTab('overview')}
+            title="Go to Vendor Dashboard"
+            aria-label="Go to Vendor Dashboard"
+          >
+            <div className="vendor-logo-mark">
+              <Calendar size={21} color="#5eead4" />
             </div>
-            <div>
+            <div className="vendor-brand-copy">
               <div style={{ fontWeight: 800, fontSize: '1.15rem', color: '#ffffff' }}>Locyfy</div>
-              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#a7f3d0' }}>Vendor Portal</div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#a7f3d0' }}>Vendor Dashboard</div>
             </div>
-          </div>
+          </button>
+          <button
+            type="button"
+            className="vendor-sidebar-collapse-btn"
+            onClick={() => setIsSidebarCollapsed((collapsed) => !collapsed)}
+            aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {isSidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+          </button>
         </div>
 
 
@@ -618,6 +683,8 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
           <button
             className={`vendor-sidebar-item ${activeTab === 'overview' ? 'active' : ''}`}
             onClick={() => setActiveTab('overview')}
+            aria-label="Overview"
+            title="Overview"
           >
             <LayoutDashboard size={18} /> Overview
           </button>
@@ -626,6 +693,8 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
           <button
             className={`vendor-sidebar-item ${activeTab === 'listings' ? 'active' : ''}`}
             onClick={() => setActiveTab('listings')}
+            aria-label="My Listings"
+            title="My Listings"
           >
             <Layers size={18} /> My Listings
             <span
@@ -647,6 +716,8 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
           <button
             className={`vendor-sidebar-item ${activeTab === 'availability' ? 'active' : ''}`}
             onClick={() => setActiveTab('availability')}
+            aria-label="Availability"
+            title="Availability"
           >
             <Clock size={18} /> Availability
           </button>
@@ -655,6 +726,8 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
           <button
             className={`vendor-sidebar-item ${activeTab === 'bookings' ? 'active' : ''}`}
             onClick={() => setActiveTab('bookings')}
+            aria-label="Booking Requests"
+            title="Booking Requests"
           >
             <CalendarCheck size={18} /> Booking Requests
             {pendingRequestsCount > 0 && (
@@ -668,6 +741,8 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
           <button
             className={`vendor-sidebar-item ${activeTab === 'calendar' ? 'active' : ''}`}
             onClick={() => setActiveTab('calendar')}
+            aria-label="Calendar"
+            title="Calendar"
           >
             <Calendar size={18} /> Calendar
           </button>
@@ -676,6 +751,8 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
           <button
             className={`vendor-sidebar-item ${activeTab === 'messages' ? 'active' : ''}`}
             onClick={() => setActiveTab('messages')}
+            aria-label="Messages"
+            title="Messages"
           >
             <MessageSquare size={18} /> Messages
             {(() => {
@@ -696,6 +773,8 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
           <button
             className={`vendor-sidebar-item ${activeTab === 'reviews' ? 'active' : ''}`}
             onClick={() => setActiveTab('reviews')}
+            aria-label="Reviews"
+            title="Reviews"
           >
             <Star size={18} /> Reviews
           </button>
@@ -704,6 +783,8 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
           <button
             className={`vendor-sidebar-item ${activeTab === 'profile' ? 'active' : ''}`}
             onClick={() => setActiveTab('profile')}
+            aria-label="Vendor Profile"
+            title="Vendor Profile"
           >
             <UserIcon size={18} /> Vendor Profile
           </button>
@@ -712,6 +793,8 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
           <button
             className={`vendor-sidebar-item ${activeTab === 'settings' ? 'active' : ''}`}
             onClick={() => setActiveTab('settings')}
+            aria-label="Settings"
+            title="Settings"
           >
             <Settings size={18} /> Settings
           </button>
@@ -720,21 +803,14 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
           {/* Footer Actions inside Sidebar */}
           <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)', padding: '16px 12px 0', marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {onExplore && (
-              <button 
-                onClick={onExplore}
-                className="vendor-sidebar-item"
-                style={{ background: 'rgba(255, 255, 255, 0.08)', color: '#ffffff', justifyContent: 'center', fontSize: '0.85rem' }}
-              >
-                <Eye size={16} /> Customer View
-              </button>
-            )}
             <button 
               onClick={onLogout}
               className="vendor-sidebar-item" 
+              aria-label="Log out"
+              title="Log out"
               style={{ color: '#fca5a5', justifyContent: 'center', fontSize: '0.85rem' }}
             >
-              <LogOut size={16} /> Sign Out
+              <LogOut size={16} /> Log out
             </button>
           </div>
         </nav>
@@ -742,6 +818,98 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
       {/* 2. Main Content Area */}
       <main className="vendor-main-content">
+        <header className="vendor-app-topbar">
+          <div className="vendor-search-box">
+            <Search size={18} />
+            <input
+              type="search"
+              placeholder="Search your venues, services, or listings..."
+              value={providerSearchQuery}
+              onChange={(event) => setProviderSearchQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && activeTab !== 'create_listing') {
+                  setActiveTab('listings');
+                }
+              }}
+            />
+          </div>
+
+          <div className="vendor-app-topbar-actions">
+            <button
+              type="button"
+              className="vendor-notification-btn"
+              onClick={() => setActiveTab('bookings')}
+              aria-label={`View booking requests${pendingRequestsCount ? ` (${pendingRequestsCount} pending)` : ''}`}
+              title="Booking requests"
+            >
+              <Bell size={19} />
+              {pendingRequestsCount > 0 && <span className="vendor-notification-badge">{pendingRequestsCount}</span>}
+            </button>
+            <div ref={accountMenuRef} className="vendor-account-menu-wrap">
+              <button
+                type="button"
+                className="vendor-profile-btn"
+                onClick={() => setShowAccountMenu((showing) => !showing)}
+                aria-label="Open account menu"
+                aria-expanded={showAccountMenu}
+                title="Account menu"
+              >
+                <span className="vendor-profile-avatar">
+                  {currentUser?.avatar_url ? (
+                    <img src={currentUser.avatar_url} alt="" />
+                  ) : (
+                    <UserIcon size={17} />
+                  )}
+                </span>
+                <ChevronDown size={15} />
+              </button>
+              {showAccountMenu && (
+                <div className="vendor-account-menu">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAccountMenu(false);
+                      setActiveTab('profile');
+                    }}
+                  >
+                    <UserIcon size={16} /> My Profile
+                  </button>
+                  {onExplore && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAccountMenu(false);
+                        onExplore();
+                      }}
+                    >
+                      <Calendar size={16} /> Customer Dashboard
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="active"
+                    onClick={() => {
+                      setShowAccountMenu(false);
+                      setActiveTab('overview');
+                    }}
+                  >
+                    <Building2 size={16} /> Vendor Dashboard
+                  </button>
+                  <button
+                    type="button"
+                    className="vendor-account-logout"
+                    onClick={() => {
+                      setShowAccountMenu(false);
+                      onLogout();
+                    }}
+                  >
+                    <LogOut size={16} /> Log out
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </header>
         
         {/* Top Header Row for non-overview tabs */}
         {activeTab !== 'overview' && activeTab !== 'create_listing' && (
@@ -804,7 +972,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
             <div className="vendor-hero-banner">
               <div className="vendor-hero-left">
                 <h1 className="vendor-hero-title">
-                  {greetingTime}, {vendorFirstName} 👋
+                  {greetingTime}, {vendorFirstName}
                 </h1>
                 <p className="vendor-hero-subtitle">
                   Manage your venues and services, track bookings, and grow your business.
@@ -850,81 +1018,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
               </div>
             </div>
 
-            {/* Business Verification Status Indicator */}
-            {(effectiveVendor || effectiveVenueOwner) && (
-              <div style={{
-                background: isLiveVerified ? '#f0fdf4' : verificationStatus === 'REJECTED' ? '#fef2f2' : '#fffbeb',
-                border: `1px solid ${isLiveVerified ? '#bbf7d0' : verificationStatus === 'REJECTED' ? '#fecaca' : '#fde68a'}`,
-                borderRadius: '16px',
-                padding: '16px 22px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '16px',
-                flexWrap: 'wrap',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <div style={{
-                    width: '42px',
-                    height: '42px',
-                    borderRadius: '12px',
-                    background: isLiveVerified ? '#dcfce7' : verificationStatus === 'REJECTED' ? '#fee2e2' : '#fef3c7',
-                    color: isLiveVerified ? '#16a34a' : verificationStatus === 'REJECTED' ? '#dc2626' : '#d97706',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxShadow: isLiveVerified ? '0 2px 6px rgba(22, 163, 74, 0.15)' : 'none'
-                  }}>
-                    {isLiveVerified ? <ShieldCheck size={24} /> : verificationStatus === 'REJECTED' ? <AlertCircle size={24} /> : <Clock size={24} />}
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 800, fontSize: '0.98rem', color: isLiveVerified ? '#15803d' : verificationStatus === 'REJECTED' ? '#991b1b' : '#92400e', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      {isLiveVerified ? 'Verified Business Provider Account' : verificationStatus === 'REJECTED' ? 'Verification Application Rejected' : 'Verification Application In Review'}
-                      <span style={{
-                        fontSize: '0.72rem',
-                        padding: '2px 8px',
-                        borderRadius: '999px',
-                        background: isLiveVerified ? '#dcfce7' : verificationStatus === 'REJECTED' ? '#fee2e2' : '#fef3c7',
-                        color: isLiveVerified ? '#166534' : verificationStatus === 'REJECTED' ? '#991b1b' : '#854d0e',
-                        fontWeight: 700,
-                        border: `1px solid ${isLiveVerified ? '#bbf7d0' : verificationStatus === 'REJECTED' ? '#fecaca' : '#fde68a'}`,
-                        textTransform: 'uppercase'
-                      }}>
-                        {isLiveVerified ? 'Verified Badge Active' : verificationStatus === 'REJECTED' ? 'Action Required' : 'Pending Admin Verification'}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: '0.84rem', color: '#64748b', marginTop: '2px', maxWidth: '700px' }}>
-                      {isLiveVerified 
-                        ? 'Your business profile is verified and approved by Locyfy platform administrators. All your published venue spaces and service packages feature the official Verified badge across client discovery and booking pages.' 
-                        : verificationStatus === 'REJECTED' 
-                        ? 'An administrator has reviewed your account and requested updates. Please review your business profile information.' 
-                        : 'Your business profile has been submitted and is currently in the administrator verification queue. When verified by an administrator, your listings will automatically display the verified badge.'}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <button
-                    onClick={() => setActiveTab('profile')}
-                    style={{
-                      padding: '8px 16px',
-                      borderRadius: '8px',
-                      background: '#ffffff',
-                      border: `1px solid ${isLiveVerified ? '#bbf7d0' : verificationStatus === 'REJECTED' ? '#fecaca' : '#fde68a'}`,
-                      color: isLiveVerified ? '#15803d' : verificationStatus === 'REJECTED' ? '#991b1b' : '#92400e',
-                      fontWeight: 700,
-                      fontSize: '0.82rem',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    View Business Profile
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* 4 KPI Stat Cards with Real Data */}
+            {/* KPI Stat Cards with Real Data */}
             <div className="inspo-stat-grid">
               
               {/* Card 1: Total Listings */}
@@ -2247,7 +2341,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Category *</label>
                   <select 
                     value={newSpace.category} 
-                    onChange={e => setNewSpace({...newSpace, category: e.target.value as any})}
+                    onChange={e => setNewSpace({...newSpace, category: e.target.value, custom_category: ''})}
                     style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                   >
                     <option value="WEDDING">Wedding Hall</option>
@@ -2255,7 +2349,19 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                     <option value="PARTY">Party Venue</option>
                     <option value="BANQUET">Banquet Hall</option>
                     <option value="OUTDOOR">Outdoor / Garden</option>
+                    <option value="OTHER">Other</option>
                   </select>
+                  {newSpace.category === 'OTHER' && (
+                    <input
+                      type="text"
+                      required
+                      maxLength={100}
+                      placeholder="Type your venue category"
+                      value={newSpace.custom_category}
+                      onChange={e => setNewSpace({...newSpace, custom_category: e.target.value})}
+                      style={{ width: '100%', boxSizing: 'border-box', marginTop: '8px', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                    />
+                  )}
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Guest Capacity *</label>
@@ -2273,13 +2379,12 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Location (City) *</label>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Location (County) *</label>
                   <input 
                     type="text" 
                     required
-                    placeholder="e.g. Nairobi"
-                    value={newSpace.location} 
-                    onChange={e => setNewSpace({...newSpace, location: e.target.value})}
+                    value={NYERI_COUNTY_LOCATION}
+                    readOnly
                     style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                   />
                 </div>
@@ -2391,7 +2496,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Category *</label>
                   <select 
                     value={newService.category} 
-                    onChange={e => setNewService({...newService, category: e.target.value})}
+                    onChange={e => setNewService({...newService, category: e.target.value, custom_category: ''})}
                     style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                   >
                     <option value="PHOTOGRAPHY">Photography & Video</option>
@@ -2399,7 +2504,19 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                     <option value="DECORATION">Decoration & Floral</option>
                     <option value="ENTERTAINMENT">DJ & Live Music</option>
                     <option value="PLANNING">Full Event Planning</option>
+                    <option value="OTHER">Other</option>
                   </select>
+                  {newService.category === 'OTHER' && (
+                    <input
+                      type="text"
+                      required
+                      maxLength={100}
+                      placeholder="Type your service category"
+                      value={newService.custom_category}
+                      onChange={e => setNewService({...newService, custom_category: e.target.value})}
+                      style={{ width: '100%', boxSizing: 'border-box', marginTop: '8px', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                    />
+                  )}
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Pricing Model *</label>

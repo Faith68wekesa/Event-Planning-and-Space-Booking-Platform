@@ -11,7 +11,9 @@ import {
   Globe,
   LogOut,
   ShieldCheck,
-  X
+  X,
+  PanelLeftClose,
+  PanelLeftOpen
 } from 'lucide-react';
 import type { User } from '../types';
 import './admin-sidebar.css';
@@ -34,6 +36,8 @@ export interface AdminSidebarProps {
   onLogout?: () => void;
   isMobileOpen?: boolean;
   onToggleMobile?: () => void;
+  isCollapsed?: boolean;
+  onToggleCollapsed?: () => void;
   badgeCounts?: {
     users?: number;
     bookings?: number;
@@ -51,6 +55,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   onLogout,
   isMobileOpen = false,
   onToggleMobile,
+  isCollapsed = false,
+  onToggleCollapsed,
   badgeCounts = {},
 }) => {
   const menuItems: Array<{
@@ -92,7 +98,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         />
       )}
 
-      <aside className={`admin-sidebar ${isMobileOpen ? 'open' : ''}`}>
+      <aside className={`admin-sidebar ${isMobileOpen ? 'open' : ''} ${isCollapsed ? 'collapsed' : ''}`}>
         {/* Header / Brand */}
         <div className="admin-sidebar-header">
           <div className="admin-brand-logo" onClick={onNavigateHome} title="Return to Website">
@@ -104,6 +110,17 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               <div className="admin-brand-badge">ADMIN PORTAL</div>
             </div>
           </div>
+
+          {onToggleCollapsed && (
+            <button
+              className="admin-sidebar-collapse-btn"
+              onClick={onToggleCollapsed}
+              aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {isCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+            </button>
+          )}
 
           {onToggleMobile && (
             <button
@@ -129,6 +146,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               <button
                 key={item.id}
                 className={`admin-sidebar-item ${isActive ? 'active' : ''}`}
+                aria-label={item.label}
+                title={item.label}
                 onClick={() => {
                   onSelectItem(item.id);
                   if (isMobileOpen && onToggleMobile) {

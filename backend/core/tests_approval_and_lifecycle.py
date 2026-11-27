@@ -71,7 +71,7 @@ class AdminApprovalAndLifecycleTestCase(TestCase):
             'owner': self.owner_profile.id,
             'title': 'Grand Ballroom',
             'category': 'WEDDING',
-            'location': 'Nairobi',
+            'location': 'Nyeri County, Kenya',
             'capacity': 500,
             'price_per_day': 100000,
             'cancellation_policy': 'MODERATE',
@@ -91,7 +91,7 @@ class AdminApprovalAndLifecycleTestCase(TestCase):
             owner=self.owner_profile,
             title='Public Approved Venue',
             category='WEDDING',
-            location='Nairobi',
+            location='Nyeri County, Kenya',
             capacity=200,
             price_per_day=40000,
             approval_status='APPROVED',
@@ -102,7 +102,7 @@ class AdminApprovalAndLifecycleTestCase(TestCase):
             owner=self.owner_profile,
             title='Pending Venue Secret',
             category='WEDDING',
-            location='Nairobi',
+            location='Nyeri County, Kenya',
             capacity=200,
             price_per_day=40000,
             approval_status='PENDING',
@@ -113,7 +113,7 @@ class AdminApprovalAndLifecycleTestCase(TestCase):
             owner=self.owner_profile,
             title='Rejected Venue',
             category='WEDDING',
-            location='Nairobi',
+            location='Nyeri County, Kenya',
             capacity=200,
             price_per_day=40000,
             approval_status='REJECTED',
@@ -141,7 +141,7 @@ class AdminApprovalAndLifecycleTestCase(TestCase):
             owner=self.owner_profile,
             title='My Draft Pending Hall',
             category='CONFERENCE',
-            location='Nairobi',
+            location='Nyeri County, Kenya',
             capacity=100,
             price_per_day=20000,
             approval_status='PENDING',
@@ -160,7 +160,7 @@ class AdminApprovalAndLifecycleTestCase(TestCase):
             owner=self.owner_profile,
             title='Pending Venue',
             category='WEDDING',
-            location='Nairobi',
+            location='Nyeri County, Kenya',
             capacity=200,
             price_per_day=40000,
             approval_status='PENDING'
@@ -178,7 +178,7 @@ class AdminApprovalAndLifecycleTestCase(TestCase):
             owner=self.owner_profile,
             title='Pending Venue Under Review',
             category='WEDDING',
-            location='Nairobi',
+            location='Nyeri County, Kenya',
             capacity=200,
             price_per_day=40000,
             approval_status='PENDING'
@@ -200,13 +200,64 @@ class AdminApprovalAndLifecycleTestCase(TestCase):
         self.assertFalse(pending_venue.is_verified)
         self.assertEqual(pending_venue.rejection_reason, 'Images are too low resolution.')
 
+    def test_pending_service_is_admin_reviewable_and_public_after_approval(self):
+        service = Venue.objects.create(
+            owner=self.owner_profile,
+            listing_type='SERVICE',
+            title='Custom Event Service',
+            category='CUSTOM SERVICE',
+            location='Nyeri County, Kenya',
+            capacity=25,
+            price_per_day=15000,
+            approval_status='PENDING',
+            is_available=True,
+        )
+
+        self.client.force_authenticate(user=self.admin_user)
+        admin_response = self.client.get('/api/venues/?all_status=true')
+        self.assertEqual(admin_response.status_code, status.HTTP_200_OK)
+        admin_listings = (
+            admin_response.data.get('results', admin_response.data)
+            if isinstance(admin_response.data, dict)
+            else admin_response.data
+        )
+        self.assertIn(service.id, [listing['id'] for listing in admin_listings])
+
+        self.client.force_authenticate(user=None)
+        public_pending_response = self.client.get('/api/venues/')
+        public_pending_listings = (
+            public_pending_response.data.get(
+                'results',
+                public_pending_response.data,
+            )
+            if isinstance(public_pending_response.data, dict)
+            else public_pending_response.data
+        )
+        self.assertNotIn(service.id, [listing['id'] for listing in public_pending_listings])
+
+        self.client.force_authenticate(user=self.admin_user)
+        approve_response = self.client.post(f'/api/venues/{service.id}/approve/')
+        self.assertEqual(approve_response.status_code, status.HTTP_200_OK)
+
+        self.client.force_authenticate(user=None)
+        public_approved_response = self.client.get('/api/venues/')
+        public_approved_listings = (
+            public_approved_response.data.get(
+                'results',
+                public_approved_response.data,
+            )
+            if isinstance(public_approved_response.data, dict)
+            else public_approved_response.data
+        )
+        self.assertIn(service.id, [listing['id'] for listing in public_approved_listings])
+
     def test_customer_cannot_book_unapproved_or_inactive_listing(self):
         """Booking requests for unapproved or inactive venues must be rejected on the backend."""
         pending_venue = Venue.objects.create(
             owner=self.owner_profile,
             title='Unapproved Space',
             category='WEDDING',
-            location='Nairobi',
+            location='Nyeri County, Kenya',
             capacity=200,
             price_per_day=40000,
             approval_status='PENDING',
@@ -239,7 +290,7 @@ class AdminApprovalAndLifecycleTestCase(TestCase):
             owner=self.owner_profile,
             title='Strict Venue Palace',
             category='WEDDING',
-            location='Nairobi',
+            location='Nyeri County, Kenya',
             capacity=300,
             price_per_day=80000,
             approval_status='APPROVED',
@@ -299,7 +350,7 @@ class AdminApprovalAndLifecycleTestCase(TestCase):
             owner=self.owner_profile,
             title='Nice Venue',
             category='WEDDING',
-            location='Nairobi',
+            location='Nyeri County, Kenya',
             capacity=100,
             price_per_day=30000,
             approval_status='APPROVED',

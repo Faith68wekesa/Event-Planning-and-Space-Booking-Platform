@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ApiService } from '../services/api';
-import type { Venue, VenueCategory } from '../types';
+import type { Venue } from '../types';
 import { cleanImageUrl } from '../utils/imageUtils';
 
 interface CreateListingPageProps {
@@ -30,6 +30,13 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
   defaultMode = 'service',
   editingListing = null,
 }) => {
+  const nyeriCountyLocation = 'Nyeri County, Kenya';
+  const serviceCategoryOptions = ['PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'];
+  const venueCategoryOptions = ['WEDDING', 'CONFERENCE', 'BIRTHDAY', 'OUTDOOR', 'PARTY', 'EXHIBITION'];
+  const existingCustomServiceCategory = editingListing?.listing_type === 'SERVICE'
+    && !serviceCategoryOptions.includes(editingListing.category);
+  const existingCustomVenueCategory = editingListing?.listing_type === 'VENUE'
+    && !venueCategoryOptions.includes(editingListing.category);
   const [activeMode, setActiveMode] = useState<'service' | 'venue'>(
     editingListing
       ? editingListing.listing_type === 'SERVICE'
@@ -42,8 +49,11 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
   // Service form fields
   const [serviceName, setServiceName] = useState(editingListing?.title || '');
   const [servicePricingBasis, setServicePricingBasis] = useState('Per Event');
-  const [serviceCategory, setServiceCategory] = useState<VenueCategory>(
-    editingListing?.category || 'PLANNING'
+  const [serviceCategory, setServiceCategory] = useState<string>(
+    existingCustomServiceCategory ? 'OTHER' : editingListing?.category || 'PLANNING'
+  );
+  const [customServiceCategory, setCustomServiceCategory] = useState(
+    existingCustomServiceCategory ? editingListing?.category || '' : ''
   );
   const [serviceDesc, setServiceDesc] = useState(editingListing?.description || '');
   const [servicePrice, setServicePrice] = useState<number | ''>(editingListing?.price_per_day ?? '');
@@ -52,17 +62,30 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
   const [serviceEventTypes, setServiceEventTypes] = useState('Weddings, Birthdays, Corporate Events');
   const [serviceDuration, setServiceDuration] = useState('4 hours');
   const [serviceMaxGuests, setServiceMaxGuests] = useState<number | ''>('');
-  const [serviceArea, setServiceArea] = useState(editingListing?.location || 'Nairobi & Surrounding Areas');
+  const [serviceArea, setServiceArea] = useState(
+    editingListing?.location.trim().toLowerCase() === nyeriCountyLocation.toLowerCase()
+      ? editingListing.location
+      : editingListing ? '' : nyeriCountyLocation
+  );
   const [serviceAvailability, setServiceAvailability] = useState('Weekdays & Weekends (Flexible)');
   const [serviceEquipment, setServiceEquipment] = useState('');
 
   // Venue form fields
   const [venueName, setVenueName] = useState(editingListing?.title || '');
   const [venuePricingBasis, setVenuePricingBasis] = useState('Per Day');
-  const [venueCategory, setVenueCategory] = useState<VenueCategory>(editingListing?.category || 'WEDDING');
+  const [venueCategory, setVenueCategory] = useState<string>(
+    existingCustomVenueCategory ? 'OTHER' : editingListing?.category || 'WEDDING'
+  );
+  const [customVenueCategory, setCustomVenueCategory] = useState(
+    existingCustomVenueCategory ? editingListing?.category || '' : ''
+  );
   const [venueDesc, setVenueDesc] = useState(editingListing?.description || '');
   const [venuePrice, setVenuePrice] = useState<number | ''>(editingListing?.price_per_day ?? '');
-  const [venueLocation, setVenueLocation] = useState(editingListing?.location || 'Nairobi, Kenya');
+  const [venueLocation, setVenueLocation] = useState(
+    editingListing?.location.trim().toLowerCase() === nyeriCountyLocation.toLowerCase()
+      ? editingListing.location
+      : editingListing ? '' : nyeriCountyLocation
+  );
   const [venueCoverUrl, setVenueCoverUrl] = useState(editingListing?.image_url || '');
   const [venueCapacity, setVenueCapacity] = useState<number | ''>(editingListing?.capacity || '');
   const [venueLayout, setVenueLayout] = useState('');
@@ -90,8 +113,15 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
 
   const handleServiceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const category = serviceCategory === 'OTHER'
+      ? customServiceCategory.trim()
+      : serviceCategory;
     if (!serviceName.trim()) {
       toast.error('Please enter a service name.');
+      return;
+    }
+    if (!category) {
+      toast.error('Please enter a service category.');
       return;
     }
     if (!servicePrice || Number(servicePrice) <= 0) {
@@ -114,8 +144,8 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
       const listingData = {
         listing_type: 'SERVICE' as const,
         title: serviceName.trim(),
-        category: serviceCategory,
-        location: serviceArea || 'Nairobi',
+        category,
+        location: serviceArea,
         capacity: serviceMaxGuests ? Number(serviceMaxGuests) : 0,
         price_per_day: Number(servicePrice),
         description: fullDescription,
@@ -141,8 +171,15 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
 
   const handleVenueSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const category = venueCategory === 'OTHER'
+      ? customVenueCategory.trim()
+      : venueCategory;
     if (!venueName.trim()) {
       toast.error('Please enter a venue name.');
+      return;
+    }
+    if (!category) {
+      toast.error('Please enter a venue category.');
       return;
     }
     if (!venuePrice || Number(venuePrice) <= 0) {
@@ -172,8 +209,8 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
       const listingData = {
         listing_type: 'VENUE' as const,
         title: venueName.trim(),
-        category: venueCategory,
-        location: venueLocation || 'Nairobi',
+        category,
+        location: venueLocation,
         address: venueLocation,
         capacity: Number(venueCapacity),
         price_per_day: Number(venuePrice),
@@ -274,7 +311,10 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
                     required
                     className="listing-select"
                     value={serviceCategory}
-                    onChange={(e) => setServiceCategory(e.target.value as VenueCategory)}
+                    onChange={(e) => {
+                      setServiceCategory(e.target.value);
+                      if (e.target.value !== 'OTHER') setCustomServiceCategory('');
+                    }}
                   >
                     <option value="PHOTOGRAPHY">Photography &amp; Videography</option>
                     <option value="CATERING">Catering &amp; Bar Service</option>
@@ -282,9 +322,22 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
                     <option value="ENTERTAINMENT">DJ &amp; Entertainment</option>
                     <option value="PLANNING">Event Planning &amp; Coordination</option>
                     <option value="SOUND">Sound &amp; Lighting Equipment</option>
+                    <option value="OTHER">Other</option>
                   </select>
                   <ChevronDown className="select-chevron" size={16} />
                 </div>
+                {serviceCategory === 'OTHER' && (
+                  <input
+                    type="text"
+                    required
+                    maxLength={100}
+                    className="listing-input"
+                    placeholder="Type your service category"
+                    value={customServiceCategory}
+                    onChange={(e) => setCustomServiceCategory(e.target.value)}
+                    style={{ marginTop: '8px' }}
+                  />
+                )}
               </div>
             </div>
 
@@ -437,12 +490,8 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
                     value={serviceArea}
                     onChange={(e) => setServiceArea(e.target.value)}
                   >
-                    <option value="Nairobi & Surrounding Areas">Nairobi & Surrounding Areas</option>
-                    <option value="Mombasa & Coastal Region">Mombasa & Coastal Region</option>
-                    <option value="Nakuru & Rift Valley">Nakuru & Rift Valley</option>
-                    <option value="Kisumu & Western Kenya">Kisumu & Western Kenya</option>
-                    <option value="Nyeri & Mt Kenya Region">Nyeri & Mt Kenya Region</option>
-                    <option value="Nationwide / Travel Anywhere">Nationwide / Travel Anywhere</option>
+                    <option value="">Select a service area</option>
+                    <option value={nyeriCountyLocation}>{nyeriCountyLocation}</option>
                   </select>
                   <ChevronDown className="select-chevron" size={16} />
                 </div>
@@ -561,7 +610,7 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
                 <select
                   className="listing-select"
                   value={venueCategory}
-                  onChange={(e) => setVenueCategory(e.target.value as VenueCategory)}
+                  onChange={(e) => setVenueCategory(e.target.value)}
                 >
                   <option value="WEDDING">Wedding Gardens & Halls</option>
                   <option value="CONFERENCE">Conference & Corporate Centers</option>
@@ -569,9 +618,22 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
                   <option value="OUTDOOR">Outdoor & Picnic Grounds</option>
                   <option value="PARTY">Nightlife & Celebration Spaces</option>
                   <option value="EXHIBITION">Exhibition & Trade Halls</option>
+                  <option value="OTHER">Other</option>
                 </select>
                 <ChevronDown className="select-chevron" size={16} />
               </div>
+              {venueCategory === 'OTHER' && (
+                <input
+                  type="text"
+                  required
+                  maxLength={100}
+                  className="listing-input"
+                  placeholder="Type your venue category"
+                  value={customVenueCategory}
+                  onChange={(e) => setCustomVenueCategory(e.target.value)}
+                  style={{ marginTop: '8px' }}
+                />
+              )}
             </div>
 
             {/* Description */}
@@ -608,14 +670,15 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
 
               <div className="listing-field-group">
                 <label className="listing-field-label">Location / Address *</label>
-                <input
-                  type="text"
+                <select
                   required
                   className="listing-input"
-                  placeholder="e.g. Nyeri Town, Kenya"
                   value={venueLocation}
                   onChange={(e) => setVenueLocation(e.target.value)}
-                />
+                >
+                  <option value="">Select a venue location</option>
+                  <option value={nyeriCountyLocation}>{nyeriCountyLocation}</option>
+                </select>
               </div>
             </div>
 

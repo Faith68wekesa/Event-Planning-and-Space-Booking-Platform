@@ -6,6 +6,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from django.db.models import Q
 from core.models import Venue, VendorProfile, Recommendation, Booking, Event, UserInteraction
+from core.location_utils import nyeri_county_location_filter
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +136,10 @@ def _get_eligible_venues():
     """
     return Venue.objects.filter(
         approval_status='APPROVED',
-        is_available=True
+        is_available=True,
+        listing_type='VENUE',
+    ).filter(
+        nyeri_county_location_filter(),
     ).select_related('owner', 'vendor').order_by('id')
 
 
@@ -658,6 +662,41 @@ def get_venue_recommendations(customer=None, preferences=None, top_k=10):
         })
 
     results.sort(key=lambda x: x['match_score'], reverse=True)
+    return results[:top_k]
+
+
+def get_service_recommendations(services, query, top_k=10):
+    """Rank public service listings by content similarity to a search query."""
+    services = list(services)
+    query = str(query or '').strip()
+    if not services or not query:
+        return []
+
+    corpus = [_build_venue_text(service) for service in services]
+    try:
+        vectorizer = TfidfVectorizer(
+            stop_words='english',
+            min_df=1,
+            max_features=150,
+        )
+        service_matrix = vectorizer.fit_transform(corpus)
+    except ValueError as exc:
+        if 'empty vocabulary' in str(exc).lower():
+            logger.info('Service recommendation corpus has no searchable terms.')
+            return []
+        raise
+
+    query_vector = vectorizer.transform([query])
+    similarities = cosine_similarity(query_vector, service_matrix)[0]
+    results = [
+        {
+            'service': service,
+            'match_score': round(float(score), 4),
+        }
+        for service, score in zip(services, similarities)
+        if score > 0
+    ]
+    results.sort(key=lambda item: item['match_score'], reverse=True)
     return results[:top_k]
 
 

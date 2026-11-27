@@ -67,12 +67,19 @@ class BackendAccessControlTests(TestCase):
             file_name='private-registration.pdf',
         )
 
-    def create_venue(self, title, approval_status, owner=None, is_available=True):
+    def create_venue(
+        self,
+        title,
+        approval_status,
+        owner=None,
+        is_available=True,
+        location='Nyeri County, Kenya',
+    ):
         return Venue.objects.create(
             owner=owner or self.owner_profile,
             title=title,
             category='WEDDING',
-            location='Nairobi',
+            location=location,
             capacity=100,
             price_per_day=10000,
             approval_status=approval_status,
@@ -86,7 +93,7 @@ class BackendAccessControlTests(TestCase):
     def test_venue_serializer_accepts_matching_listing_categories(self):
         base_data = {
             'title': 'Category test',
-            'location': 'Nairobi',
+            'location': 'Nyeri County, Kenya',
             'capacity': 100,
             'price_per_day': '10000',
         }
@@ -105,10 +112,62 @@ class BackendAccessControlTests(TestCase):
         self.assertTrue(service.is_valid(), service.errors)
         self.assertTrue(venue.is_valid(), venue.errors)
 
+    def test_venue_serializer_persists_custom_service_category(self):
+        service = VenueSerializer(data={
+            'listing_type': 'SERVICE',
+            'title': 'Live Streaming Service',
+            'category': 'Live Streaming',
+            'location': 'Nyeri County, Kenya',
+            'capacity': 0,
+            'price_per_day': '12000',
+        })
+
+        self.assertTrue(service.is_valid(), service.errors)
+        saved_service = service.save(vendor=self.vendor_profile)
+        self.assertEqual(saved_service.category, 'Live Streaming')
+        self.assertEqual(VenueSerializer(saved_service).data['category_display'], 'Live Streaming')
+
+    def test_vendor_can_create_and_view_custom_service_category(self):
+        self.client.force_authenticate(user=self.vendor_user)
+        response = self.client.post('/api/venues/', {
+            'listing_type': 'SERVICE',
+            'title': 'Custom Live Streaming',
+            'category': 'Live Streaming',
+            'location': 'Nyeri County, Kenya',
+            'capacity': 0,
+            'price_per_day': '12000',
+        }, format='json')
+
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data['category'], 'Live Streaming')
+        listing_id = response.data['id']
+
+        listing_response = self.client.get('/api/venues/my-listings/')
+        self.assertEqual(listing_response.status_code, 200)
+        listing = next(item for item in listing_response.data if item['id'] == listing_id)
+        self.assertEqual(listing['category'], 'Live Streaming')
+        self.assertEqual(listing['category_display'], 'Live Streaming')
+        self.assertTrue(Venue.objects.filter(pk=listing_id, category='Live Streaming').exists())
+
+    def test_venue_serializer_persists_custom_venue_category(self):
+        venue = VenueSerializer(data={
+            'listing_type': 'VENUE',
+            'title': 'Botanical Event Garden',
+            'category': 'Botanical Garden',
+            'location': 'Nyeri County, Kenya',
+            'capacity': 120,
+            'price_per_day': '25000',
+        })
+
+        self.assertTrue(venue.is_valid(), venue.errors)
+        saved_venue = venue.save(owner=self.owner_profile)
+        self.assertEqual(saved_venue.category, 'Botanical Garden')
+        self.assertEqual(VenueSerializer(saved_venue).data['category_display'], 'Botanical Garden')
+
     def test_venue_serializer_validates_capacity_by_listing_type(self):
         base_data = {
             'title': 'Capacity test',
-            'location': 'Nairobi',
+            'location': 'Nyeri County, Kenya',
             'price_per_day': '10000',
         }
 
@@ -157,7 +216,7 @@ class BackendAccessControlTests(TestCase):
     def test_venue_serializer_rejects_mismatched_listing_categories(self):
         base_data = {
             'title': 'Category test',
-            'location': 'Nairobi',
+            'location': 'Nyeri County, Kenya',
             'capacity': 100,
             'price_per_day': '10000',
         }
@@ -177,6 +236,38 @@ class BackendAccessControlTests(TestCase):
         self.assertFalse(venue.is_valid())
         self.assertIn('category', service.errors)
         self.assertIn('category', venue.errors)
+
+    def test_listing_serializer_requires_nyeri_county_location(self):
+        outside_location = VenueSerializer(data={
+            'listing_type': 'VENUE',
+            'title': 'Nairobi Hall',
+            'category': 'WEDDING',
+            'location': 'Nairobi, Kenya',
+            'capacity': 100,
+            'price_per_day': '10000',
+        })
+        self.assertFalse(outside_location.is_valid())
+        self.assertIn('location', outside_location.errors)
+
+        existing_listing = self.create_venue(
+            'Existing Nairobi Hall',
+            'PENDING',
+            location='Nairobi, Kenya',
+        )
+        unchanged_location = VenueSerializer(
+            existing_listing,
+            data={'description': 'Updated description'},
+            partial=True,
+        )
+        self.assertFalse(unchanged_location.is_valid())
+        self.assertIn('location', unchanged_location.errors)
+
+        relocated_listing = VenueSerializer(
+            existing_listing,
+            data={'location': 'Nyeri County, Kenya'},
+            partial=True,
+        )
+        self.assertTrue(relocated_listing.is_valid(), relocated_listing.errors)
 
     def test_venue_serializer_uses_instance_values_for_partial_updates(self):
         venue = self.create_venue('Partial category test', 'PENDING')
@@ -316,6 +407,52 @@ class BackendAccessControlTests(TestCase):
         provider_ids = [item['id'] for item in self.response_items(provider_response)]
         self.assertTrue({public_venue.pk, pending_venue.pk, rejected_venue.pk}.issubset(provider_ids))
 
+    def test_public_catalog_only_shows_venues_and_services_in_nyeri_county(self):
+        self.owner_profile.is_verified = True
+        self.owner_profile.verification_status = 'APPROVED'
+        self.owner_profile.save(update_fields=['is_verified', 'verification_status'])
+
+        nyeri_venue = self.create_venue(
+            'Karatina Hall',
+            'APPROVED',
+            location='Karatina, Nyeri County',
+        )
+        outside_venue = self.create_venue(
+            'Nairobi Hall',
+            'APPROVED',
+            location='Nairobi, Kenya',
+        )
+        nyeri_service = Venue.objects.create(
+            owner=self.owner_profile,
+            listing_type='SERVICE',
+            title='Othaya Photography',
+            category='PHOTOGRAPHY',
+            location='Othaya, Nyeri County',
+            capacity=0,
+            price_per_day=10000,
+            approval_status='APPROVED',
+            is_available=True,
+        )
+        outside_service = Venue.objects.create(
+            owner=self.owner_profile,
+            listing_type='SERVICE',
+            title='Nairobi Photography',
+            category='PHOTOGRAPHY',
+            location='Nairobi, Kenya',
+            capacity=0,
+            price_per_day=10000,
+            approval_status='APPROVED',
+            is_available=True,
+        )
+
+        response = self.client.get('/api/venues/')
+        listing_ids = {item['id'] for item in self.response_items(response)}
+
+        self.assertIn(nyeri_venue.pk, listing_ids)
+        self.assertIn(nyeri_service.pk, listing_ids)
+        self.assertNotIn(outside_venue.pk, listing_ids)
+        self.assertNotIn(outside_service.pk, listing_ids)
+
     def test_admin_venue_actions_preserve_listing_status_and_provider_verification(self):
         pending = self.create_venue('Pending venue', 'PENDING')
         rejected = self.create_venue('Rejected venue', 'REJECTED')
@@ -353,7 +490,7 @@ class BackendAccessControlTests(TestCase):
             title='Vendor pending venue',
             category='CATERING',
             listing_type='SERVICE',
-            location='Nairobi',
+            location='Nyeri County, Kenya',
             capacity=0,
             price_per_day=10000,
             approval_status='PENDING',
@@ -363,7 +500,7 @@ class BackendAccessControlTests(TestCase):
             title='Vendor rejected venue',
             category='CATERING',
             listing_type='SERVICE',
-            location='Nairobi',
+            location='Nyeri County, Kenya',
             capacity=0,
             price_per_day=10000,
             approval_status='REJECTED',

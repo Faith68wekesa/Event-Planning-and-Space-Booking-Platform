@@ -1,16 +1,18 @@
 import os
 from pathlib import Path
-from dotenv import load_dotenv
+from corsheaders.defaults import default_headers
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(os.path.join(BASE_DIR, '.env'))
 
-SECRET_KEY = os.getenv('SECRET_KEY')
-if not SECRET_KEY:
-    raise RuntimeError('SECRET_KEY must be configured in the environment.')
+# Load .env (pip install python-dotenv)
+try:
+    from dotenv import load_dotenv
+    load_dotenv(BASE_DIR / '.env')
+except ImportError:
+    pass
 
-DEBUG = os.getenv('DEBUG', 'True') == 'True'
-
+SECRET_KEY = 'django-insecure-event-platform-key-for-dev-objective-1'
+DEBUG = True
 ALLOWED_HOSTS = ['*']
 
 INSTALLED_APPS = [
@@ -87,29 +89,22 @@ AUTH_PASSWORD_VALIDATORS = [
 AUTH_USER_MODEL = 'core.User'
 
 LANGUAGE_CODE = 'en-us'
-
 TIME_ZONE = 'Africa/Nairobi'
-
 USE_I18N = True
-
 USE_TZ = True
-
 STATIC_URL = 'static/'
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
-PRIVATE_MEDIA_ROOT = os.path.join(BASE_DIR, 'private_documents')
-
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-from corsheaders.defaults import default_headers
-
+# ================= CORS CONFIGURATION =================
 CORS_ALLOW_ALL_ORIGINS = True
+
+# Allows the frontend to send 'x-user-id' and 'authorization' headers without being blocked
 CORS_ALLOW_HEADERS = list(default_headers) + [
-    'x-user-id',
-    'x-admin-id',
-    'x-session-id',
+    "x-user-id",
+    "authorization",
 ]
 
+# ================= REST FRAMEWORK =================
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.TokenAuthentication',
@@ -119,10 +114,10 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 50,
 }
 
-# Gmail SMTP Settings
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
-EMAIL_USE_TLS = True
+# ================= M-Pesa Daraja =================
+MPESA_ENV = os.getenv('MPESA_ENV', 'sandbox')
+MPESA_CONSUMER_KEY = os.getenv('MPESA_CONSUMER_KEY', '')
+MPESA_CONSUMER_SECRET = os.getenv('MPESA_CONSUMER_SECRET', '')
+MPESA_SHORTCODE = os.getenv('MPESA_SHORTCODE', '174379')
+MPESA_PASSKEY = os.getenv('MPESA_PASSKEY', '')
+MPESA_CALLBACK_URL = os.getenv('MPESA_CALLBACK_URL', '')

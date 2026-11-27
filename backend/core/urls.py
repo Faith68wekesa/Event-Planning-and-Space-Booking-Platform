@@ -13,7 +13,9 @@ from .views import (
     track_user_interaction, admin_analytics, export_admin_analytics_csv,
     vendor_analytics, export_vendor_analytics_csv,
     venue_owner_analytics, export_venue_owner_analytics_csv,
-    venue_recommendations, vendor_recommendations, ProviderAvailabilitySettingView
+    venue_recommendations, service_recommendations, vendor_recommendations, ProviderAvailabilitySettingView,
+    # --- NEW: M-Pesa views ---
+    mpesa_stk_push, mpesa_callback, mpesa_status, mpesa_status_by_booking,
 )
 
 router = DefaultRouter()
@@ -49,9 +51,16 @@ urlpatterns = [
     path('analytics/venue-owner/<int:owner_id>/', venue_owner_analytics, name='venue-owner-analytics'),
     path('analytics/venue-owner/<int:owner_id>/export-csv/', export_venue_owner_analytics_csv, name='venue-owner-analytics-export-csv'),
 
+    # --- NEW: M-Pesa Daraja endpoints ---
+    path('mpesa/stkpush/', mpesa_stk_push, name='mpesa-stkpush'),
+    path('mpesa/callback/', mpesa_callback, name='mpesa-callback'),
+    path('mpesa/status/<str:checkout_request_id>/', mpesa_status, name='mpesa-status'),
+    path('mpesa/status-by-booking/<int:booking_id>/', mpesa_status_by_booking, name='mpesa-status-by-booking'),
+
     path('', include(router.urls)),
     path('stats/', platform_stats, name='platform-stats'),
     path('recommendations/venues/', venue_recommendations, name='venue-recommendations'),
+    path('recommendations/services/', service_recommendations, name='service-recommendations'),
     path('recommendations/vendors/', vendor_recommendations, name='vendor-recommendations'),
     path('admin/refresh-ratings/', refresh_all_ratings, name='refresh-all-ratings'),
     path('otp/send/', send_otp, name='send-otp'),
@@ -61,4 +70,3 @@ urlpatterns = [
     path('upload-image/', upload_listing_image, name='upload-image'),
     path('reminder-preferences/', CustomerReminderPreferenceView.as_view(), name='reminder-preferences'),
 ]
-

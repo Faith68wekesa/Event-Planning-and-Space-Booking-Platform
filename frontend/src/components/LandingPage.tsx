@@ -212,7 +212,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               fontSize: '0.85rem', fontWeight: 700, color: '#0F8F7A', marginBottom: '24px',
               border: '1px solid #c9ede4', boxShadow: '0 2px 4px rgba(0,0,0,0.03)'
             }}>
-              <CheckCircle size={14} /> Verified Event Spaces & Service Providers Across Kenya
+              <CheckCircle size={14} /> Verified Event Spaces & Service Providers Across Nyeri County
             </div>
 
             <h1 style={{ fontSize: 'clamp(2.5rem, 5vw, 4rem)', fontWeight: 800, color: '#0f172a', lineHeight: 1.1, marginBottom: '24px' }}>
@@ -570,7 +570,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                       </h3>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '0.88rem', marginBottom: '12px' }}>
-                        <MapPin size={15} color="#0F8F7A" /> {service.location}
+                        <MapPin size={15} color="#0F8F7A" /> Location: {service.location}
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', borderRadius: '10px', marginBottom: '16px', fontSize: '0.85rem' }}>

@@ -4,8 +4,9 @@ import type {
   ReminderPreference, VerificationDocument, UserInteractionEvent, AdminAnalyticsData,
   VendorAnalyticsData, VenueOwnerAnalyticsData
 } from '../types';
+import { API_BASE_URL } from './apiBase';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = `${API_BASE_URL}/api`;
 
 export function formatApiError(resData: any, fallback: string): string {
   if (!resData) return fallback;
@@ -1353,6 +1354,24 @@ export const ApiService = {
 
     if (!res.ok) {
       throw new Error('Failed to fetch venue recommendations');
+    }
+
+    const data = await res.json();
+    return data.results || [];
+  },
+
+  async getServiceRecommendations(query: string): Promise<(Venue & {
+    match_score: number;
+    is_cold_start: boolean;
+    recommendation_type: string;
+  })[]> {
+    const params = new URLSearchParams({ query });
+    const res = await fetch(`${API_BASE}/recommendations/services/?${params.toString()}`, {
+      headers: getAuthHeaders(),
+    });
+
+    if (!res.ok) {
+      throw new Error('Failed to fetch service recommendations');
     }
 
     const data = await res.json();

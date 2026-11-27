@@ -28,6 +28,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
   const [eventTitle, setEventTitle] = useState('');
   const [eventType, setEventType] = useState('Birthday Party');
+  const [customEventType, setCustomEventType] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [guestCount, setGuestCount] = useState<string>('');
   const [startTime, setStartTime] = useState('15:00');
@@ -55,6 +56,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const bookingEventType = eventType === 'Other' ? customEventType.trim() : eventType;
+    if (!bookingEventType) {
+      toast.error('Please enter the event type.');
+      return;
+    }
     setSubmitting(true);
 
     const selectedDate = new Date(eventDate);
@@ -90,7 +96,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         venue_details: venue || undefined,
         vendor_details: vendor || undefined,
         event_title: eventTitle || `Event for ${contactName}`,
-        event_type: eventType,
+        event_type: bookingEventType,
         event_date: eventDate,
         guest_count: Number(guestCount) || 0,
         total_price: Number(defaultPrice),
@@ -278,13 +284,31 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
               <div>
                 <label style={labelStyle}>Event Type</label>
-                <select value={eventType} onChange={(e) => setEventType(e.target.value)} style={{ ...inputStyle, padding: '9px 12px', background: '#fff' }}>
+                <select
+                  value={eventType}
+                  onChange={(e) => {
+                    setEventType(e.target.value);
+                    if (e.target.value !== 'Other') setCustomEventType('');
+                  }}
+                  style={{ ...inputStyle, padding: '9px 12px', background: '#fff' }}
+                >
                   <option value="Birthday Party">Birthday Party</option>
                   <option value="Wedding Reception">Wedding Reception</option>
                   <option value="Corporate Event">Corporate Event</option>
                   <option value="Private Dinner">Private Dinner</option>
                   <option value="Other">Other</option>
                 </select>
+                {eventType === 'Other' && (
+                  <input
+                    type="text"
+                    required
+                    maxLength={50}
+                    placeholder="Type your event type"
+                    value={customEventType}
+                    onChange={(e) => setCustomEventType(e.target.value)}
+                    style={{ ...inputStyle, marginTop: '8px' }}
+                  />
+                )}
               </div>
               <div>
                 <label style={labelStyle}>Expected Guests</label>

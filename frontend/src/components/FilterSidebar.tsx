@@ -71,7 +71,7 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
           />
         </div>
 
-        {activeTab === 'venues' || activeTab === 'services' ? (
+        {activeTab === 'venues' ? (
           <>
             <div>
               <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
@@ -87,6 +87,7 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
                 <option value="OUTDOOR">Outdoor Grounds</option>
                 <option value="BIRTHDAY">Birthday & Loft</option>
                 <option value="PARTY">Nightlife & Celebration</option>
+                <option value="EXHIBITION">Exhibition & Trade Halls</option>
               </select>
             </div>
 
@@ -109,18 +110,23 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
         ) : (
           <div>
             <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
-              Service Provider Type
+              Service Category
             </label>
             <select
-              value={filters.vendor_type}
-              onChange={(e) => setFilters({ ...filters, vendor_type: e.target.value })}
+              value={filters.category}
+              onChange={(e) => setFilters({ ...filters, category: e.target.value })}
             >
-              <option value="ALL">All Services</option>
-              <option value="PLANNER">Event Planners</option>
-              <option value="CATERER">Catering Services</option>
-              <option value="PHOTOGRAPHER">Photography & Video</option>
-              <option value="DECORATOR">Decoration & Styling</option>
-              <option value="SOUND_LIGHTING">Sound & Lighting</option>
+              <option value="ALL">All Service Categories</option>
+              <option value="PHOTOGRAPHY">Photography & Videography</option>
+              <option value="CATERING">Catering & Bar Service</option>
+              <option value="DECORATION">Decoration & Styling</option>
+              <option value="ENTERTAINMENT">DJ & Entertainment</option>
+              <option value="PLANNING">Event Planning & Coordination</option>
+              <option value="SOUND">Sound & Lighting Equipment</option>
+              {filters.category !== 'ALL' &&
+                !['PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'].includes(filters.category) && (
+                  <option value={filters.category}>{filters.category}</option>
+                )}
             </select>
           </div>
         )}
@@ -129,17 +135,9 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
           <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
             Location / Region
           </label>
-          <select
-            value={filters.location}
-            onChange={(e) => setFilters({ ...filters, location: e.target.value })}
-          >
-            <option value="ALL">All Regions </option>
-            <option value="Nairobi">Nairobi</option>
-            <option value="Naivasha">Naivasha</option>
-            <option value="Mombasa">Mombasa</option>
-            <option value="Nakuru">Nakuru</option>
-            <option value="Nyeri">Nyeri</option>
-          </select>
+          <div style={{ padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', color: '#334155', fontSize: '0.9rem' }}>
+            Nyeri County only
+          </div>
         </div>
 
         <div>

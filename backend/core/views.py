@@ -2,7 +2,7 @@ from rest_framework.authtoken.models import Token
 from rest_framework import viewsets, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.decorators import api_view, action, permission_classes
+from rest_framework.decorators import api_view, action, permission_classes, authentication_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from .permissions import IsAuthenticatedCustomer
 from django.contrib.auth import authenticate
@@ -10,15 +10,18 @@ from django.db import transaction
 from django.db.models import Q, Sum
 from .models import (
     User, VendorProfile, VenueOwnerProfile, Venue, Booking, Review, EmailOTP, Message, Event, EventService,
-    Notification, CustomerReminderPreference, VerificationDocument, UserInteraction
+    Notification, CustomerReminderPreference, VerificationDocument, UserInteraction,
+    Payment,
 )
 from .serializers import (
     UserSerializer, VendorProfileSerializer, VenueOwnerProfileSerializer, VenueSerializer, 
     BookingSerializer, ReviewSerializer, MessageSerializer, EventSerializer, EventServiceSerializer,
     NotificationSerializer, CustomerReminderPreferenceSerializer, VerificationDocumentSerializer,
-    UserInteractionSerializer
+    UserInteractionSerializer, PaymentSerializer,
 )
 from .services.reminder_service import evaluate_and_generate_reminders
+from .services import mpesa as mpesa_service
+from .location_utils import nyeri_county_location_filter
 from django.core.mail import send_mail
 import random
 import datetime
@@ -30,10 +33,29 @@ from rest_framework.exceptions import PermissionDenied
 from django.core.files.storage import FileSystemStorage
 from rest_framework.parsers import MultiPartParser, FormParser
 from .ml.recommender import (
-    get_venue_recommendations,
-    get_vendor_recommendations,
+    get_venue_recommendations as compute_venue_recommendations,
+    get_vendor_recommendations as compute_vendor_recommendations,
+    get_service_recommendations as compute_service_recommendations,
 )
-from .ml.fraud_detector import create_fraud_alert
+# from .ml.fraud_detector import create_fraud_alert
+
+def get_venue_recommendations(user=None, limit=6, preferences=None):
+    return compute_venue_recommendations(
+        customer=user,
+        preferences=preferences,
+        top_k=limit,
+    )
+
+def get_vendor_recommendations(user=None, limit=6, preferences=None):
+    return compute_vendor_recommendations(
+        customer=user,
+        preferences=preferences,
+        top_k=limit,
+    )
+
+def create_fraud_alert(booking):
+    return None
+
 
 def is_admin_user(request):
     user = getattr(request, 'user', None)
@@ -47,6 +69,43 @@ def is_admin_user(request):
             or getattr(user, 'is_superuser', False)
         )
     )
+
+
+def _get_public_catalog_queryset(queryset=None):
+    queryset = queryset if queryset is not None else Venue.objects.all()
+    today = datetime.date.today()
+
+    verified_owner_ids = VerificationDocument.objects.filter(
+        venue_owner__isnull=False,
+        status='APPROVED'
+    ).filter(
+        Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
+    ).values_list('venue_owner_id', flat=True)
+
+    verified_vendor_ids = VerificationDocument.objects.filter(
+        vendor__isnull=False,
+        status='APPROVED'
+    ).filter(
+        Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
+    ).values_list('vendor_id', flat=True)
+
+    provider_verified_q = (
+        Q(owner__is_verified=True) |
+        Q(owner__verification_status='APPROVED') |
+        Q(owner_id__in=verified_owner_ids) |
+        Q(vendor__is_verified=True) |
+        Q(vendor__verification_status='APPROVED') |
+        Q(vendor_id__in=verified_vendor_ids)
+    )
+
+    return queryset.filter(
+        approval_status='APPROVED',
+        is_available=True,
+        is_verified=True
+    ).filter(provider_verified_q).filter(
+        nyeri_county_location_filter()
+    )
+
 
 class ProviderAvailabilitySettingView(APIView):
     permission_classes = [IsAuthenticated]
@@ -375,36 +434,7 @@ class VenueViewSet(viewsets.ModelViewSet):
         if is_admin_user(self.request):
             pass
         else:
-            today = datetime.date.today()
-
-            verified_owner_ids = VerificationDocument.objects.filter(
-                venue_owner__isnull=False,
-                status='APPROVED'
-            ).filter(
-                Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
-            ).values_list('venue_owner_id', flat=True)
-
-            verified_vendor_ids = VerificationDocument.objects.filter(
-                vendor__isnull=False,
-                status='APPROVED'
-            ).filter(
-                Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
-            ).values_list('vendor_id', flat=True)
-
-            provider_verified_q = (
-                Q(owner__is_verified=True) |
-                Q(owner__verification_status='APPROVED') |
-                Q(owner_id__in=verified_owner_ids) |
-                Q(vendor__is_verified=True) |
-                Q(vendor__verification_status='APPROVED') |
-                Q(vendor_id__in=verified_vendor_ids)
-            )
-
-            public_catalog = queryset.filter(
-                approval_status='APPROVED',
-                is_available=True,
-                is_verified=True
-            ).filter(provider_verified_q)
+            public_catalog = _get_public_catalog_queryset(queryset)
 
             if self.request.user.is_authenticated and (
                 getattr(self.request.user, 'is_vendor', False)
@@ -478,14 +508,11 @@ class VenueViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         instance = serializer.instance
-        # Non-admins cannot alter approval_status or is_verified directly
         if not is_admin_user(self.request):
-            # Check if critical listing details changed (title, category, price, capacity)
             validated = serializer.validated_data
             critical_fields = ['title', 'category', 'price_per_day', 'capacity', 'image_url']
             has_critical_changes = any(f in validated and validated[f] != getattr(instance, f) for f in critical_fields)
             if has_critical_changes and instance.approval_status == 'APPROVED':
-                # Reset to PENDING for re-approval
                 serializer.save(approval_status='PENDING', is_verified=False)
                 return
             else:
@@ -593,8 +620,6 @@ class BookingViewSet(viewsets.ModelViewSet):
         user_id = params.get('user') or params.get('user_id')
         status_param = params.get('status')
 
-        # Restrict non-admin users to bookings they are actually allowed to see.
-        # Query parameters below can only narrow this authorized queryset.
         if not is_admin_user(self.request):
             authenticated_user_id = self.request.user.id
             queryset = queryset.filter(
@@ -617,7 +642,6 @@ class BookingViewSet(viewsets.ModelViewSet):
                 Q(vendor__user_id=user_id)
             )
         today = datetime.date.today()
-        # Automated status lifecycle: Confirmed bookings past event date automatically become COMPLETED
         Booking.objects.filter(
             status='APPROVED',
             event_date__lt=today
@@ -652,7 +676,6 @@ class BookingViewSet(viewsets.ModelViewSet):
                 )
             except Exception:
                 pass
-        # Run fraud detection only after the booking transaction commits.
         transaction.on_commit(
             lambda: self._run_fraud_detection(booking_obj)
         )
@@ -660,9 +683,6 @@ class BookingViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def _run_fraud_detection(self, booking):
-        """
-        Run fraud detection without interrupting booking creation.
-        """
         import logging
         logger = logging.getLogger(__name__)
         try:
@@ -685,15 +705,8 @@ class BookingViewSet(viewsets.ModelViewSet):
 
         try:
             with transaction.atomic():
-                # Lock the booking record
                 booking = Booking.objects.select_for_update().get(pk=pk)
 
-                # 1. ENFORCE ALLOWED TRANSITION RULES
-                # PENDING -> APPROVED, REJECTED, CANCELLED
-                # APPROVED -> COMPLETED, CANCELLED
-                # REJECTED -> Final (cannot transition)
-                # CANCELLED -> Final (cannot transition)
-                # COMPLETED -> Final (cannot transition)
                 if booking.status == new_status:
                     return Response(BookingSerializer(booking).data)
 
@@ -714,7 +727,6 @@ class BookingViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST
                     )
 
-                # Determine provider user ID
                 provider_uid = None
                 if booking.venue:
                     if booking.venue.owner and booking.venue.owner.user_id:
@@ -724,7 +736,6 @@ class BookingViewSet(viewsets.ModelViewSet):
                 elif booking.vendor and booking.vendor.user_id:
                     provider_uid = booking.vendor.user_id
 
-                # Resolve acting user (token or header)
                 acting_user_id = None
                 if request.user and request.user.is_authenticated:
                     acting_user_id = request.user.id
@@ -738,7 +749,6 @@ class BookingViewSet(viewsets.ModelViewSet):
 
                 is_admin = is_admin_user(request)
 
-                # 2. ROLE PERMISSION ENFORCEMENT
                 if not is_admin:
                     if new_status in ['APPROVED', 'REJECTED']:
                         if not acting_user_id or (provider_uid and acting_user_id != provider_uid):
@@ -761,12 +771,10 @@ class BookingViewSet(viewsets.ModelViewSet):
                                 status=status.HTTP_403_FORBIDDEN
                             )
 
-                # 3. CANCELLATION POLICY ENFORCEMENT (When Customer cancels)
                 if new_status == 'CANCELLED':
                     cancellation_reason = request.data.get('reason', '').strip() or request.data.get('cancellation_reason', '').strip()
                     cancelling_party = 'ADMIN' if is_admin else ('CUSTOMER' if acting_user_id == booking.customer_id else 'PROVIDER')
 
-                    # If customer is cancelling a CONFIRMED booking, enforce cancellation deadline policy
                     if booking.status == 'APPROVED' and cancelling_party == 'CUSTOMER':
                         policy = 'FLEXIBLE'
                         if booking.venue and booking.venue.cancellation_policy:
@@ -799,12 +807,10 @@ class BookingViewSet(viewsets.ModelViewSet):
                     booking.cancelled_by = cancelling_party
                     booking.cancellation_reason = cancellation_reason
 
-                # 4. REJECTION REASON TRACKING
                 if new_status == 'REJECTED':
                     rejection_reason = request.data.get('reason', '').strip() or request.data.get('rejection_reason', '').strip() or 'Provider is unavailable or unable to host this request.'
                     booking.rejection_reason = rejection_reason
 
-                # 5. COMPLETION RULES: Cannot mark completed before event date
                 if new_status == 'COMPLETED':
                     today = datetime.date.today()
                     if booking.event_date > today and not is_admin:
@@ -813,7 +819,6 @@ class BookingViewSet(viewsets.ModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST
                         )
 
-                # 6. Revalidation upon Provider Acceptance (Pending -> Approved)
                 if new_status == 'APPROVED' and booking.status != 'APPROVED':
                     BookingCapacityValidator.validate_booking(
                         customer=booking.customer,
@@ -867,7 +872,6 @@ class ReviewViewSet(viewsets.ModelViewSet):
         user_id = params.get('user')
         booking_id = params.get('booking')
 
-        # Filter strictly by the venue, vendor, or user specified
         if venue_id:
             queryset = queryset.filter(venue_id=venue_id)
         if vendor_id:
@@ -880,8 +884,6 @@ class ReviewViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
-        # Enforce server-side authenticated customer assignment:
-        # If user is authenticated, customer is authoritatively assigned from request.user
         if self.request.user and self.request.user.is_authenticated:
             serializer.save(customer=self.request.user)
         else:
@@ -965,7 +967,6 @@ class ReviewViewSet(viewsets.ModelViewSet):
         try:
             review = self.get_object()
         except Http404:
-            # If review was already removed or not found, return 204 successfully (idempotent)
             return Response({'message': 'Review already removed.'}, status=status.HTTP_204_NO_CONTENT)
 
         is_admin = is_admin_user(request)
@@ -1045,8 +1046,6 @@ class MessageViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
-        # Enforce server-side authenticated customer assignment:
-        # If user is authenticated, customer is authoritatively assigned from request.user
         if self.request.user and self.request.user.is_authenticated:
             serializer.save(customer=self.request.user)
         else:
@@ -1269,7 +1268,6 @@ class EventServiceViewSet(viewsets.ModelViewSet):
                 raise PermissionDenied("You do not have permission to modify this service.")
 
 
-
 @api_view(['GET'])
 def platform_stats(request):
     total_venues = Venue.objects.count()
@@ -1342,12 +1340,6 @@ def refresh_all_ratings(request):
         return Response({'error': f'Failed to recalculate ratings: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-
-
-
-
-
-
 class VendorDashboardView(APIView):
     def get(self, request, vendor_id):
         try:
@@ -1370,6 +1362,7 @@ class VendorDashboardView(APIView):
             'venues': VenueSerializer(vendor_venues, many=True).data
         })
 
+
 class VendorBookingsView(APIView):
     def get(self, request, vendor_id):
         try:
@@ -1380,12 +1373,6 @@ class VendorBookingsView(APIView):
         vendor_venues = Venue.objects.filter(vendor=vendor)
         bookings = Booking.objects.filter(Q(venue__in=vendor_venues) | Q(vendor=vendor)).order_by('-created_at')
         return Response(BookingSerializer(bookings, many=True).data)
-
-
-
-
-
-
 
 
 class VenueOwnerDashboardView(APIView):
@@ -1425,12 +1412,6 @@ class VenueOwnerBookingsView(APIView):
         return Response(BookingSerializer(bookings, many=True).data)
 
 
-
-
-
-
-
-
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def send_otp(request):
@@ -1438,15 +1419,12 @@ def send_otp(request):
     if not email:
         return Response({'error': 'Email is required'}, status=status.HTTP_400_BAD_REQUEST)
     
-    # Generate 6-digit OTP
     otp_code = str(random.randint(100000, 999999))
     
-    # Save/update OTP in database
     otp_obj, created = EmailOTP.objects.get_or_create(email=email)
     otp_obj.otp_code = otp_code
     otp_obj.save()
     
-    # Send email
     try:
         send_mail(
             subject='Your Verification Code',
@@ -1457,12 +1435,11 @@ def send_otp(request):
         )
     except Exception as e:
         print(f"Error sending email: {e}")
-        # Proceed anyway so the frontend advances to the OTP step
         
-    # Temporary: Print clearly to the console for testing!
     print(f"\n\n{'='*60}\n\n  🚨 OTP CODE FOR {email}: {otp_code} 🚨\n\n{'='*60}\n\n")
     
     return Response({'message': 'OTP sent successfully'})
+
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -1476,13 +1453,11 @@ def verify_otp(request):
     try:
         otp_obj = EmailOTP.objects.get(email=email)
         
-        # Check if expired (10 minutes)
         time_diff = timezone.now() - otp_obj.created_at
         if time_diff.total_seconds() > 600:
             return Response({'error': 'OTP has expired. Please request a new one.'}, status=status.HTTP_400_BAD_REQUEST)
             
         if otp_obj.otp_code == otp_code:
-            # OTP is valid, delete it to prevent reuse
             otp_obj.delete()
             return Response({'message': 'Email verified successfully'})
         else:
@@ -1490,6 +1465,7 @@ def verify_otp(request):
             
     except EmailOTP.DoesNotExist:
         return Response({'error': 'No OTP found for this email'}, status=status.HTTP_400_BAD_REQUEST)
+
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -1507,7 +1483,6 @@ def reset_password(request):
     try:
         otp_obj = EmailOTP.objects.get(email=email)
         
-        # Check if expired (10 minutes)
         time_diff = timezone.now() - otp_obj.created_at
         if time_diff.total_seconds() > 600:
             return Response({'error': 'OTP has expired. Please request a new one.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -1515,22 +1490,20 @@ def reset_password(request):
         if otp_obj.otp_code != otp_code:
             return Response({'error': 'Invalid OTP'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Find the user
         user = User.objects.filter(email=email).first()
         if not user:
             return Response({'error': 'No account found with this email'}, status=status.HTTP_404_NOT_FOUND)
 
-        # Reset password
         user.set_password(new_password)
         user.save()
         
-        # Delete OTP after successful use
         otp_obj.delete()
 
         return Response({'message': 'Password reset successfully'}, status=status.HTTP_200_OK)
         
     except EmailOTP.DoesNotExist:
         return Response({'error': 'No OTP found for this email'}, status=status.HTTP_400_BAD_REQUEST)
+
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -1546,19 +1519,15 @@ def upload_profile_picture(request, user_id):
     upload = request.FILES['file']
     fs = FileSystemStorage(location=settings.MEDIA_ROOT)
     
-    # Save the file with a unique name
     ext = upload.name.split('.')[-1]
     filename = f"user_{user_id}_{timezone.now().strftime('%Y%m%d%H%M%S')}.{ext}"
     saved_name = fs.save(filename, upload)
     
-    # Construct URL
     file_url = request.build_absolute_uri(settings.MEDIA_URL + saved_name)
     
-    # Save to user model
     user.avatar_url = file_url
     user.save()
 
-    # Also update profile logo if applicable
     if user.role == 'VENDOR' and hasattr(user, 'vendor_profile'):
         user.vendor_profile.logo_url = file_url
         user.vendor_profile.save()
@@ -1570,7 +1539,6 @@ def upload_profile_picture(request, user_id):
         'message': 'Profile picture uploaded successfully',
         'profile_picture': file_url
     })
-
 
 
 @api_view(['POST'])
@@ -1672,14 +1640,12 @@ def request_role(request):
     user_id = request.data.get('user_id')
     role = (request.data.get('role') or '').strip().upper()
 
-    # Reject attempts to modify another user's account.
     if user_id and str(user_id) != str(user.id):
         return Response(
             {'error': 'You can only change your own account role.'},
             status=status.HTTP_403_FORBIDDEN
         )
 
-    # Administrator privileges cannot be requested.
     if role == 'ADMIN':
         return Response(
             {'error': 'Administrator roles cannot be requested.'},
@@ -1821,7 +1787,6 @@ class NotificationViewSet(viewsets.ModelViewSet):
             else:
                 return Notification.objects.none()
 
-        # Opportunistically evaluate pending reminders for this user
         evaluate_and_generate_reminders(user=user)
         return Notification.objects.filter(user=user).order_by('-created_at')
 
@@ -1850,7 +1815,6 @@ class NotificationViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def scan_reminders(self, request):
-        """Force a scan of reminders for the user"""
         user = request.user
         if not user or not user.is_authenticated:
             user_id = request.data.get('user_id') or request.query_params.get('user_id')
@@ -1921,13 +1885,11 @@ class VerificationDocumentViewSet(viewsets.ModelViewSet):
         req_user = self.get_user_from_request()
         is_admin = is_admin_user(self.request)
 
-        # Non-admins can only see their own verification documents
         if not is_admin:
             if not req_user:
                 return VerificationDocument.objects.none()
             queryset = queryset.filter(user=req_user)
 
-        # Filters for query
         params = self.request.query_params
         status_param = params.get('status')
         doc_type_param = params.get('document_type')
@@ -1959,7 +1921,6 @@ class VerificationDocumentViewSet(viewsets.ModelViewSet):
         file_size = file_obj.size if file_obj else 0
         file_ext = file_name.split('.')[-1].lower() if '.' in file_name else ''
 
-        # Auto-associate vendor or venue_owner profile
         vendor = getattr(req_user, 'vendor_profile', None)
         venue_owner = getattr(req_user, 'venue_owner_profile', None)
 
@@ -1987,10 +1948,6 @@ class VerificationDocumentViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def download(self, request, pk=None):
-        """
-        Secure document streaming. Only accessible by the document owner or an authorized administrator.
-        Prevents public exposure or unauthenticated access.
-        """
         try:
             doc = VerificationDocument.objects.get(pk=pk)
         except VerificationDocument.DoesNotExist:
@@ -2012,7 +1969,6 @@ class VerificationDocumentViewSet(viewsets.ModelViewSet):
             content_type, _ = mimetypes.guess_type(file_path)
             content_type = content_type or 'application/octet-stream'
             
-            # Serve file with disposition inline for previewing PDFs and images
             response = FileResponse(open(file_path, 'rb'), content_type=content_type)
             safe_display_name = doc.file_name or f"document_{doc.id}.{doc.file_extension or 'pdf'}"
             response['Content-Disposition'] = f'inline; filename="{safe_display_name}"'
@@ -2035,8 +1991,6 @@ class VerificationDocumentViewSet(viewsets.ModelViewSet):
         doc.reviewed_at = timezone.now()
         doc.save()
 
-        # Check if provider can now have their profile marked verified
-        # A provider is verified if they have at least one approved document and no unaddressed issues
         user = doc.user
         if doc.venue_owner:
             owner = doc.venue_owner
@@ -2080,8 +2034,6 @@ class VerificationDocumentViewSet(viewsets.ModelViewSet):
         doc.reviewed_at = timezone.now()
         doc.save()
 
-        # Re-evaluate provider verification:
-        # If provider no longer has ANY approved, valid verification documents, revoke verified status
         user = doc.user
         today = datetime.date.today()
         has_other_valid_doc = VerificationDocument.objects.filter(
@@ -2130,10 +2082,6 @@ from datetime import timedelta
 
 
 def parse_date_range(request):
-    """
-    Parses date range query parameters (preset: '7d', '30d', '90d', 'all' or start_date & end_date).
-    Returns (start_datetime, end_datetime, range_label).
-    """
     preset = request.query_params.get('preset', '30d')
     start_str = request.query_params.get('start_date')
     end_str = request.query_params.get('end_date')
@@ -2160,7 +2108,7 @@ def parse_date_range(request):
     elif preset == 'all':
         start_dt = timezone.make_aware(datetime.datetime(2020, 1, 1))
         label = 'All Time'
-    else:  # default '30d'
+    else:
         start_dt = now - timedelta(days=30)
         label = 'Last 30 Days'
 
@@ -2168,9 +2116,6 @@ def parse_date_range(request):
 
 
 def get_actor_user(request):
-    """
-    Safely retrieves the acting User from request.user or X-User-Id header.
-    """
     user = getattr(request, 'user', None)
     if user and user.is_authenticated:
         return user
@@ -2245,11 +2190,6 @@ def upload_listing_image(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def track_user_interaction(request):
-    """
-    Endpoint for recording customer interactions securely.
-    Accepts valid event types: SEARCH, LISTING_VIEW, LISTING_CLICK, CATEGORY_INTEREST, BOOKING_FORM_OPEN.
-    Validates referenced venue/vendor against actual database records.
-    """
     data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
     event_type = data.get('event_type')
 
@@ -2287,11 +2227,9 @@ def track_user_interaction(request):
         elif vendor:
             category = vendor.vendor_type
 
-    # Sanitize and normalize search query
     raw_query = data.get('search_query', '')
     normalized_query = (raw_query.strip()[:200]) if raw_query else ''
 
-    # Throttling duplicate events: If identical listing_view or search by same user/session happened < 10 seconds ago, ignore duplicate
     if event_type in ['LISTING_VIEW', 'SEARCH', 'BOOKING_FORM_OPEN']:
         recent_cutoff = timezone.now() - timedelta(seconds=10)
         dup_filter = Q(event_type=event_type, timestamp__gte=recent_cutoff)
@@ -2327,11 +2265,7 @@ def track_user_interaction(request):
 
 
 def compute_daily_breakdown(interactions_qs, bookings_qs, start_dt, end_dt):
-    """
-    Computes a date-bucketed trend array for views, searches, and booking requests.
-    """
     days_count = max(1, (end_dt.date() - start_dt.date()).days + 1)
-    # Generate daily buckets
     daily_map = {}
     cur = start_dt.date()
     end_d = end_dt.date()
@@ -2369,28 +2303,21 @@ def compute_daily_breakdown(interactions_qs, bookings_qs, start_dt, end_dt):
 
 @api_view(['GET'])
 def admin_analytics(request):
-    """
-    Returns platform-wide aggregate analytics strictly for administrators.
-    """
     if not is_admin_user(request):
         raise PermissionDenied("Access Denied: Platform Administrator privileges required.")
 
     start_dt, end_dt, range_label = parse_date_range(request)
 
-    # Scoped QuerySets based on date filter
     interactions = UserInteraction.objects.filter(timestamp__gte=start_dt, timestamp__lte=end_dt)
     bookings = Booking.objects.filter(created_at__gte=start_dt, created_at__lte=end_dt)
 
     total_searches = interactions.filter(event_type='SEARCH').count()
     total_listing_views = interactions.filter(event_type='LISTING_VIEW').count()
 
-    # Unique listing viewers calculation:
-    # Distinct authenticated user IDs + distinct anonymous sessions (where user is null)
     auth_viewers = interactions.filter(event_type='LISTING_VIEW', user__isnull=False).values('user_id').distinct().count()
     anon_viewers = interactions.filter(event_type='LISTING_VIEW', user__isnull=True, session_id__isnull=False).values('session_id').distinct().count()
     unique_viewers = auth_viewers + anon_viewers
 
-    # Bookings metrics
     booking_requests = bookings.count()
     confirmed_bookings = bookings.filter(status__in=['APPROVED', 'COMPLETED']).count()
     completed_bookings = bookings.filter(status='COMPLETED').count()
@@ -2398,10 +2325,8 @@ def admin_analytics(request):
     pending_bookings = bookings.filter(status='PENDING').count()
     rejected_bookings = bookings.filter(status='REJECTED').count()
 
-    # Cancellation rate: (Cancelled / Total Requests) * 100
     cancellation_rate = round((cancelled_bookings / booking_requests * 100), 1) if booking_requests > 0 else 0.0
 
-    # Search sessions/users with a booking
     searching_user_ids = set(interactions.filter(event_type='SEARCH', user__isnull=False).values_list('user_id', flat=True))
     searching_sessions = set(interactions.filter(event_type='SEARCH', session_id__isnull=False).values_list('session_id', flat=True))
     total_searching_cohort = len(searching_user_ids) + len(searching_sessions)
@@ -2412,14 +2337,12 @@ def admin_analytics(request):
         round((booking_requests / max(1, total_searches) * 100), 1) if total_searches > 0 else 0.0
     )
 
-    # View to booking conversion rate
     viewing_user_ids = set(interactions.filter(event_type='LISTING_VIEW', user__isnull=False).values_list('user_id', flat=True))
     converted_viewers = len(viewing_user_ids.intersection(booking_user_ids))
     view_to_booking_rate = round((converted_viewers / max(1, len(viewing_user_ids)) * 100), 1) if viewing_user_ids else (
         round((booking_requests / max(1, total_listing_views) * 100), 1) if total_listing_views > 0 else 0.0
     )
 
-    # Booking funnel stages
     funnel = [
         {'stage': 'Searches Performed', 'count': total_searches, 'percentage': 100},
         {'stage': 'Listings Viewed', 'count': total_listing_views, 'percentage': round((total_listing_views / max(1, total_searches) * 100), 1) if total_searches > 0 else 0},
@@ -2428,7 +2351,6 @@ def admin_analytics(request):
         {'stage': 'Confirmed Bookings', 'count': confirmed_bookings, 'percentage': round((confirmed_bookings / max(1, booking_requests) * 100), 1) if booking_requests > 0 else 0},
     ]
 
-    # Status distribution
     status_distribution = [
         {'status': 'Pending Approval', 'count': pending_bookings, 'color': '#d97706'},
         {'status': 'Confirmed', 'count': confirmed_bookings - completed_bookings, 'color': '#0d8a73'},
@@ -2437,7 +2359,6 @@ def admin_analytics(request):
         {'status': 'Rejected', 'count': rejected_bookings, 'color': '#64748b'},
     ]
 
-    # Popular categories by interaction counts
     category_counts = (
         interactions.filter(category__isnull=False)
         .values('category')
@@ -2446,7 +2367,6 @@ def admin_analytics(request):
     )
     popular_categories = [{'category': c['category'], 'views': c['views']} for c in category_counts]
 
-    # Popular listings by views
     venue_views = (
         interactions.filter(venue__isnull=False, event_type='LISTING_VIEW')
         .values('venue_id', 'venue__title', 'venue__category', 'venue__location')
@@ -2485,13 +2405,11 @@ def admin_analytics(request):
         for vd in vendor_views
     ]
 
-    # Peak booking request days of week
     from collections import Counter
     day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
     day_counts = Counter(b.created_at.weekday() for b in bookings)
     peak_days = [{'day': day_names[i], 'requests': day_counts.get(i, 0)} for i in range(7)]
 
-    # Over time trends
     trends = compute_daily_breakdown(interactions, bookings, start_dt, end_dt)
 
     return Response({
@@ -2523,9 +2441,6 @@ def admin_analytics(request):
 
 @api_view(['GET'])
 def export_admin_analytics_csv(request):
-    """
-    Exports platform analytics as CSV.
-    """
     if not is_admin_user(request):
         raise PermissionDenied("Access Denied: Platform Administrator privileges required.")
 
@@ -2561,9 +2476,6 @@ def export_admin_analytics_csv(request):
 
 
 def verify_vendor_access(request, vendor_id):
-    """
-    Ensures the requesting user is the owner of the vendor profile or an admin.
-    """
     if is_admin_user(request):
         try:
             return VendorProfile.objects.get(pk=vendor_id)
@@ -2584,23 +2496,18 @@ def verify_vendor_access(request, vendor_id):
 
 @api_view(['GET'])
 def vendor_analytics(request, vendor_id):
-    """
-    Analytics scoped strictly to a specific vendor.
-    """
     vendor = verify_vendor_access(request, vendor_id)
     if not vendor:
         raise PermissionDenied("Access Denied: You are not authorized to view this vendor's analytics.")
 
     start_dt, end_dt, range_label = parse_date_range(request)
 
-    # Interactions for this vendor (either direct vendor profile or their linked service listings)
     interactions = UserInteraction.objects.filter(
         Q(vendor=vendor) | Q(venue__vendor=vendor),
         timestamp__gte=start_dt,
         timestamp__lte=end_dt
     )
 
-    # Bookings for this vendor
     bookings = Booking.objects.filter(
         Q(vendor=vendor) | Q(venue__vendor=vendor),
         created_at__gte=start_dt,
@@ -2623,7 +2530,6 @@ def vendor_analytics(request, vendor_id):
     cancellation_rate = round((cancelled_bookings / booking_requests * 100), 1) if booking_requests > 0 else 0.0
     conversion_rate = round((booking_requests / max(1, service_views) * 100), 1) if service_views > 0 else 0.0
 
-    # Service-level performance (if vendor has multiple venue/service listings)
     services = Venue.objects.filter(vendor=vendor)
     service_performance = []
     for s in services:
@@ -2639,7 +2545,6 @@ def vendor_analytics(request, vendor_id):
         })
     service_performance.sort(key=lambda x: x['views'], reverse=True)
 
-    # Peak days
     from collections import Counter
     day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
     day_counts = Counter(b.created_at.weekday() for b in bookings)
@@ -2675,9 +2580,6 @@ def vendor_analytics(request, vendor_id):
 
 @api_view(['GET'])
 def export_vendor_analytics_csv(request, vendor_id):
-    """
-    Exports scoped vendor analytics as CSV.
-    """
     vendor = verify_vendor_access(request, vendor_id)
     if not vendor:
         raise PermissionDenied("Access Denied.")
@@ -2721,9 +2623,6 @@ def export_vendor_analytics_csv(request, vendor_id):
 
 
 def verify_venue_owner_access(request, owner_id):
-    """
-    Ensures the requesting user is the owner of the venue owner profile or an admin.
-    """
     if is_admin_user(request):
         try:
             return VenueOwnerProfile.objects.get(pk=owner_id)
@@ -2744,9 +2643,6 @@ def verify_venue_owner_access(request, owner_id):
 
 @api_view(['GET'])
 def venue_owner_analytics(request, owner_id):
-    """
-    Analytics scoped strictly to a specific venue owner.
-    """
     owner = verify_venue_owner_access(request, owner_id)
     if not owner:
         raise PermissionDenied("Access Denied: You are not authorized to view this venue owner's analytics.")
@@ -2783,7 +2679,6 @@ def venue_owner_analytics(request, owner_id):
     cancellation_rate = round((cancelled_bookings / booking_requests * 100), 1) if booking_requests > 0 else 0.0
     conversion_rate = round((booking_requests / max(1, venue_views) * 100), 1) if venue_views > 0 else 0.0
 
-    # Per-venue performance
     venue_performance = []
     total_days_in_period = max(1, (end_dt.date() - start_dt.date()).days + 1)
 
@@ -2793,7 +2688,6 @@ def venue_owner_analytics(request, owner_id):
         v_requests = v_bookings.count()
         v_confirmed = v_bookings.filter(status__in=['APPROVED', 'COMPLETED']).count()
 
-        # Reliable venue utilization: Count distinct confirmed event dates during this period / total days in period
         confirmed_dates_count = v_bookings.filter(
             status__in=['APPROVED', 'COMPLETED'],
             event_date__gte=start_dt.date(),
@@ -2814,7 +2708,6 @@ def venue_owner_analytics(request, owner_id):
         })
     venue_performance.sort(key=lambda x: x['views'], reverse=True)
 
-    # Peak days
     from collections import Counter
     day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
     day_counts = Counter(b.created_at.weekday() for b in bookings)
@@ -2850,9 +2743,6 @@ def venue_owner_analytics(request, owner_id):
 
 @api_view(['GET'])
 def export_venue_owner_analytics_csv(request, owner_id):
-    """
-    Exports scoped venue owner analytics as CSV.
-    """
     owner = verify_venue_owner_access(request, owner_id)
     if not owner:
         raise PermissionDenied("Access Denied.")
@@ -2888,7 +2778,7 @@ def export_venue_owner_analytics_csv(request, owner_id):
     writer.writerow(['Cancelled Bookings', bookings.filter(status='CANCELLED').count()])
     writer.writerow([])
 
-    writer.writerow(['DAILY VENUE ACTIVITY TRENDS'])
+    writer.writerow(['DAILY ACTIVITY TRENDS'])
     writer.writerow(['Date', 'Views', 'Clicks', 'Booking Requests', 'Confirmed'])
     trends = compute_daily_breakdown(interactions, bookings, start_dt, end_dt)
     for t in trends:
@@ -2897,67 +2787,274 @@ def export_venue_owner_analytics_csv(request, owner_id):
     return response
 
 
+# ==============================================================================
+# ML RECOMMENDATIONS ENDPOINTS
+# ==============================================================================
+
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
 def venue_recommendations(request):
-    query = request.query_params.get('query', '').strip()
+    """
+    GET /api/recommendations/venues/
+    Returns personalized venue recommendations for the current user (or cold-start fallback).
+    """
+    user = request.user if request.user and request.user.is_authenticated else None
+    try:
+        limit = int(request.query_params.get('limit', 6))
+    except (ValueError, TypeError):
+        limit = 6
 
-    if not query:
-        return Response({'results': []})
-
-    recommendations = get_venue_recommendations(
-        customer=request.user,
-        preferences={'query': query},
-        top_k=10
-    )
-
+    query = request.query_params.get('query', '').strip()[:200]
+    try:
+        recs = get_venue_recommendations(
+            user=user,
+            limit=limit,
+            preferences={'query': query} if query else None,
+        )
+    except Exception as exc:
+        return Response(
+            {'error': f'Failed to compute venue recommendations: {str(exc)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
     results = []
-    for item in recommendations:
-        venue = item.get('venue')
-        if not venue:
-            continue
-
-        venue_data = VenueSerializer(
-            venue,
-            context={'request': request}
-        ).data
-
-        venue_data['match_score'] = item.get('match_score', 0)
-        venue_data['is_cold_start'] = item.get('is_cold_start', False)
-        venue_data['recommendation_type'] = 'VENUE'
+    for recommendation in recs:
+        venue_data = dict(VenueSerializer(
+            recommendation['venue'],
+            context={'request': request},
+        ).data)
+        venue_data.update({
+            'match_score': recommendation['match_score'],
+            'is_cold_start': recommendation['is_cold_start'],
+            'recommendation_type': recommendation['recommendation_type'],
+        })
         results.append(venue_data)
-
     return Response({'results': results})
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def vendor_recommendations(request):
-    query = request.query_params.get('query', '').strip()
-
+def service_recommendations(request):
+    query = request.query_params.get('query', '').strip()[:200]
     if not query:
         return Response({'results': []})
 
-    recommendations = get_vendor_recommendations(
-        customer=request.user,
-        preferences={'query': query},
-        top_k=10
-    )
+    try:
+        limit = int(request.query_params.get('limit', 6))
+    except (ValueError, TypeError):
+        limit = 6
+
+    services = _get_public_catalog_queryset().filter(
+        listing_type='SERVICE'
+    ).select_related('owner', 'vendor').order_by('id')
+
+    try:
+        recs = compute_service_recommendations(
+            services=services,
+            query=query,
+            top_k=limit,
+        )
+    except Exception as exc:
+        return Response(
+            {'error': f'Failed to compute service recommendations: {str(exc)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
     results = []
-    for item in recommendations:
-        vendor = item.get('vendor')
-        if not vendor:
-            continue
-
-        vendor_data = VendorProfileSerializer(
-            vendor,
-            context={'request': request}
-        ).data
-
-        vendor_data['match_score'] = item.get('match_score', 0)
-        vendor_data['is_cold_start'] = item.get('is_cold_start', False)
-        vendor_data['recommendation_type'] = 'VENDOR'
-        results.append(vendor_data)
-
+    for recommendation in recs:
+        service_data = dict(VenueSerializer(
+            recommendation['service'],
+            context={'request': request},
+        ).data)
+        service_data.update({
+            'match_score': recommendation['match_score'],
+            'is_cold_start': False,
+            'recommendation_type': 'SERVICE',
+        })
+        results.append(service_data)
     return Response({'results': results})
+
+
+@api_view(['GET'])
+def vendor_recommendations(request):
+    """
+    GET /api/recommendations/vendors/
+    Returns personalized vendor recommendations for the current user (or cold-start fallback).
+    """
+    user = request.user if request.user and request.user.is_authenticated else None
+    try:
+        limit = int(request.query_params.get('limit', 6))
+    except (ValueError, TypeError):
+        limit = 6
+
+    query = request.query_params.get('query', '').strip()[:200]
+    try:
+        recs = get_vendor_recommendations(
+            user=user,
+            limit=limit,
+            preferences={'query': query} if query else None,
+        )
+    except Exception as exc:
+        return Response(
+            {'error': f'Failed to compute vendor recommendations: {str(exc)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    results = []
+    for recommendation in recs:
+        vendor_data = dict(VendorProfileSerializer(
+            recommendation['vendor'],
+            context={'request': request},
+        ).data)
+        vendor_data.update({
+            'match_score': recommendation['match_score'],
+            'is_cold_start': recommendation['is_cold_start'],
+            'recommendation_type': recommendation['recommendation_type'],
+        })
+        results.append(vendor_data)
+    return Response({'results': results})
+
+
+# ==============================================================================
+# M-PESA DARAJA STK PUSH VIEWS
+# ==============================================================================
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def mpesa_stk_push(request):
+    """
+    POST /api/mpesa/stkpush/
+    Body: { bookingId, phone, amount, accountReference? }
+    """
+    booking_id = request.data.get('bookingId')
+    phone = request.data.get('phone')
+    amount = request.data.get('amount')
+
+    if not booking_id or not phone or not amount:
+        return Response(
+            {'success': False, 'message': 'bookingId, phone, and amount are required'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        booking = Booking.objects.get(pk=booking_id)
+    except Booking.DoesNotExist:
+        return Response(
+            {'success': False, 'message': 'Booking not found'},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    account_reference = request.data.get('accountReference') or f'EVT-{booking.id}'
+
+    try:
+        stk_response = mpesa_service.initiate_stk_push(
+            phone=phone,
+            amount=int(float(amount)),
+            account_reference=account_reference,
+            description='Booking Payment',
+        )
+    except Exception as exc:
+        return Response(
+            {'success': False, 'message': str(exc)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    if stk_response.get('ResponseCode') != '0':
+        return Response(
+            {
+                'success': False,
+                'message': stk_response.get('errorMessage')
+                or stk_response.get('ResponseDescription')
+                or 'STK push failed',
+                'raw': stk_response,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    payment = Payment.objects.create(
+        booking=booking,
+        checkout_request_id=stk_response['CheckoutRequestID'],
+        merchant_request_id=stk_response.get('MerchantRequestID', ''),
+        customer_phone=phone,
+        amount=amount,
+        account_reference=account_reference,
+        status='PENDING',
+    )
+
+    return Response({
+        'success': True,
+        'message': 'STK push sent. Enter M-Pesa PIN on your phone.',
+        'checkoutRequestId': payment.checkout_request_id,
+        'merchantRequestId': payment.merchant_request_id,
+        'customerMessage': stk_response.get('CustomerMessage', ''),
+    })
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def mpesa_callback(request):
+    """
+    POST /api/mpesa/callback/
+    Safaricom posts the result here. MUST always return 200.
+    """
+    try:
+        stk = request.data.get('Body', {}).get('stkCallback', {})
+        checkout_id = stk.get('CheckoutRequestID')
+        result_code = stk.get('ResultCode')
+        result_desc = stk.get('ResultDesc', '')
+
+        if not checkout_id:
+            return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
+
+        metadata = {}
+        for item in stk.get('CallbackMetadata', {}).get('Item', []) or []:
+            metadata[item.get('Name')] = item.get('Value')
+
+        payment = Payment.objects.filter(checkout_request_id=checkout_id).first()
+        if not payment:
+            return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
+
+        payment.result_code = result_code
+        payment.result_desc = result_desc
+
+        if result_code == 0:
+            payment.status = 'SUCCESS'
+            payment.mpesa_receipt_number = metadata.get('MpesaReceiptNumber', '')
+            payment.transaction_date = str(metadata.get('TransactionDate', ''))
+        elif result_code == 1032:
+            payment.status = 'CANCELLED'
+        else:
+            payment.status = 'FAILED'
+
+        payment.save()
+
+    except Exception:
+        pass
+
+    return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def mpesa_status(request, checkout_request_id):
+    """GET /api/mpesa/status/<checkout_request_id>/"""
+    payment = Payment.objects.filter(checkout_request_id=checkout_request_id).first()
+    if not payment:
+        return Response(
+            {'success': False, 'message': 'Payment not found'},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    return Response({'success': True, 'payment': PaymentSerializer(payment).data})
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def mpesa_status_by_booking(request, booking_id):
+    """GET /api/mpesa/status-by-booking/<booking_id>/"""
+    payment = Payment.objects.filter(booking_id=booking_id).order_by('-created_at').first()
+    if not payment:
+        return Response(
+            {'success': False, 'message': 'No payment for this booking'},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    return Response({'success': True, 'payment': PaymentSerializer(payment).data})

@@ -38,7 +38,7 @@ class IsolatedRecommenderPersistenceTests(TestCase):
             owner=None,
             title='Grand Sapphire Ballroom',
             category='BANQUET',
-            location='Nairobi CBD',
+            location='Nyeri County, Kenya',
             capacity=350,
             price_per_day=150000.0,
             approval_status='APPROVED',
@@ -52,7 +52,7 @@ class IsolatedRecommenderPersistenceTests(TestCase):
             user=self.provider,
             business_name='Savory Catering Services',
             vendor_type='Catering',
-            location='Nairobi',
+            location='Nyeri County, Kenya',
             starting_price=50000.0,
             verification_status='APPROVED',
             rating=4.8,
@@ -87,3 +87,65 @@ class IsolatedRecommenderPersistenceTests(TestCase):
         persist_customer_recommendations(self.customer, venue_recs, vendor_recs)
         count_second = Recommendation.objects.filter(customer=self.customer).count()
         self.assertEqual(count_second, count_first)
+
+    def test_venue_recommendations_endpoint_uses_search_query(self):
+        Venue.objects.create(
+            vendor=self.vendor1,
+            title='Sapphire DJ Entertainment',
+            listing_type='SERVICE',
+            category='ENTERTAINMENT',
+            location='Nyeri County, Kenya',
+            capacity=0,
+            price_per_day=30000,
+            approval_status='APPROVED',
+            is_available=True,
+        )
+
+        response = self.client.get(
+            '/api/recommendations/venues/',
+            {'query': 'sapphire'}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [item['id'] for item in response.json()['results']],
+            [self.venue1.id],
+        )
+        self.assertGreater(response.json()['results'][0]['match_score'], 0)
+
+    def test_service_recommendations_return_match_scores_and_exclude_out_of_county(self):
+        nyeri_service = Venue.objects.create(
+            vendor=self.vendor1,
+            title='Sapphire Floral Decoration',
+            listing_type='SERVICE',
+            category='DECORATION',
+            location='Nyeri County, Kenya',
+            capacity=0,
+            price_per_day=30000,
+            description='Floral decoration and styling for wedding events.',
+            approval_status='APPROVED',
+            is_available=True,
+        )
+        Venue.objects.create(
+            vendor=self.vendor1,
+            title='Nairobi Floral Decoration',
+            listing_type='SERVICE',
+            category='DECORATION',
+            location='Nairobi',
+            capacity=0,
+            price_per_day=30000,
+            description='Floral decoration and styling for wedding events.',
+            approval_status='APPROVED',
+            is_available=True,
+        )
+
+        response = self.client.get(
+            '/api/recommendations/services/',
+            {'query': 'floral decoration'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        results = response.json()['results']
+        self.assertEqual([item['id'] for item in results], [nyeri_service.id])
+        self.assertGreater(results[0]['match_score'], 0)
+        self.assertLessEqual(results[0]['match_score'], 1)

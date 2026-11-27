@@ -2,8 +2,11 @@
 # pyrefly: ignore[missing-import]
 from .models import (
     User, VendorProfile, VenueOwnerProfile, Venue, Booking, Review, Message, Event, EventService,
-    Notification, CustomerReminderPreference, VerificationDocument, UserInteraction, Recommendation, FraudAlert, ProviderAvailabilitySetting
+    Notification, CustomerReminderPreference, VerificationDocument, UserInteraction, Recommendation, FraudAlert, ProviderAvailabilitySetting,
+    Payment,
 )
+from .location_utils import is_nyeri_county_location
+
 
 class ProviderAvailabilitySettingSerializer(serializers.ModelSerializer):
     class Meta:
@@ -23,8 +26,8 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'id', 'username', 'email', 'first_name', 'last_name', 'role', 
-            'phone_number', 'avatar_url', 'bio', 'is_customer', 'is_vendor', 
+            'id', 'username', 'email', 'first_name', 'last_name', 'role',
+            'phone_number', 'avatar_url', 'bio', 'is_customer', 'is_vendor',
             'is_venue_owner', 'is_provider', 'is_active', 'is_staff', 'is_superuser', 'date_joined'
         ]
 
@@ -103,7 +106,6 @@ class VendorProfileSerializer(serializers.ModelSerializer):
         else:
             data['starting_price'] = sp
 
-        # Automatically populate service portfolio images and logo if empty
         if not data.get('portfolio_images') or len(data['portfolio_images']) == 0:
             venue_imgs = [v.image_url for v in instance.venues.all() if v.image_url]
             if venue_imgs:
@@ -116,11 +118,11 @@ class VendorProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = VendorProfile
         fields = [
-            'id', 'user', 'user_details', 'business_name', 'vendor_type', 
+            'id', 'user', 'user_details', 'business_name', 'vendor_type',
             'vendor_type_display', 'description', 'location', 'address',
             'starting_price', 'contact_email', 'contact_phone',
             'years_in_business', 'website_url', 'logo_url',
-            'verification_status', 'is_verified', 'portfolio_images', 
+            'verification_status', 'is_verified', 'portfolio_images',
             'rating', 'review_count', 'created_at'
         ]
 
@@ -128,8 +130,12 @@ class VendorProfileSerializer(serializers.ModelSerializer):
 class VenueSerializer(serializers.ModelSerializer):
     vendor_name = serializers.ReadOnlyField(source='vendor.business_name')
     owner_name = serializers.ReadOnlyField(source='owner.business_name')
-    category_display = serializers.CharField(source='get_category_display', read_only=True)
+    category = serializers.CharField(max_length=100)
+    category_display = serializers.SerializerMethodField()
     owner_user_id = serializers.SerializerMethodField()
+
+    def get_category_display(self, obj):
+        return dict(Venue.CATEGORY_CHOICES).get(obj.category, obj.category)
 
     def get_owner_user_id(self, obj):
         if obj.owner and obj.owner.user_id:
@@ -144,56 +150,30 @@ class VenueSerializer(serializers.ModelSerializer):
             self.instance.listing_type if self.instance
             else Venue._meta.get_field('listing_type').get_default()
         )
-
-        category = attrs.get(
-            'category',
-            self.instance.category if self.instance else None
+        category = attrs.get('category', self.instance.category if self.instance else None)
+        capacity = attrs.get('capacity', self.instance.capacity if self.instance else None)
+        location = attrs.get(
+            'location',
+            self.instance.location if self.instance else None,
         )
 
-        capacity = attrs.get(
-            'capacity',
-            self.instance.capacity if self.instance else None
-        )
-
-        service_categories = {
-            'PHOTOGRAPHY',
-            'CATERING',
-            'DECORATION',
-            'ENTERTAINMENT',
-            'PLANNING',
-            'SOUND',
-        }
-
-        venue_categories = {
-            'WEDDING',
-            'CONFERENCE',
-            'BIRTHDAY',
-            'OUTDOOR',
-            'PARTY',
-            'EXHIBITION',
-        }
-
-        if listing_type == 'SERVICE' and category not in service_categories:
+        if not is_nyeri_county_location(location):
             raise serializers.ValidationError({
-                'category': 'Select a valid service category.'
+                'location': 'Venues and services must be located in Nyeri County.'
             })
 
-        if listing_type == 'VENUE' and category not in venue_categories:
-            raise serializers.ValidationError({
-                'category': 'Select a valid venue category.'
-            })
+        service_categories = {'PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'}
+        venue_categories = {'WEDDING', 'CONFERENCE', 'BIRTHDAY', 'OUTDOOR', 'PARTY', 'EXHIBITION'}
 
+        if listing_type == 'SERVICE' and category in venue_categories:
+            raise serializers.ValidationError({'category': 'Select a valid service category.'})
+        if listing_type == 'VENUE' and category in service_categories:
+            raise serializers.ValidationError({'category': 'Select a valid venue category.'})
         if capacity is not None:
             if capacity < 0:
-                raise serializers.ValidationError({
-                    'capacity': 'Capacity cannot be negative.'
-                })
-
+                raise serializers.ValidationError({'capacity': 'Capacity cannot be negative.'})
             if listing_type == 'VENUE' and capacity <= 0:
-                raise serializers.ValidationError({
-                    'capacity': 'Venue capacity must be greater than zero.'
-                })
-
+                raise serializers.ValidationError({'capacity': 'Venue capacity must be greater than zero.'})
         return attrs
 
     def to_internal_value(self, data):
@@ -209,20 +189,13 @@ class VenueSerializer(serializers.ModelSerializer):
         model = Venue
         fields = [
             'id', 'vendor', 'vendor_name', 'owner', 'owner_name', 'owner_user_id', 'listing_type', 'title', 'description', 'category',
-            'category_display', 'location', 'address', 'capacity', 'price_per_day', 
+            'category_display', 'location', 'address', 'capacity', 'price_per_day',
             'price_per_hour', 'amenities', 'image_url', 'is_verified', 'approval_status', 'rejection_reason',
             'cancellation_policy', 'is_available', 'rating', 'review_count', 'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'vendor',
-            'owner',
-            'is_verified',
-            'approval_status',
-            'rejection_reason',
-            'rating',
-            'review_count',
-            'created_at',
-            'updated_at',
+            'vendor', 'owner', 'is_verified', 'approval_status', 'rejection_reason',
+            'rating', 'review_count', 'created_at', 'updated_at',
         ]
 
 
@@ -245,7 +218,7 @@ class ReviewSerializer(serializers.ModelSerializer):
     class Meta:
         model = Review
         fields = [
-            'id', 'user', 'user_name', 'booking', 'venue', 'vendor', 
+            'id', 'user', 'user_name', 'booking', 'venue', 'vendor',
             'target_name', 'rating', 'comment', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'user', 'created_at', 'updated_at']
@@ -281,9 +254,9 @@ class BookingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Booking
         fields = [
-            'id', 'customer', 'customer_name', 'customer_email', 'venue', 'venue_details', 
-            'vendor', 'vendor_details', 'provider_user_id', 'event_title', 'event_type', 'event_date', 
-            'end_date', 'guest_count', 'total_price', 'status', 'notes', 
+            'id', 'customer', 'customer_name', 'customer_email', 'venue', 'venue_details',
+            'vendor', 'vendor_details', 'provider_user_id', 'event_title', 'event_type', 'event_date',
+            'end_date', 'guest_count', 'total_price', 'status', 'notes',
             'rejection_reason', 'cancelled_at', 'cancelled_by', 'cancellation_reason',
             'has_reviewed', 'review',
             'created_at', 'updated_at'
@@ -297,7 +270,6 @@ class BookingSerializer(serializers.ModelSerializer):
 
         request = self.context.get('request')
         if request and hasattr(request, 'user') and request.user and request.user.is_authenticated:
-            # Authoritatively bind the authenticated user as the booking customer
             attrs['customer'] = request.user
 
         customer = attrs.get('customer') or (self.instance.customer if self.instance else None)
@@ -306,9 +278,6 @@ class BookingSerializer(serializers.ModelSerializer):
         event_type = attrs.get('event_type') or (self.instance.event_type if self.instance else None)
         notes = attrs.get('notes') if 'notes' in attrs else (self.instance.notes if self.instance else None)
 
-        # Robust target resolution for POST, PUT, and partial PATCH:
-        # In a full update (PUT or POST), fields not included are treated as omitted/None.
-        # In a partial update (PATCH), omitted fields fall back to self.instance.
         is_partial = getattr(self, 'partial', False)
         if 'venue' in attrs:
             final_venue = attrs['venue']
@@ -324,11 +293,8 @@ class BookingSerializer(serializers.ModelSerializer):
         else:
             final_vendor = None
 
-        # 1. Target presence, exclusivity, approval, availability, and positive-pricing checks
-        # Executed unconditionally on every write (POST, PUT, and partial PATCH)
         BookingCapacityValidator.validate_listing_eligibility(venue=final_venue, vendor=final_vendor)
 
-        # 2. Date and capacity validation when scheduling fields are provided or already present
         if event_date and guest_count is not None:
             BookingCapacityValidator.validate_booking(
                 customer=customer,
@@ -341,17 +307,13 @@ class BookingSerializer(serializers.ModelSerializer):
                 exclude_booking_id=self.instance.id if self.instance else None
             )
 
-        # 3. Server-Side Authoritative Pricing Determination:
-        # Never trust user/client submitted total_price. The backend independently calculates
-        # and overrides total_price from authoritative listing rates:
-        # - Venue bookings: Venue.price_per_day
-        # - Vendor bookings: VendorProfile.starting_price
         if final_venue:
             attrs['total_price'] = Decimal(str(final_venue.price_per_day))
         elif final_vendor:
             attrs['total_price'] = Decimal(str(final_vendor.starting_price))
 
         return attrs
+
 
 class MessageSerializer(serializers.ModelSerializer):
     sender_name = serializers.SerializerMethodField()
@@ -520,24 +482,17 @@ class VerificationDocumentSerializer(serializers.ModelSerializer):
     def validate_file(self, value):
         if not value:
             raise serializers.ValidationError("A valid file must be uploaded.")
-        
-        # Max file size: 10MB
         max_size = 10 * 1024 * 1024
         if value.size > max_size:
             raise serializers.ValidationError(f"File size exceeds 10MB limit. Uploaded file is {round(value.size / (1024 * 1024), 2)}MB.")
-
-        # Allowed extensions
         allowed_extensions = ['pdf', 'jpg', 'jpeg', 'png']
         filename = value.name.lower() if hasattr(value, 'name') else ''
         ext = filename.split('.')[-1] if '.' in filename else ''
         if ext not in allowed_extensions:
             raise serializers.ValidationError(f"Unsupported file format '.{ext}'. Allowed formats: PDF, JPG, JPEG, PNG.")
-
-        # Disallow dangerous executable extensions
         dangerous = ['exe', 'bat', 'sh', 'py', 'js', 'php', 'html', 'cmd']
         if ext in dangerous:
             raise serializers.ValidationError("Executable or script files are strictly prohibited.")
-
         return value
 
 
@@ -553,15 +508,9 @@ class UserInteractionSerializer(serializers.ModelSerializer):
 
     def validate_search_query(self, value):
         if value:
-            # Normalize and cap length for privacy and security
             cleaned = value.strip()[:200]
             return cleaned
         return value
-
-
-
-
-
 
 
 class RecommendationSerializer(serializers.ModelSerializer):
@@ -579,7 +528,6 @@ class RecommendationSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'customer', 'created_at', 'updated_at']
 
     def get_match_percentage(self, obj):
-        # Convert 0.0 - 1.0 to display percentage integer (e.g. 85%)
         return round((obj.match_score or 0.0) * 100, 1)
 
 
@@ -597,8 +545,32 @@ class FraudAlertSerializer(serializers.ModelSerializer):
             'status', 'reviewed_by', 'reviewed_by_username', 'admin_notes',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['total_price']
         read_only_fields = [
             'id', 'booking', 'risk_score', 'is_anomaly', 'detection_method',
             'reason', 'created_at', 'updated_at'
+        ]
+
+
+# ================= NEW — M-PESA =================
+class PaymentSerializer(serializers.ModelSerializer):
+    """Returns camelCase JSON to match the React frontend's PaymentRecord interface."""
+    checkoutRequestId = serializers.CharField(source='checkout_request_id', read_only=True)
+    merchantRequestId = serializers.CharField(source='merchant_request_id', read_only=True)
+    bookingId = serializers.IntegerField(source='booking_id', read_only=True)
+    customerPhone = serializers.CharField(source='customer_phone', read_only=True)
+    accountReference = serializers.CharField(source='account_reference', read_only=True)
+    resultCode = serializers.IntegerField(source='result_code', read_only=True)
+    resultDesc = serializers.CharField(source='result_desc', read_only=True)
+    mpesaReceiptNumber = serializers.CharField(source='mpesa_receipt_number', read_only=True)
+    transactionDate = serializers.CharField(source='transaction_date', read_only=True)
+    createdAt = serializers.DateTimeField(source='created_at', read_only=True)
+    updatedAt = serializers.DateTimeField(source='updated_at', read_only=True)
+
+    class Meta:
+        model = Payment
+        fields = [
+            'checkoutRequestId', 'merchantRequestId', 'bookingId',
+            'customerPhone', 'amount', 'accountReference', 'status',
+            'resultCode', 'resultDesc', 'mpesaReceiptNumber', 'transactionDate',
+            'createdAt', 'updatedAt',
         ]

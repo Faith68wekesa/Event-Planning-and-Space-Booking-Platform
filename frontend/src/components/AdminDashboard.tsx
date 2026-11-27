@@ -50,6 +50,28 @@ interface UnifiedAccount {
 
 type AdminTab = 'overview' | 'users' | 'bookings' | 'venues' | 'verifications' | 'reviews' | 'analytics' | 'settings';
 
+const LEGACY_SERVICE_CATEGORIES = new Set([
+  'PHOTOGRAPHY',
+  'CATERING',
+  'DECORATION',
+  'ENTERTAINMENT',
+  'PLANNING',
+  'SOUND',
+]);
+
+const isServiceListing = (listing: Venue): boolean => {
+  if (listing.listing_type) {
+    return listing.listing_type === 'SERVICE';
+  }
+
+  return Boolean(
+    listing.vendor ||
+    listing.vendor_name ||
+    listing.capacity === 0 ||
+    LEGACY_SERVICE_CATEGORIES.has(listing.category)
+  );
+};
+
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   venues: propVenues,
   vendors: propVendors,
@@ -69,6 +91,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [refreshingRatings, setRefreshingRatings] = useState(false);
 
@@ -189,10 +212,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       loadAdminData();
     }
   }, [isAdmin]);
-
-  useEffect(() => {
-    if (propVenues && propVenues.length > 0) setVenues(propVenues);
-  }, [propVenues]);
 
   useEffect(() => {
     if (propVendors && propVendors.length > 0) setVendors(propVendors);
@@ -550,7 +569,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   });
 
   const filteredVenues = venues.filter(v => {
-    const isVendorListing = Boolean(v.vendor || v.vendor_name || v.capacity === 0 || ['PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'].includes(v.category));
+    const isVendorListing = isServiceListing(v);
     if (venueTypeFilter === 'VENUE' && isVendorListing) return false;
     if (venueTypeFilter === 'VENDOR' && !isVendorListing) return false;
     if (venueCategoryFilter !== 'ALL' && v.category !== venueCategoryFilter) return false;
@@ -711,6 +730,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         onLogout={onLogout}
         isMobileOpen={isMobileSidebarOpen}
         onToggleMobile={() => setIsMobileSidebarOpen(prev => !prev)}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapsed={() => setIsSidebarCollapsed(prev => !prev)}
         badgeCounts={{
           users: users.length,
           bookings: bookings.length,
@@ -727,7 +748,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <button
               className="admin-mobile-toggle-btn"
-              onClick={() => setIsMobileSidebarOpen(true)}
+              onClick={() => {
+                setIsSidebarCollapsed(false);
+                setIsMobileSidebarOpen(true);
+              }}
               aria-label="Open sidebar menu"
             >
               <Menu size={20} />
@@ -740,75 +764,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </header>
 
         <div className="admin-dashboard-container">
-      {/* Top Banner & Title */}
-      <div style={{
-        background: '#0F8F7A',
-        borderRadius: '20px',
-        padding: '32px 36px',
-        color: '#ffffff',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '20px',
-        boxShadow: '0 10px 25px -5px rgba(13, 138, 115, 0.3)',
-        marginBottom: '28px',
-      }}>
-        <div>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'rgba(255, 255, 255, 0.2)', padding: '4px 12px', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 700, marginBottom: '12px' }}>
-            <ShieldCheck size={16} /> Admin Command Center {currentUser?.username ? `• Logged in as ${currentUser.username}` : ''}
-          </div>
-          <h1 style={{ fontSize: '2rem', fontWeight: 800, margin: '0 0 8px', letterSpacing: '-0.5px' }}>
-            Platform Administration
-          </h1>
-          <p style={{ margin: 0, color: 'rgba(255, 255, 255, 0.85)', fontSize: '0.95rem', maxWidth: '600px' }}>
-            Manage platform users, moderate venue spaces, oversee bookings, verify vendor credentials, and monitor live reviews.
-          </p>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          <button
-            onClick={handleRefreshRatings}
-            disabled={refreshingRatings}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              background: '#ffffff',
-              color: '#0d8a73',
-              border: 'none',
-              padding: '10px 20px',
-              borderRadius: '10px',
-              fontWeight: 700,
-              fontSize: '0.88rem',
-              cursor: refreshingRatings ? 'not-allowed' : 'pointer',
-              boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-              transition: 'all 0.2s',
-            }}
-          >
-            <RefreshCw size={16} className={refreshingRatings ? 'spin' : ''} />
-            {refreshingRatings ? 'Recalculating...' : 'Refresh Ratings'}
-          </button>
-          {onNavigateHome && (
-            <button
-              onClick={onNavigateHome}
-              style={{
-                background: 'rgba(255, 255, 255, 0.15)',
-                color: '#ffffff',
-                border: '1px solid rgba(255, 255, 255, 0.3)',
-                padding: '10px 18px',
-                borderRadius: '10px',
-                fontWeight: 600,
-                fontSize: '0.88rem',
-                cursor: 'pointer',
-              }}
-            >
-              Back to Site
-            </button>
-          )}
-        </div>
-      </div>
-
       {loading && (
         <div style={{ textAlign: 'center', padding: '12px 20px', background: '#f0fdfa', border: '1px solid #ccfbf1', borderRadius: '10px', color: '#0d8a73', fontWeight: 600, fontSize: '0.88rem', marginBottom: '20px' }}>
           Refreshing platform data and user accounts...
@@ -1093,7 +1048,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     transition: 'all 0.15s ease',
                   }}
                 >
-                  Venues & Spaces ({venues.filter(v => !(v.vendor || v.vendor_name || v.capacity === 0 || ['PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'].includes(v.category))).length})
+                  Venues & Spaces ({venues.filter(v => !isServiceListing(v)).length})
                 </button>
                 <button
                   type="button"
@@ -1110,7 +1065,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     transition: 'all 0.15s ease',
                   }}
                 >
-                  Vendor Services ({venues.filter(v => Boolean(v.vendor || v.vendor_name || v.capacity === 0 || ['PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'].includes(v.category))).length})
+                  Vendor Services ({venues.filter(isServiceListing).length})
                 </button>
               </div>
 
@@ -1547,7 +1502,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     transition: 'all 0.15s ease',
                   }}
                 >
-                  Venues & Spaces ({venues.filter(v => !(v.vendor || v.vendor_name || v.capacity === 0 || ['PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'].includes(v.category))).length})
+                  Venues & Spaces ({venues.filter(v => !isServiceListing(v)).length})
                 </button>
                 <button
                   type="button"
@@ -1564,7 +1519,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     transition: 'all 0.15s ease',
                   }}
                 >
-                  Vendor Services ({venues.filter(v => Boolean(v.vendor || v.vendor_name || v.capacity === 0 || ['PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'].includes(v.category))).length})
+                  Vendor Services ({venues.filter(isServiceListing).length})
                 </button>
               </div>
               <div style={{ position: 'relative' }}>

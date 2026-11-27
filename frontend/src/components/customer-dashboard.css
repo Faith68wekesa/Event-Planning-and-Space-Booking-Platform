@@ -23,6 +23,54 @@
   top: 0;
   height: 100vh;
   overflow-y: auto;
+  transition: width 0.2s ease;
+}
+
+.customer-sidebar-collapsed .customer-sidebar {
+  width: 76px;
+}
+
+.customer-sidebar-header {
+  padding: 22px 12px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.customer-sidebar-collapsed .customer-sidebar-header {
+  flex-direction: column;
+  padding: 16px 10px;
+}
+
+.customer-sidebar-collapsed .customer-brand-title,
+.customer-sidebar-collapsed .customer-brand-tagline,
+.customer-sidebar-collapsed .customer-nav-item-left span,
+.customer-sidebar-collapsed .customer-nav-badge {
+  display: none;
+}
+
+.customer-sidebar-collapsed .customer-sidebar-nav {
+  padding-right: 10px;
+  padding-left: 10px;
+}
+
+.customer-sidebar-collapsed .customer-nav-item {
+  justify-content: center;
+  padding-right: 8px;
+  padding-left: 8px;
+}
+
+.customer-sidebar-collapsed .customer-nav-item-left {
+  justify-content: center;
+  gap: 0;
+}
+
+.customer-sidebar-collapsed .customer-sidebar-logo {
+  justify-content: center;
+  flex: 0 0 auto;
+  padding: 0;
 }
 
 .customer-sidebar::-webkit-scrollbar {
@@ -35,11 +83,38 @@
 
 /* Logo */
 .customer-sidebar-logo {
-  padding: 24px 22px 18px;
+  padding: 0;
   display: flex;
   align-items: center;
   gap: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  min-width: 0;
+  flex: 1;
+  box-sizing: border-box;
+  text-align: left;
+  font: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.customer-sidebar-collapse-btn {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #d1fae5;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.customer-sidebar-collapse-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .customer-logo-icon {
@@ -171,6 +246,19 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
+.customer-sidebar-footer {
+  padding: 14px 14px 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.customer-sidebar-logout {
+  color: #fca5a5;
+}
+
+.customer-sidebar-collapsed .customer-sidebar-footer {
+  padding: 14px 10px 20px;
+}
+
 .customer-nav-badge {
   background: rgba(255, 255, 255, 0.25);
   color: #ffffff;
@@ -184,38 +272,6 @@
 
 .customer-nav-badge.active-badge {
   background: rgba(255, 255, 255, 0.25);
-}
-
-/* Sidebar Help Card */
-.customer-sidebar-help {
-  margin: 16px 14px 20px;
-  padding: 14px 16px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  cursor: pointer;
-  transition: all 0.2s;
-  color: #ffffff;
-}
-
-.customer-sidebar-help:hover {
-  background: rgba(255, 255, 255, 0.1);
-  transform: translateY(-1px);
-}
-
-.customer-help-title {
-  font-size: 0.88rem;
-  font-weight: 700;
-  color: #ffffff;
-}
-
-.customer-help-sub {
-  font-size: 0.75rem;
-  color: #94a3b8;
-  margin-top: 1px;
 }
 
 /* Main Area */
@@ -252,6 +308,7 @@
   max-width: 440px;
   border: 1px solid transparent;
   transition: all 0.2s;
+  flex: 1;
 }
 
 .customer-search-box:focus-within {

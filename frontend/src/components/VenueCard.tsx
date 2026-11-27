@@ -105,7 +105,8 @@ export const VenueCard: React.FC<VenueCardProps> = ({ venue, onSelect, onBook })
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '14px', flexWrap: 'wrap' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <MapPin size={14} color="#0d8a73" /> {venue.location}
+            <MapPin size={14} color="#0d8a73" />
+            {isService ? `Location: ${venue.location}` : venue.location}
           </span>
           {!isService && (
             <span style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#ecfdf5', color: '#059669', padding: '2px 8px', borderRadius: '6px', fontWeight: 700, fontSize: '0.78rem' }}>

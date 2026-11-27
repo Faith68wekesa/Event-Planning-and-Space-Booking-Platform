@@ -71,7 +71,72 @@
   height: 100vh;
   z-index: 50;
   overflow-y: auto;
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width 0.2s ease, transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.admin-sidebar.collapsed {
+  width: 80px;
+}
+
+.admin-sidebar.collapsed .admin-sidebar-header {
+  padding-right: 6px;
+  padding-left: 6px;
+}
+
+.admin-sidebar.collapsed .admin-brand-logo {
+  justify-content: center;
+}
+
+.admin-sidebar.collapsed .admin-logo-icon {
+  width: 36px;
+  height: 36px;
+}
+
+.admin-sidebar.collapsed .admin-brand-title,
+.admin-sidebar.collapsed .admin-brand-badge,
+.admin-sidebar.collapsed .admin-sidebar-section-label,
+.admin-sidebar.collapsed .admin-item-label,
+.admin-sidebar.collapsed .admin-item-badge,
+.admin-sidebar.collapsed .admin-user-info,
+.admin-sidebar.collapsed .admin-role-pill {
+  display: none;
+}
+
+.admin-sidebar.collapsed .admin-sidebar-nav {
+  padding-right: 8px;
+  padding-left: 8px;
+}
+
+.admin-sidebar.collapsed .admin-sidebar-item,
+.admin-sidebar.collapsed .admin-user-profile {
+  justify-content: center;
+  padding-right: 8px;
+  padding-left: 8px;
+}
+
+.admin-sidebar.collapsed .admin-item-content {
+  justify-content: center;
+  gap: 0;
+}
+
+.admin-sidebar-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  padding: 0;
+  color: #d1fae5;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.admin-sidebar-collapse-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .admin-sidebar::-webkit-scrollbar {
@@ -332,6 +397,10 @@
     bottom: 0;
     transform: translateX(-100%);
     box-shadow: 10px 0 30px rgba(0, 0, 0, 0.4);
+  }
+
+  .admin-sidebar-collapse-btn {
+    display: none;
   }
 
   .admin-sidebar.open {

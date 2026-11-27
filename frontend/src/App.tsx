@@ -5,10 +5,8 @@ import { LandingPage } from './components/LandingPage.tsx';
 import { Navbar } from './components/Navbar.tsx';
 import { HeroSearch } from './components/HeroSearch.tsx';
 import { VenueGrid } from './components/VenueGrid.tsx';
-import { VendorGrid } from './components/VendorGrid.tsx';
 import { FilterSidebar } from './components/FilterSidebar.tsx';
 import { VenueModal } from './components/VenueModal.tsx';
-import { VendorModal } from './components/VendorModal.tsx';
 import { BookingModal } from './components/BookingModal.tsx';
 import { CustomerDashboard } from './components/CustomerDashboard.tsx';
 import { AdminDashboard } from './components/AdminDashboard.tsx';
@@ -16,6 +14,24 @@ import { ProviderDashboard } from './components/ProviderDashboard.tsx';
 import { AuthModal } from './components/AuthModal.tsx';
 import type { User as UserType } from './types';
 import { Toaster, toast } from 'react-hot-toast';
+
+const VENUE_CATEGORY_CODES = new Set([
+  'WEDDING',
+  'CONFERENCE',
+  'BIRTHDAY',
+  'OUTDOOR',
+  'PARTY',
+  'EXHIBITION',
+]);
+
+const SERVICE_CATEGORY_CODES = new Set([
+  'PHOTOGRAPHY',
+  'CATERING',
+  'DECORATION',
+  'ENTERTAINMENT',
+  'PLANNING',
+  'SOUND',
+]);
 
 export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<UserType | null>(() => {
@@ -104,17 +120,14 @@ export const App: React.FC = () => {
   });
 
   const [selectedVenue, setSelectedVenue] = useState<Venue | null>(null);
-  const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
   const [customerChatPartnerId, setCustomerChatPartnerId] = useState<number | null>(null);
   const [bookingTargetVenue, setBookingTargetVenue] = useState<Venue | null>(null);
-  const [bookingTargetVendor, setBookingTargetVendor] = useState<Vendor | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isAdminAuthModal, setIsAdminAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
-  const handleInterceptBook = (target: any, type: 'venue' | 'vendor') => {
-    if (type === 'venue') setBookingTargetVenue(target);
-    else setBookingTargetVendor(target);
+  const handleInterceptBook = (target: Venue) => {
+    setBookingTargetVenue(target);
 
     if (!currentUser) {
       setIsAdminAuthModal(false);
@@ -158,6 +171,33 @@ export const App: React.FC = () => {
         user: currentUser?.id,
       });
     }
+  };
+
+  const navigateToTab = (nextTab: string) => {
+    setActiveTab(nextTab);
+    setFilters((current) => {
+      if (nextTab === 'services' || nextTab === 'vendors') {
+        return {
+          ...current,
+          category: VENUE_CATEGORY_CODES.has(current.category) ? 'ALL' : current.category,
+          min_capacity: 0,
+        };
+      }
+
+      if (
+        nextTab === 'venues' &&
+        current.category !== 'ALL' &&
+        !VENUE_CATEGORY_CODES.has(current.category)
+      ) {
+        return { ...current, category: 'ALL' };
+      }
+
+      return current;
+    });
+  };
+
+  const handleNavbarTabChange: React.Dispatch<React.SetStateAction<string>> = (nextTab) => {
+    navigateToTab(typeof nextTab === 'function' ? nextTab(activeTab) : nextTab);
   };
 
   useEffect(() => {
@@ -294,26 +334,17 @@ export const App: React.FC = () => {
     });
   };
 
-  const handleSelectVendorWithTracking = (vendor: Vendor, source: string = 'grid') => {
-    setSelectedVendor(vendor);
-    ApiService.trackInteraction({
-      event_type: 'LISTING_CLICK',
-      listing_type: 'VENDOR',
-      vendor: vendor.id,
-      category: vendor.vendor_type,
-      source: source,
-      user: currentUser?.id,
-    });
-  };
-
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <Toaster position="top-center" reverseOrder={false} />
       <>
-        {activeTab !== 'my-bookings' && (
+        {activeTab !== 'my-bookings' &&
+          activeTab !== 'provider-dashboard' &&
+          activeTab !== 'vendor-dashboard' &&
+          activeTab !== 'venue-owner-dashboard' && (
           <Navbar
             activeTab={activeTab}
-            setActiveTab={setActiveTab}
+            setActiveTab={handleNavbarTabChange}
             activeRole={activeRole}
             setActiveRole={setActiveRole}
             currentUser={currentUser}
@@ -335,13 +366,15 @@ export const App: React.FC = () => {
               <LandingPage
                 onSearch={(newFilters) => {
                   setFilters(newFilters);
-                  setActiveTab('venues');
+                  navigateToTab(
+                    SERVICE_CATEGORY_CODES.has(newFilters.category) ? 'services' : 'venues'
+                  );
                 }}
                 filters={filters}
-                onExploreVenues={() => setActiveTab('venues')}
-                onExploreServices={() => setActiveTab('services')}
+                onExploreVenues={() => navigateToTab('venues')}
+                onExploreServices={() => navigateToTab('services')}
                 onSelectVenue={(venue) => handleSelectVenueWithTracking(venue, 'landing_page')}
-                onBookVenue={(venue) => handleInterceptBook(venue, 'venue')}
+                onBookVenue={handleInterceptBook}
                 onOpenAdmin={handleOpenAdmin}
                 currentUser={currentUser}
               />
@@ -370,7 +403,7 @@ export const App: React.FC = () => {
                       <FilterSidebar
                         filters={filters}
                         setFilters={setFilters}
-                        activeTab={activeTab as 'venues' | 'services' | 'vendors'}
+                        activeTab={activeTab === 'venues' ? 'venues' : 'services'}
                       />
 
                       <div>
@@ -378,9 +411,7 @@ export const App: React.FC = () => {
                           <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1e293b' }}>
                             {activeTab === 'venues'
                               ? `Available Event Venues (${venues.length})`
-                              : activeTab === 'services'
-                                ? `Available Event Services (${services.length})`
-                                : `Verified Planners & Services (${vendors.length})`}
+                              : `Available Event Services (${services.length})`}
                           </h2>
                         </div>
 
@@ -388,20 +419,21 @@ export const App: React.FC = () => {
                           <VenueGrid
                             venues={venues}
                             onSelectVenue={(venue) => handleSelectVenueWithTracking(venue, 'catalog_grid')}
-                            onBookVenue={(venue) => handleInterceptBook(venue, 'venue')}
+                            onBookVenue={handleInterceptBook}
                           />
                         ) : activeTab === 'services' ? (
                           <VenueGrid
                             venues={services}
                             onSelectVenue={(service) => handleSelectVenueWithTracking(service, 'catalog_grid')}
-                            onBookVenue={(service) => handleInterceptBook(service, 'venue')}
+                            onBookVenue={handleInterceptBook}
                             emptyMessage="No Services Found"
                           />
                         ) : (
-                          <VendorGrid
-                            vendors={vendors}
-                            onSelectVendor={(vendor) => handleSelectVendorWithTracking(vendor, 'catalog_grid')}
-                            onBookVendor={(vendor) => handleInterceptBook(vendor, 'vendor')}
+                          <VenueGrid
+                            venues={services}
+                            onSelectVenue={(service) => handleSelectVenueWithTracking(service, 'catalog_grid')}
+                            onBookVenue={handleInterceptBook}
+                            emptyMessage="No Service Listings Found"
                           />
                         )}
                       </div>
@@ -418,11 +450,12 @@ export const App: React.FC = () => {
                     onCancelBooking={handleCancelBooking}
                     onNavigate={(tab) => {
                       if (tab !== 'messages') setCustomerChatPartnerId(null);
-                      setActiveTab(tab as any);
+                      navigateToTab(tab);
                     }}
                     handleSelectVenueWithTracking={handleSelectVenueWithTracking}
-                    handleSelectVendorWithTracking={handleSelectVendorWithTracking}
+                    onBookVenue={handleInterceptBook}
                     venues={venues}
+                    services={services}
                     onLogout={() => {
                       setCurrentUser(null);
                       setActiveRole('CUSTOMER');
@@ -445,7 +478,7 @@ export const App: React.FC = () => {
                       setActiveRole('CUSTOMER');
                       setActiveTab('landing');
                     }}
-                    onExplore={() => handleRequestRole('CUSTOMER', 'venues')}
+                    onExplore={() => handleRequestRole('CUSTOMER')}
                   />
                 )}
 
@@ -459,7 +492,7 @@ export const App: React.FC = () => {
                     onDataChange={loadData}
                     onNavigateHome={() => {
                       loadData();
-                      setActiveTab('venues');
+                      navigateToTab('venues');
                     }}
                     onLoginClick={() => {
                       setIsAdminAuthModal(true);
@@ -494,60 +527,49 @@ export const App: React.FC = () => {
             />
           )}
 
-          {selectedVendor && (
-            <VendorModal
-              vendor={selectedVendor}
-              currentUser={currentUser}
-              onClose={() => setSelectedVendor(null)}
-              onBook={(v) => handleInterceptBook(v, 'vendor')}
-              onMessage={(target) => {
-                setSelectedVendor(null);
-                if (target?.recipientId) {
-                  setCustomerChatPartnerId(target.recipientId);
-                }
-                setActiveRole('CUSTOMER');
-                setActiveTab('my-bookings');
-              }}
-            />
-          )}
-
-          {currentUser && (bookingTargetVenue || bookingTargetVendor) && (
+          {currentUser && bookingTargetVenue && (
             <BookingModal
               venue={bookingTargetVenue}
-              vendor={bookingTargetVendor}
               currentUser={currentUser}
               onClose={() => {
                 setBookingTargetVenue(null);
-                setBookingTargetVendor(null);
               }}
               onSuccess={handleBookSuccess}
             />
           )}
 
-          <footer
-            style={{
-              background: '#0F8F7A',
-              borderTop: '1px solid rgba(255, 255, 255, 0.15)',
-              padding: '48px 24px',
-              color: '#ffffff',
-              fontSize: '0.9rem',
-              marginTop: 'auto',
-            }}
-          >
+          {![
+            'my-bookings',
+            'my-events',
+            'provider-dashboard',
+            'vendor-dashboard',
+            'venue-owner-dashboard',
+            'admin-dashboard',
+          ].includes(activeTab) && (
+            <footer
+              style={{
+                background: '#0F8F7A',
+                borderTop: '1px solid rgba(255, 255, 255, 0.15)',
+                padding: '48px 24px',
+                color: '#ffffff',
+                fontSize: '0.9rem',
+                marginTop: 'auto',
+              }}
+            >
             <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '32px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '32px' }}>
                 <div>
                   <h3 style={{ fontSize: '1.4rem', fontWeight: 800, marginBottom: '14px', letterSpacing: '-0.5px' }}>Locyfy</h3>
                   <p style={{ color: '#e6f7f3', lineHeight: 1.6, maxWidth: '280px', fontSize: '0.9rem' }}>
-                    Your unified platform for discovering, listing, and booking physical event spaces and trusted services across Kenya.
+                    Your unified platform for discovering, listing, and booking physical event spaces and trusted services across Nyeri County.
                   </p>
                 </div>
 
                 <div>
                   <h4 style={{ fontWeight: 700, marginBottom: '16px', letterSpacing: '0.05em', textTransform: 'uppercase', fontSize: '0.8rem' }}>Explore</h4>
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => setActiveTab('venues')}>Venues</li>
-                    <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => setActiveTab('vendors')}>Planners & Services</li>
+                    <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => navigateToTab('venues')}>Venues</li>
+                    <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => navigateToTab('services')}>Service Listings</li>
                     <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => setActiveTab('my-bookings')}>My Bookings</li>
                   </ul>
                 </div>
@@ -583,7 +605,8 @@ export const App: React.FC = () => {
                 </div>
               </div>
             </div>
-          </footer>
+            </footer>
+          )}
         </>
 
       {showAuthModal && (
@@ -594,7 +617,6 @@ export const App: React.FC = () => {
             setShowAuthModal(false);
             setIsAdminAuthModal(false);
             setBookingTargetVenue(null);
-            setBookingTargetVendor(null);
           }}
           onSuccess={(data) => {
             setShowAuthModal(false);

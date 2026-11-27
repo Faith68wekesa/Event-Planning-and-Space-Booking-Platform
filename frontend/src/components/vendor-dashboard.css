@@ -16,13 +16,103 @@
   flex-shrink: 0;
   box-shadow: 3px 0 16px rgba(15, 143, 122, 0.2);
   z-index: 20;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  transition: width 0.2s ease;
+}
+
+.vendor-sidebar-collapsed .vendor-sidebar {
+  width: 76px;
 }
 
 .vendor-sidebar-header {
-  padding: 24px 20px;
+  padding: 24px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   font-size: 1.25rem;
   font-weight: 800;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.vendor-sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+  padding: 0;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.vendor-logo-mark {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 1.15rem;
+}
+
+.vendor-sidebar-collapsed .vendor-sidebar-header {
+  flex-direction: column;
+  justify-content: center;
+  padding: 16px 10px;
+}
+
+.vendor-sidebar-collapsed .vendor-sidebar-brand {
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.vendor-sidebar-collapse-btn {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #d1fae5;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.vendor-sidebar-collapse-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.vendor-sidebar-collapsed .vendor-brand-copy,
+.vendor-sidebar-collapsed .vendor-sidebar-item > span {
+  display: none;
+}
+
+.vendor-sidebar-collapsed .vendor-sidebar-item {
+  justify-content: center;
+  gap: 0;
+  padding-right: 8px;
+  padding-left: 8px;
+  font-size: 0;
+}
+
+.vendor-sidebar-collapsed .vendor-sidebar-nav {
+  padding-right: 10px;
+  padding-left: 10px;
 }
 
 .vendor-sidebar-nav {
@@ -112,9 +202,219 @@
 /* Main Content Area */
 .vendor-main-content {
   flex-grow: 1;
-  padding: 32px 40px;
+  padding: 0 40px 32px;
   background-color: #f8fafc;
   overflow-y: auto;
+}
+
+.vendor-app-topbar {
+  min-height: 72px;
+  margin: 0 -40px 28px;
+  padding: 0 36px;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.vendor-search-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 440px;
+  padding: 10px 20px;
+  background: #f1f5f9;
+  border: 1px solid transparent;
+  border-radius: 9999px;
+  color: #64748b;
+  transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+
+.vendor-search-box:focus-within {
+  background: #ffffff;
+  border-color: #0d8a73;
+  box-shadow: 0 0 0 3px rgba(13, 138, 115, 0.15);
+}
+
+.vendor-search-box input {
+  width: 100%;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #1e293b;
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.vendor-search-box input::placeholder {
+  color: #94a3b8;
+}
+
+.vendor-app-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.vendor-notification-btn,
+.vendor-profile-btn {
+  position: relative;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #1e293b;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  cursor: pointer;
+}
+
+.vendor-notification-btn {
+  width: 42px;
+  border-radius: 50%;
+}
+
+.vendor-profile-btn {
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: 10px;
+  color: #ffffff;
+  background: #0d8a73;
+  border: none;
+  box-shadow: 0 2px 6px rgba(13, 138, 115, 0.25);
+}
+
+.vendor-notification-btn:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.vendor-profile-btn:hover {
+  background: #0b7866;
+}
+
+.vendor-notification-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  background: #ef4444;
+  border: 2px solid #ffffff;
+  border-radius: 9999px;
+  font-size: 0.65rem;
+  font-weight: 800;
+}
+
+.vendor-profile-avatar {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+}
+
+.vendor-profile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.vendor-account-menu-wrap {
+  position: relative;
+}
+
+.vendor-account-menu {
+  position: absolute;
+  top: 46px;
+  right: 0;
+  z-index: 60;
+  width: 220px;
+  padding: 6px 0;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.15);
+}
+
+.vendor-account-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 18px;
+  color: #1e293b;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.vendor-account-menu button:hover {
+  background: #f8fafc;
+  color: #0d8a73;
+}
+
+.vendor-account-menu button.active {
+  color: #0d8a73;
+  background: #ecfdf5;
+}
+
+.vendor-account-menu button.vendor-account-logout {
+  color: #dc2626;
+  border-top: 1px solid #f1f5f9;
+}
+
+@media (max-width: 760px) {
+  .vendor-main-content {
+    padding: 0 20px 24px;
+  }
+
+  .vendor-app-topbar {
+    margin: 0 -20px 24px;
+    padding: 0 12px;
+    gap: 8px;
+  }
+
+  .vendor-search-box {
+    flex: 1;
+    min-width: 0;
+    padding: 9px 12px;
+  }
+
+  .vendor-app-topbar-actions {
+    gap: 6px;
+  }
+
+  .vendor-profile-btn {
+    padding: 5px 7px;
+  }
+
+  .vendor-sidebar-collapsed .vendor-sidebar-header {
+    padding: 16px 10px;
+  }
+
+  .vendor-sidebar-collapsed .vendor-sidebar {
+    width: 68px;
+  }
 }
 
 .vendor-topbar {

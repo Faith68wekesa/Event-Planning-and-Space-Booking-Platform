@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.core.validators import MinValueValidator, MaxValueValidator
 
+
 class User(AbstractUser):
     ROLE_CHOICES = [
         ('CUSTOMER', 'Customer'),
@@ -87,12 +88,6 @@ class VendorProfile(models.Model):
         return f"{self.business_name} - {self.vendor_type}"
 
     def update_rating_stats(self):
-        """Recalculate average rating and review count for this vendor.
-
-        Aggregates over all Review objects linked to this vendor and updates
-        the `rating` (average) and `review_count` fields. If there are no
-        reviews, rating defaults to 0 and count to 0.
-        """
         from django.db.models import Avg, Count
         stats = Review.objects.filter(vendor=self).aggregate(avg_rating=Avg('rating'), cnt=Count('id'))
         self.rating = stats['avg_rating'] if stats['avg_rating'] is not None else 0
@@ -144,17 +139,12 @@ class Venue(models.Model):
         ('MODERATE', 'Moderate - Full cancellation up to 3 days before event'),
         ('STRICT', 'Strict - Full cancellation up to 7 days before event'),
     ]
-    listing_type = models.CharField(
-        max_length=10,
-        choices=LISTING_TYPE_CHOICES,
-        default='VENUE',
-        db_index=True,
-    )
+    listing_type = models.CharField(max_length=10, choices=LISTING_TYPE_CHOICES, default='VENUE', db_index=True)
     vendor = models.ForeignKey(VendorProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='venues')
     owner = models.ForeignKey(VenueOwnerProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='venues')
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True, default='')
-    category = models.CharField(max_length=30, choices=CATEGORY_CHOICES)
+    category = models.CharField(max_length=100)
     location = models.CharField(max_length=100)
     address = models.CharField(max_length=255, blank=True, null=True)
     capacity = models.IntegerField()
@@ -175,7 +165,6 @@ class Venue(models.Model):
     def save(self, *args, **kwargs):
         if self.image_url:
             self.image_url = self.clean_image_url(self.image_url)
-        # Keep is_verified in sync with approval_status
         self.is_verified = (self.approval_status == 'APPROVED')
         super().save(*args, **kwargs)
         if self.vendor:
@@ -231,12 +220,6 @@ class Venue(models.Model):
         return f"{self.title} ({self.location})"
 
     def update_rating_stats(self):
-        """Recalculate average rating and review count for this venue.
-
-        Aggregates over all Review objects linked to this venue and updates
-        the `rating` (average) and `review_count` fields. If there are no
-        reviews, defaults to 0.
-        """
         from django.db.models import Avg, Count
         stats = Review.objects.filter(venue=self).aggregate(avg_rating=Avg('rating'), cnt=Count('id'))
         self.rating = stats['avg_rating'] if stats['avg_rating'] is not None else 0
@@ -290,18 +273,14 @@ class Review(models.Model):
     booking = models.OneToOneField(Booking, on_delete=models.CASCADE, null=True, blank=True, related_name='review')
     venue = models.ForeignKey(Venue, on_delete=models.CASCADE, null=True, blank=True, related_name='reviews')
     vendor = models.ForeignKey(VendorProfile, on_delete=models.CASCADE, null=True, blank=True, related_name='reviews')
-    rating = models.IntegerField(
-        validators=[MinValueValidator(1), MaxValueValidator(5)]
-    )
+    rating = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(5)])
     comment = models.TextField(blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ['-created_at']
-        constraints = [
-            models.UniqueConstraint(fields=['user', 'booking'], name='unique_user_booking_review')
-        ]
+        constraints = [models.UniqueConstraint(fields=['user', 'booking'], name='unique_user_booking_review')]
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
@@ -356,7 +335,6 @@ class Event(models.Model):
         ('Completed', 'Completed'),
         ('Cancelled', 'Cancelled'),
     ]
-
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='events')
     name = models.CharField(max_length=200)
     event_type = models.CharField(max_length=100)
@@ -364,16 +342,8 @@ class Event(models.Model):
     start_time = models.TimeField(blank=True, null=True)
     end_time = models.TimeField(blank=True, null=True)
     location = models.CharField(max_length=255)
-    expected_guest_count = models.PositiveIntegerField(
-        default=0,
-        validators=[MinValueValidator(0)]
-    )
-    budget = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        default=0.00,
-        validators=[MinValueValidator(0)]
-    )
+    expected_guest_count = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0)])
+    budget = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, validators=[MinValueValidator(0)])
     description = models.TextField(blank=True, default='')
     status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='Upcoming')
     image_url = models.URLField(max_length=500, blank=True, null=True)
@@ -392,13 +362,7 @@ class EventService(models.Model):
     name = models.CharField(max_length=200)
     category = models.CharField(max_length=100, blank=True, default='Photography')
     notes = models.TextField(blank=True, default='')
-    estimated_cost = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        null=True,
-        blank=True,
-        validators=[MinValueValidator(0)]
-    )
+    estimated_cost = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
     is_completed = models.BooleanField(default=False)
     due_date = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -417,7 +381,6 @@ class Notification(models.Model):
         ('BOOKING_UPDATE', 'Booking Update'),
         ('SYSTEM', 'System Alert'),
     ]
-
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
     event = models.ForeignKey(Event, on_delete=models.CASCADE, null=True, blank=True, related_name='notifications')
     task = models.ForeignKey(EventService, on_delete=models.CASCADE, null=True, blank=True, related_name='notifications')
@@ -445,19 +408,13 @@ class ChecklistReminderLog(models.Model):
         ('IN_APP', 'In-App Notification'),
         ('EMAIL', 'Email'),
     ]
-
     task = models.ForeignKey(EventService, on_delete=models.CASCADE, related_name='reminder_logs')
     reminder_type = models.CharField(max_length=20, choices=REMINDER_TYPES)
     channel = models.CharField(max_length=20, choices=CHANNELS, default='IN_APP')
     sent_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=['task', 'reminder_type', 'channel'],
-                name='unique_task_reminder_per_channel'
-            )
-        ]
+        constraints = [models.UniqueConstraint(fields=['task', 'reminder_type', 'channel'], name='unique_task_reminder_per_channel')]
         ordering = ['-sent_at']
 
     def __str__(self):
@@ -484,6 +441,7 @@ from django.conf import settings
 
 private_doc_storage = FileSystemStorage(location=getattr(settings, 'PRIVATE_MEDIA_ROOT', os.path.join(settings.BASE_DIR, 'private_documents')))
 
+
 def verification_doc_upload_path(instance, filename):
     import uuid
     import os
@@ -502,31 +460,26 @@ class VerificationDocument(models.Model):
         ('INSURANCE', 'Public Liability Insurance Policy'),
         ('OTHER', 'Other Supporting Verification Document'),
     ]
-
     STATUS_CHOICES = [
         ('PENDING', 'Pending Review'),
         ('APPROVED', 'Approved'),
         ('REJECTED', 'Rejected'),
         ('EXPIRED', 'Expired'),
     ]
-
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='verification_documents')
     vendor = models.ForeignKey(VendorProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='verification_documents')
     venue_owner = models.ForeignKey(VenueOwnerProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='verification_documents')
-
     document_type = models.CharField(max_length=50, choices=DOCUMENT_TYPE_CHOICES)
     title = models.CharField(max_length=200, blank=True, default='')
     file = models.FileField(upload_to=verification_doc_upload_path, storage=private_doc_storage)
     file_name = models.CharField(max_length=255, blank=True)
     file_size = models.IntegerField(default=0, help_text="File size in bytes")
     file_extension = models.CharField(max_length=10, blank=True)
-
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     rejection_reason = models.TextField(blank=True, null=True)
     admin_notes = models.TextField(blank=True, null=True)
     reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_verification_documents')
     reviewed_at = models.DateTimeField(null=True, blank=True)
-
     expiry_date = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -558,20 +511,16 @@ class UserInteraction(models.Model):
         ('BOOKING_SUBMITTED', 'Booking Request Submitted'),
         ('BOOKING_STATUS_CHANGE', 'Booking Status Changed'),
     ]
-
     LISTING_TYPE_CHOICES = [
         ('VENUE', 'Venue / Space'),
         ('VENDOR', 'Vendor / Service'),
     ]
-
     event_type = models.CharField(max_length=30, choices=EVENT_TYPE_CHOICES, db_index=True)
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='interactions')
     session_id = models.CharField(max_length=64, blank=True, null=True, db_index=True)
-    
     listing_type = models.CharField(max_length=20, choices=LISTING_TYPE_CHOICES, null=True, blank=True)
     venue = models.ForeignKey(Venue, on_delete=models.CASCADE, null=True, blank=True, related_name='interactions')
     vendor = models.ForeignKey(VendorProfile, on_delete=models.CASCADE, null=True, blank=True, related_name='interactions')
-    
     category = models.CharField(max_length=100, blank=True, null=True, db_index=True)
     search_query = models.CharField(max_length=255, blank=True, null=True)
     location_filter = models.CharField(max_length=100, blank=True, null=True)
@@ -594,21 +543,17 @@ class UserInteraction(models.Model):
         return f"{self.event_type} by {actor} at {self.timestamp}"
 
 
-
-
-
 class Recommendation(models.Model):
     RECOMMENDATION_TYPE_CHOICES = [
         ('VENUE', 'Venue'),
         ('SERVICE', 'Service'),
         ('VENDOR', 'Vendor'),
     ]
-
     customer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='recommendations')
     venue = models.ForeignKey(Venue, null=True, blank=True, on_delete=models.CASCADE, related_name='recommendations')
     vendor = models.ForeignKey(VendorProfile, null=True, blank=True, on_delete=models.CASCADE, related_name='recommendations')
     recommendation_type = models.CharField(max_length=10, choices=RECOMMENDATION_TYPE_CHOICES, db_index=True)
-    match_score = models.FloatField(default=0.0)  # Normalized 0.0 to 1.0
+    match_score = models.FloatField(default=0.0)
     is_cold_start = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -618,11 +563,7 @@ class Recommendation(models.Model):
         constraints = [
             models.CheckConstraint(
                 condition=(
-                    models.Q(
-                        venue__isnull=False,
-                        vendor__isnull=True,
-                        recommendation_type__in=['VENUE', 'SERVICE']
-                    ) |
+                    models.Q(venue__isnull=False, vendor__isnull=True, recommendation_type__in=['VENUE', 'SERVICE']) |
                     models.Q(venue__isnull=True, vendor__isnull=False, recommendation_type='VENDOR')
                 ),
                 name='recommendation_target_valid'
@@ -648,15 +589,13 @@ class FraudAlert(models.Model):
         ('RESOLVED', 'Resolved'),
         ('DISMISSED', 'Dismissed'),
     ]
-
     DETECTION_METHOD_CHOICES = [
         ('RULE_BASED', 'Rule-Based Heuristic (Cold-Start Fallback)'),
         ('ISOLATION_FOREST', 'Scikit-learn IsolationForest ML Model'),
         ('HYBRID', 'Combined Rule-Based and Isolation Forest Detection'),
     ]
-
     booking = models.OneToOneField(Booking, on_delete=models.CASCADE, related_name='fraud_alert')
-    risk_score = models.FloatField(default=0.0)  # Normalized score 0.0 - 100.0
+    risk_score = models.FloatField(default=0.0)
     is_anomaly = models.BooleanField(default=False)
     detection_method = models.CharField(max_length=20, choices=DETECTION_METHOD_CHOICES, default='RULE_BASED')
     reason = models.TextField(help_text="Detailed diagnostic explanation of risk indicators")
@@ -675,3 +614,37 @@ class FraudAlert(models.Model):
 
     def __str__(self):
         return f"FraudAlert #{self.id} for Booking #{self.booking_id} (Risk: {self.risk_score:.1f}, Status: {self.status})"
+
+
+# ================= NEW — M-PESA PAYMENT =================
+class Payment(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('SUCCESS', 'Success'),
+        ('FAILED', 'Failed'),
+        ('CANCELLED', 'Cancelled'),
+    ]
+
+    booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name='payments')
+    checkout_request_id = models.CharField(max_length=100, unique=True, db_index=True)
+    merchant_request_id = models.CharField(max_length=100, blank=True)
+    customer_phone = models.CharField(max_length=20)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    account_reference = models.CharField(max_length=50, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    result_code = models.IntegerField(null=True, blank=True)
+    result_desc = models.TextField(blank=True)
+    mpesa_receipt_number = models.CharField(max_length=50, blank=True)
+    transaction_date = models.CharField(max_length=20, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['booking', '-created_at']),
+            models.Index(fields=['status', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"Payment {self.checkout_request_id} — {self.status}"

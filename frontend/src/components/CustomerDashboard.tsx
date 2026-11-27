@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import type { Booking, Venue, Vendor, Review, Message, ConversationThread, EventItem, NotificationItem, ReminderPreference } from '../types';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import type { Booking, Venue, Review, Message, ConversationThread, EventItem, NotificationItem, ReminderPreference } from '../types';
 import './customer-dashboard.css';
 import {
   Calendar,
@@ -12,9 +12,10 @@ import {
   Heart,
   MessageSquare,
   Settings,
-  HelpCircle,
   ChevronRight,
   ChevronDown,
+  PanelLeftClose,
+  PanelLeftOpen,
   MapPin,
   Star,
   Building2,
@@ -26,11 +27,15 @@ import {
   Send,
   CalendarDays,
   AlertTriangle,
-  ImageOff
+  ImageOff,
+  Smartphone // <-- Added for M-Pesa
 } from 'lucide-react';
 import { ApiService } from '../services/api';
 import toast from 'react-hot-toast';
 import { MyEventsView } from './MyEventsView';
+import { MpesaPaymentModal } from './MpesaPaymentModal'; // <-- Added M-Pesa Modal
+import { getPaymentByBooking, type PaymentRecord } from '../services/mpesa'; // <-- Added Payment API
+import { VenueGrid } from './VenueGrid';
 
 interface CustomerDashboardProps {
   bookings: Booking[];
@@ -38,10 +43,11 @@ interface CustomerDashboardProps {
   onCancelBooking: (id: number) => void;
   onNavigate?: (tab: string) => void;
   handleSelectVenueWithTracking: (venue: Venue, source?: string) => void;
-  handleSelectVendorWithTracking: (vendor: Vendor, source?: string) => void;
+  onBookVenue: (venue: Venue) => void;
   onLogout?: () => void;
   onRequestRole?: (role: 'CUSTOMER' | 'VENDOR' | 'VENUE_OWNER' | 'PROVIDER') => void;
   venues?: Venue[];
+  services?: Venue[];
   initialTab?: 'dashboard' | 'events' | 'services' | 'venues' | 'bookings' | 'reviews' | 'messages' | 'favorites' | 'profile' | 'settings';
   initialChatPartnerId?: number | null;
 }
@@ -52,16 +58,18 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
   onCancelBooking: _onCancelBooking,
   onNavigate,
   handleSelectVenueWithTracking,
-  handleSelectVendorWithTracking,
+  onBookVenue,
   onLogout,
   onRequestRole,
   venues = [],
+  services = [],
   initialTab = 'dashboard',
   initialChatPartnerId = null,
 }) => {
   const [activeTab, setActiveTab] = useState<
     'dashboard' | 'events' | 'services' | 'venues' | 'bookings' | 'reviews' | 'messages' | 'favorites' | 'profile' | 'settings'
   >(initialTab);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     if (initialTab) {
@@ -78,15 +86,14 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
     is_cold_start: boolean;
     recommendation_type: string;
   };
-
-  type RecommendedVendor = Vendor & {
+  type RecommendedService = Venue & {
     match_score: number;
     is_cold_start: boolean;
     recommendation_type: string;
   };
 
   const [recommendedVenues, setRecommendedVenues] = useState<RecommendedVenue[]>([]);
-  const [recommendedVendors, setRecommendedVendors] = useState<RecommendedVendor[]>([]);
+  const [recommendedServices, setRecommendedServices] = useState<RecommendedService[]>([]);
   const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
   const [recommendationsError, setRecommendationsError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
@@ -99,24 +106,26 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
     setRecommendationsError(null);
 
     try {
-      const [venueResult, vendorResult] = await Promise.allSettled([
+      const [venueResult, serviceResult] = await Promise.allSettled([
         ApiService.getVenueRecommendations(query),
-        ApiService.getVendorRecommendations(query),
+        ApiService.getServiceRecommendations(query),
       ]);
 
       let failed = false;
 
       if (venueResult.status === 'fulfilled') {
-        setRecommendedVenues(venueResult.value);
+        setRecommendedVenues(venueResult.value.filter(
+          (venue) => venue.listing_type === 'VENUE' && Number(venue.capacity) > 0
+        ));
       } else {
         console.error('Error fetching venue recommendations:', venueResult.reason);
         failed = true;
       }
 
-      if (vendorResult.status === 'fulfilled') {
-        setRecommendedVendors(vendorResult.value);
+      if (serviceResult.status === 'fulfilled') {
+        setRecommendedServices(serviceResult.value);
       } else {
-        console.error('Error fetching vendor recommendations:', vendorResult.reason);
+        console.error('Error fetching service listings:', serviceResult.reason);
         failed = true;
       }
 
@@ -128,7 +137,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
     } catch (error) {
       console.error('Error fetching recommendations:', error);
       setRecommendedVenues([]);
-      setRecommendedVendors([]);
+      setRecommendedServices([]);
       setRecommendationsError('Failed to load recommendations. Please try again.');
     } finally {
       setIsLoadingRecommendations(false);
@@ -149,19 +158,19 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
     }
 
     try {
-      const tracked = await ApiService.trackInteraction({
+      void ApiService.trackInteraction({
         event_type: 'SEARCH',
         search_query: query,
         source: 'CUSTOMER_DASHBOARD',
+      }).then((tracked) => {
+        if (!tracked) {
+          console.warn('Search activity could not be recorded; continuing with recommendations.');
+        }
       });
-
-      if (!tracked) {
-        toast.error('Your search could not be recorded. Please try again.');
-        return;
-      }
 
       setLastSearchQuery(query);
       setHasSearched(true);
+      setActiveTab('dashboard');
       await fetchRecommendations(query);
     } catch (error) {
       console.error('Error processing customer search:', error);
@@ -240,6 +249,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
     remind_overdue: true,
   });
   const [showAccountMenu, setShowAccountMenu] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
   const [selectedBookingDetails, setSelectedBookingDetails] = useState<any | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [bookingFilterStatus, setBookingFilterStatus] = useState<string>('ALL');
@@ -248,6 +258,30 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
   const [cancellingBooking, setCancellingBooking] = useState<any | null>(null);
   const [cancellationReason, setCancellationReason] = useState<string>('');
   const [isSubmittingCancel, setIsSubmittingCancel] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!showAccountMenu) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && !accountMenuRef.current?.contains(event.target)) {
+        setShowAccountMenu(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowAccountMenu(false);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showAccountMenu]);
+
+  // M-Pesa Payment State
+  const [paymentBooking, setPaymentBooking] = useState<any | null>(null);
+  const [payments, setPayments] = useState<Record<number, PaymentRecord | null>>({});
 
   // Sync notifications from backend
   const syncNotifications = useCallback(async () => {
@@ -303,6 +337,23 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
     }
   }, [currentUser?.id]);
 
+  // Fetch M-Pesa payments for active bookings
+  const syncPayments = useCallback(async () => {
+    if (!currentUser?.id || localBookings.length === 0) return;
+    const results: Record<number, PaymentRecord | null> = {};
+    for (const b of localBookings) {
+      if (b.status === 'APPROVED' || (b.status as any) === 'CONFIRMED') {
+        const p = await getPaymentByBooking(b.id);
+        results[b.id] = p;
+      }
+    }
+    setPayments(results);
+  }, [currentUser?.id, localBookings]);
+
+  useEffect(() => {
+    syncPayments();
+  }, [syncPayments]);
+
   const handleConfirmCancellation = async () => {
     if (!cancellingBooking) return;
     setIsSubmittingCancel(true);
@@ -342,7 +393,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
     };
   }, [syncBookings]);
 
-  // Customer Reviews State (Phase 5 & 7)
+  // Customer Reviews State
   const [reviewModalBooking, setReviewModalBooking] = useState<Booking | null>(null);
   const [ratingScore, setRatingScore] = useState<number>(0);
   const [hoverRating, setHoverRating] = useState<number>(0);
@@ -493,8 +544,8 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
   };
 
   const handleStartChatWithBooking = (booking: Booking) => {
-    const providerId = booking.provider_user_id || 
-      (booking.venue_details?.owner_user_id) || 
+    const providerId = booking.provider_user_id ||
+      (booking.venue_details?.owner_user_id) ||
       (booking.vendor_details?.user);
     if (!providerId) {
       toast.error("Provider contact details unavailable.");
@@ -509,8 +560,8 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
   // Greeting dynamic calculation
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-  const displayName = currentUser?.first_name 
-    ? currentUser.first_name 
+  const displayName = currentUser?.first_name
+    ? currentUser.first_name
     : (currentUser?.username ? currentUser.username.charAt(0).toUpperCase() + currentUser.username.slice(1) : 'Guest');
 
   // Pure real counts from database / fresh state
@@ -524,20 +575,23 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
     const title = b.venue_details?.title
       ? `${b.venue_details.title} (Venue)`
       : b.vendor_details?.business_name
-      ? `${b.vendor_details.business_name} (Vendor)`
-      : `${b.event_title} (${b.event_type})`;
+        ? `${b.vendor_details.business_name} (Vendor)`
+        : `${b.event_title} (${b.event_type})`;
     const location = b.venue_details?.location || b.vendor_details?.location || 'Not specified';
     const img = b.venue_details?.image_url || '';
-    
+
     const displayStatus = (b.status === 'APPROVED' || (b.status as any) === 'CONFIRMED')
       ? 'Confirmed'
       : b.status === 'PENDING'
-      ? 'Pending'
-      : b.status === 'COMPLETED'
-      ? 'Completed'
-      : b.status === 'REJECTED'
-      ? 'Declined'
-      : 'Cancelled';
+        ? 'Pending'
+        : b.status === 'COMPLETED'
+          ? 'Completed'
+          : b.status === 'REJECTED'
+            ? 'Declined'
+            : 'Cancelled';
+
+    const payment = payments[b.id];
+    const isPaid = payment?.status === 'SUCCESS';
 
     return {
       id: b.id,
@@ -551,6 +605,8 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
       contact: b.venue_details?.address || 'Locyfy Host',
       notes: b.notes || `${b.guest_count} Attendees expected`,
       rawBooking: b,
+      isPaid,
+      paymentReceipt: payment?.mpesaReceiptNumber
     };
   });
 
@@ -564,10 +620,10 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
     const text = isApproved
       ? `Your booking at ${targetName} has been confirmed.`
       : isPending
-      ? `Your booking request for ${targetName} is pending review.`
-      : isCompleted
-      ? `Your event at ${targetName} is marked completed.`
-      : `Your booking for ${targetName} status is ${b.status.toLowerCase()}.`;
+        ? `Your booking request for ${targetName} is pending review.`
+        : isCompleted
+          ? `Your event at ${targetName} is marked completed.`
+          : `Your booking for ${targetName} status is ${b.status.toLowerCase()}.`;
 
     const time = b.created_at ? new Date(b.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : b.event_date;
 
@@ -606,30 +662,41 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
   const featuredVenuesList = venues.slice(0, 3).map((v) => ({
     id: v.id,
     name: v.title,
-    location: v.location || 'Nairobi, Kenya',
+    location: v.location || 'Nyeri County, Kenya',
     rating: v.rating || 5.0,
     reviews: v.review_count || 0,
     image: v.image_url || '',
   }));
 
   return (
-    <div className="customer-dashboard-layout">
+    <div className={`customer-dashboard-layout ${isSidebarCollapsed ? 'customer-sidebar-collapsed' : ''}`}>
       {/* 1. LEFT SIDEBAR (Dark Teal #08332d) */}
       <aside className="customer-sidebar">
-        {/* Brand Header */}
-        <div 
-          className="customer-sidebar-logo" 
-          style={{ cursor: 'pointer' }}
-          onClick={() => onNavigate ? onNavigate('landing') : setActiveTab('dashboard')}
-          title="Return to Locyfy Home"
-        >
-          <div className="customer-logo-icon">
-            <Calendar size={22} color="#5eead4" />
-          </div>
-          <div>
-            <div className="customer-brand-title">Locyfy</div>
-            <div className="customer-brand-tagline">Events. Spaces. Services.</div>
-          </div>
+        <div className="customer-sidebar-header">
+          <button
+            type="button"
+            className="customer-sidebar-logo"
+            onClick={() => setActiveTab('dashboard')}
+            title="Go to Customer Dashboard"
+            aria-label="Go to Customer Dashboard"
+          >
+            <div className="customer-logo-icon">
+              <Calendar size={22} color="#5eead4" />
+            </div>
+            <div>
+              <div className="customer-brand-title">Locyfy</div>
+              <div className="customer-brand-tagline">Customer Dashboard</div>
+            </div>
+          </button>
+          <button
+            type="button"
+            className="customer-sidebar-collapse-btn"
+            onClick={() => setIsSidebarCollapsed((collapsed) => !collapsed)}
+            aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {isSidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+          </button>
         </div>
 
 
@@ -638,6 +705,8 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
           <button
             className={`customer-nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
             onClick={() => setActiveTab('dashboard')}
+            aria-label="Dashboard"
+            title="Dashboard"
           >
             <div className="customer-nav-item-left">
               <Calendar size={18} />
@@ -648,6 +717,8 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
           <button
             className={`customer-nav-item ${activeTab === 'events' ? 'active' : ''}`}
             onClick={() => setActiveTab('events')}
+            aria-label="My Events"
+            title="My Events"
           >
             <div className="customer-nav-item-left">
               <CalendarDays size={18} />
@@ -661,8 +732,10 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
           </button>
 
           <button
-            className="customer-nav-item"
-            onClick={() => (onNavigate ? onNavigate('vendors') : setActiveTab('services'))}
+            className={`customer-nav-item ${activeTab === 'services' ? 'active' : ''}`}
+            onClick={() => setActiveTab('services')}
+            aria-label="Browse Services"
+            title="Browse Services"
           >
             <div className="customer-nav-item-left">
               <Search size={18} />
@@ -671,8 +744,10 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
           </button>
 
           <button
-            className="customer-nav-item"
-            onClick={() => (onNavigate ? onNavigate('venues') : setActiveTab('venues'))}
+            className={`customer-nav-item ${activeTab === 'venues' ? 'active' : ''}`}
+            onClick={() => setActiveTab('venues')}
+            aria-label="Browse Venues"
+            title="Browse Venues"
           >
             <div className="customer-nav-item-left">
               <Building2 size={18} />
@@ -683,6 +758,8 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
           <button
             className={`customer-nav-item ${activeTab === 'bookings' ? 'active' : ''}`}
             onClick={() => setActiveTab('bookings')}
+            aria-label="My Bookings"
+            title="My Bookings"
           >
             <div className="customer-nav-item-left">
               <Calendar size={18} />
@@ -698,6 +775,8 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
           <button
             className={`customer-nav-item ${activeTab === 'reviews' ? 'active' : ''}`}
             onClick={() => setActiveTab('reviews')}
+            aria-label="My Reviews"
+            title="My Reviews"
           >
             <div className="customer-nav-item-left">
               <Star size={18} />
@@ -708,6 +787,8 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
           <button
             className={`customer-nav-item ${activeTab === 'messages' ? 'active' : ''}`}
             onClick={() => setActiveTab('messages')}
+            aria-label="Messages"
+            title="Messages"
           >
             <div className="customer-nav-item-left">
               <MessageSquare size={18} />
@@ -718,6 +799,8 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
           <button
             className={`customer-nav-item ${activeTab === 'favorites' ? 'active' : ''}`}
             onClick={() => setActiveTab('favorites')}
+            aria-label="Favorites"
+            title="Favorites"
           >
             <div className="customer-nav-item-left">
               <Heart size={18} />
@@ -728,6 +811,8 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
           <button
             className={`customer-nav-item ${activeTab === 'profile' ? 'active' : ''}`}
             onClick={() => setActiveTab('profile')}
+            aria-label="My Profile"
+            title="My Profile"
           >
             <div className="customer-nav-item-left">
               <UserIcon size={18} />
@@ -738,6 +823,8 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
           <button
             className={`customer-nav-item ${activeTab === 'settings' ? 'active' : ''}`}
             onClick={() => setActiveTab('settings')}
+            aria-label="Settings"
+            title="Settings"
           >
             <div className="customer-nav-item-left">
               <Settings size={18} />
@@ -746,20 +833,23 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
           </button>
         </nav>
 
-        {/* Need Help? Footer */}
-        <div
-          className="customer-sidebar-help"
-          onClick={() => toast('Support contact: support@locyfy.com or call +254 700 123 456', { icon: 'ℹ️' })}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <HelpCircle size={22} color="#a7f3d0" />
-            <div>
-              <div className="customer-help-title">Need Help?</div>
-              <div className="customer-help-sub">Get support or contact us.</div>
-            </div>
+        {onLogout && (
+          <div className="customer-sidebar-footer">
+            <button
+              type="button"
+              className="customer-nav-item customer-sidebar-logout"
+              onClick={onLogout}
+              aria-label="Log out"
+              title="Log out"
+            >
+              <div className="customer-nav-item-left">
+                <LogOut size={18} />
+                <span>Log out</span>
+              </div>
+            </button>
           </div>
-          <ChevronRight size={16} color="#94a3b8" />
-        </div>
+        )}
+
       </aside>
 
       {/* 2. MAIN DASHBOARD AREA */}
@@ -826,7 +916,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                           {unreadNotifsCount > 0 && (
-                            <span 
+                            <span
                               style={{ fontSize: '0.75rem', color: '#0d8a73', fontWeight: 600, cursor: 'pointer' }}
                               onClick={async () => {
                                 if (currentUser?.id) {
@@ -839,7 +929,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                               Mark all read
                             </span>
                           )}
-                          <span 
+                          <span
                             style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, cursor: 'pointer' }}
                             onClick={() => setShowNotifications(false)}
                           >
@@ -921,7 +1011,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
             })()}
 
             {/* Profile Dropdown (Shifted to top right as requested) */}
-            <div style={{ position: 'relative' }}>
+            <div ref={accountMenuRef} style={{ position: 'relative' }}>
               <button
                 onClick={() => setShowAccountMenu(!showAccountMenu)}
                 style={{
@@ -1217,7 +1307,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                     fontSize: '0.88rem',
                     margin: '6px 0 0',
                   }}>
-                    Discover event spaces and service providers selected for your preferences.
+                    Discover event spaces and individual service listings selected for your preferences.
                   </p>
                 </div>
 
@@ -1271,7 +1361,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                     Try Again
                   </button>
                 </div>
-              ) : recommendedVenues.length === 0 && recommendedVendors.length === 0 ? (
+              ) : recommendedVenues.length === 0 && recommendedServices.length === 0 ? (
                 <div style={{
                   textAlign: 'center',
                   padding: '30px 15px',
@@ -1282,7 +1372,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                     No recommendations available yet
                   </p>
                   <p style={{ fontSize: '0.88rem' }}>
-                    Check back later as more approved venues and service providers become available.
+                    Check back later as more approved venues and service listings become available.
                   </p>
                 </div>
               ) : (
@@ -1303,7 +1393,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                         Event Spaces
                       </h3>
                       <button
-                        onClick={() => onNavigate ? onNavigate('venues') : setActiveTab('venues')}
+                        onClick={() => setActiveTab('venues')}
                         style={{
                           border: 'none',
                           background: 'none',
@@ -1441,10 +1531,10 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                         color: '#14213D',
                         margin: 0,
                       }}>
-                        Service Providers
+                        Service Listings
                       </h3>
                       <button
-                        onClick={() => onNavigate ? onNavigate('vendors') : setActiveTab('services')}
+                        onClick={() => setActiveTab('services')}
                         style={{
                           border: 'none',
                           background: 'none',
@@ -1457,9 +1547,9 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                       </button>
                     </div>
 
-                    {recommendedVendors.length === 0 ? (
+                    {recommendedServices.length === 0 ? (
                       <p style={{ color: '#64748b', fontSize: '0.88rem' }}>
-                        No matching service providers available at the moment.
+                        No matching service listings available at the moment.
                       </p>
                     ) : (
                       <div style={{
@@ -1467,9 +1557,9 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                         gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
                         gap: '16px',
                       }}>
-                        {recommendedVendors.slice(0, 3).map((vendor) => (
+                        {recommendedServices.slice(0, 3).map((service) => (
                           <div
-                            key={vendor.id}
+                            key={service.id}
                             style={{
                               border: '1px solid #e2e8f0',
                               borderRadius: '12px',
@@ -1477,35 +1567,25 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                               background: '#ffffff',
                             }}
                           >
-                            <div style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              gap: '8px',
-                              marginBottom: '12px',
+                            <span style={{
+                              display: 'inline-block',
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              color: '#0F8F7A',
+                              background: '#e6f5f1',
+                              padding: '5px 8px',
+                              borderRadius: '20px',
+                              marginBottom: '8px',
                             }}>
-                              <span style={{
-                                fontSize: '0.75rem',
-                                fontWeight: 700,
-                                color: '#0F8F7A',
-                                background: '#e6f5f1',
-                                padding: '5px 8px',
-                                borderRadius: '20px',
-                              }}>
-                                {Math.round(vendor.match_score * 100)}% Match
-                              </span>
-                              <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                                <Star size={13} fill="#f59e0b" color="#f59e0b" /> {Number(vendor.rating || 0).toFixed(1)}
-                              </span>
-                            </div>
-
+                              {Math.round(service.match_score * 100)}% Match
+                            </span>
                             <h4 style={{
                               fontSize: '1rem',
                               fontWeight: 700,
                               color: '#14213D',
                               margin: '0 0 7px',
                             }}>
-                              {vendor.business_name}
+                              {service.title}
                             </h4>
 
                             <p style={{
@@ -1513,7 +1593,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                               color: '#64748b',
                               margin: '0 0 7px',
                             }}>
-                              {vendor.vendor_type_display || vendor.vendor_type}
+                              {service.category_display || service.category}
                             </p>
 
                             <p style={{
@@ -1521,7 +1601,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                               color: '#64748b',
                               margin: '0 0 10px',
                             }}>
-                              <MapPin size={13} style={{ verticalAlign: 'middle' }} /> {vendor.location}
+                              <MapPin size={13} style={{ verticalAlign: 'middle' }} /> Location: {service.location}
                             </p>
 
                             <p style={{
@@ -1529,11 +1609,11 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                               color: '#0F8F7A',
                               margin: '0 0 12px',
                             }}>
-                              Starting at KES {Number(vendor.starting_price || 0).toLocaleString()}
+                              Starting at KES {Number(service.price_per_day || 0).toLocaleString()}
                             </p>
 
                             <button
-                              onClick={() => handleSelectVendorWithTracking(vendor, 'recommendation')}
+                              onClick={() => handleSelectVenueWithTracking(service, 'recommendation')}
                               style={{
                                 width: '100%',
                                 padding: '9px',
@@ -1545,7 +1625,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                                 cursor: 'pointer',
                               }}
                             >
-                              View Provider Details
+                              View Service Details
                             </button>
                           </div>
                         ))}
@@ -1579,12 +1659,12 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                           No upcoming bookings
                         </h4>
                         <p style={{ fontSize: '0.86rem', margin: '0 0 16px 0', maxWidth: '360px', marginLeft: 'auto', marginRight: 'auto' }}>
-                          Discover top event spaces and professional vendors to schedule your next event.
+                          Discover event spaces and service listings for your next event.
                         </p>
                         <button
                           className="customer-promo-btn"
                           style={{ padding: '8px 18px', fontSize: '0.85rem' }}
-                          onClick={() => (onNavigate ? onNavigate('venues') : setActiveTab('venues'))}
+                          onClick={() => setActiveTab('venues')}
                         >
                           Explore Venues
                         </button>
@@ -1649,20 +1729,37 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                             </div>
                           </div>
 
-                          <div className="customer-booking-actions">
+                          <div className="customer-booking-actions" style={{ flexWrap: 'wrap', gap: '8px' }}>
                             <span
                               className={
                                 item.status === 'Confirmed'
                                   ? 'badge-confirmed'
                                   : item.status === 'Pending'
-                                  ? 'badge-pending'
-                                  : item.status === 'Completed'
-                                  ? 'badge-completed'
-                                  : 'badge-inprogress'
+                                    ? 'badge-pending'
+                                    : item.status === 'Completed'
+                                      ? 'badge-completed'
+                                      : 'badge-inprogress'
                               }
                             >
                               {item.status}
                             </span>
+
+                            {/* M-Pesa integration in Dashboard View */}
+                            {item.status === 'Confirmed' && !item.isPaid && (
+                              <button
+                                onClick={() => setPaymentBooking(item.rawBooking)}
+                                className="customer-btn-details"
+                                style={{ background: '#059669', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}
+                              >
+                                <Smartphone size={13} /> Pay
+                              </button>
+                            )}
+                            {item.isPaid && (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700 }}>
+                                <CheckCircle2 size={12} /> Paid
+                              </span>
+                            )}
+
                             <button
                               className="customer-btn-details"
                               onClick={() => setSelectedBookingDetails(item)}
@@ -1711,14 +1808,14 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                                   act.type === 'confirmed'
                                     ? '#dcfce7'
                                     : act.type === 'pending'
-                                    ? '#fef3c7'
-                                    : '#f3e8ff',
+                                      ? '#fef3c7'
+                                      : '#f3e8ff',
                                 color:
                                   act.type === 'confirmed'
                                     ? '#15803d'
                                     : act.type === 'pending'
-                                    ? '#b45309'
-                                    : '#7e22ce',
+                                      ? '#b45309'
+                                      : '#7e22ce',
                               }}
                             >
                               {act.type === 'confirmed' && <CheckCircle2 size={18} />}
@@ -1745,11 +1842,11 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                   <div style={{ flex: 1 }}>
                     <h2 className="customer-promo-title">Ready for your next event?</h2>
                     <p className="customer-promo-text">
-                      Discover amazing venues, trusted vendors and make your event unforgettable.
+                      Discover amazing venues and book service listings for your event.
                     </p>
                     <button
                       className="customer-promo-btn"
-                      onClick={() => (onNavigate ? onNavigate('venues') : setActiveTab('venues'))}
+                      onClick={() => setActiveTab('venues')}
                     >
                       <span>Browse Venues & Services</span>
                       <ChevronRight size={16} />
@@ -1772,7 +1869,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                     {/* Browse Services */}
                     <button
                       className="customer-quick-action"
-                      onClick={() => (onNavigate ? onNavigate('vendors') : setActiveTab('services'))}
+                      onClick={() => setActiveTab('services')}
                     >
                       <div className="customer-action-left">
                         <div className="customer-action-icon" style={{ background: '#d1fae5', color: '#059669' }}>
@@ -1789,7 +1886,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                     {/* Browse Venues */}
                     <button
                       className="customer-quick-action"
-                      onClick={() => (onNavigate ? onNavigate('venues') : setActiveTab('venues'))}
+                      onClick={() => setActiveTab('venues')}
                     >
                       <div className="customer-action-left">
                         <div className="customer-action-icon" style={{ background: '#dbeafe', color: '#2563eb' }}>
@@ -1845,7 +1942,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                     <h2 className="customer-card-title">Featured Venues</h2>
                     <button
                       className="customer-card-link"
-                      onClick={() => (onNavigate ? onNavigate('venues') : setActiveTab('venues'))}
+                      onClick={() => setActiveTab('venues')}
                     >
                       View all
                     </button>
@@ -1861,7 +1958,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                         <div
                           key={ven.id}
                           className="customer-featured-card"
-                          onClick={() => (onNavigate ? onNavigate('venues') : null)}
+                          onClick={() => setActiveTab('venues')}
                         >
                           <div
                             style={{
@@ -1925,6 +2022,39 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
           </div>
         )}
 
+        {activeTab === 'venues' && (
+          <div className="customer-content-container">
+            <h2 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0f172a', margin: '0 0 8px' }}>
+              Available Event Venues ({venues.length})
+            </h2>
+            <p style={{ color: '#64748b', margin: 0 }}>
+              Explore venues for your next event.
+            </p>
+            <VenueGrid
+              venues={venues}
+              onSelectVenue={(venue) => handleSelectVenueWithTracking(venue, 'catalog_grid')}
+              onBookVenue={onBookVenue}
+            />
+          </div>
+        )}
+
+        {activeTab === 'services' && (
+          <div className="customer-content-container">
+            <h2 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0f172a', margin: '0 0 8px' }}>
+              Available Service Listings ({services.length})
+            </h2>
+            <p style={{ color: '#64748b', margin: 0 }}>
+              Browse individual services and packages offered for your event.
+            </p>
+            <VenueGrid
+              venues={services}
+              onSelectVenue={(service) => handleSelectVenueWithTracking(service, 'catalog_grid')}
+              onBookVenue={onBookVenue}
+              emptyMessage="No Service Listings Found"
+            />
+          </div>
+        )}
+
         {/* My Events View */}
         {activeTab === 'events' && (
           <MyEventsView
@@ -1937,8 +2067,8 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
             onUpdateEvent={handleUpdateEvent}
             onDeleteEvent={handleDeleteEvent}
             onNavigateTab={(tab) => {
-              if (tab === 'vendors' && onNavigate) onNavigate('vendors');
-              else if (tab === 'venues' && onNavigate) onNavigate('venues');
+              if (tab === 'vendors') setActiveTab('services');
+              else if (tab === 'venues') setActiveTab('venues');
               else if (tab === 'bookings') setActiveTab('bookings');
               else if (tab === 'dashboard') setActiveTab('dashboard');
             }}
@@ -1982,7 +2112,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                 </button>
                 <button
                   className="customer-promo-btn"
-                  onClick={() => (onNavigate ? onNavigate('venues') : setActiveTab('dashboard'))}
+                  onClick={() => setActiveTab('venues')}
                 >
                   + Book New Venue / Vendor
                 </button>
@@ -2026,7 +2156,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                   </p>
                   <button
                     className="customer-promo-btn"
-                    onClick={() => (onNavigate ? onNavigate('venues') : null)}
+                    onClick={() => setActiveTab('venues')}
                   >
                     Find Spaces & Services
                   </button>
@@ -2072,26 +2202,45 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                         </div>
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                         <span
                           className={
                             b.status === 'Confirmed'
                               ? 'badge-confirmed'
                               : b.status === 'Pending'
-                              ? 'badge-pending'
-                              : b.status === 'Completed'
-                              ? 'badge-completed'
-                              : 'badge-cancelled'
+                                ? 'badge-pending'
+                                : b.status === 'Completed'
+                                  ? 'badge-completed'
+                                  : 'badge-cancelled'
                           }
                         >
                           {b.status}
                         </span>
+
+                        {/* M-Pesa Pay Button in Bookings Tab */}
+                        {b.status === 'Confirmed' && !b.isPaid && (
+                          <button
+                            className="customer-btn-details"
+                            onClick={() => setPaymentBooking(b.rawBooking)}
+                            style={{ background: '#059669', color: '#ffffff', border: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 700 }}
+                          >
+                            <Smartphone size={13} /> Pay KES {Number(b.rawBooking.total_price).toLocaleString()}
+                          </button>
+                        )}
+
+                        {b.isPaid && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '6px 12px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '8px', fontSize: '0.8rem', fontWeight: 700 }}>
+                            <CheckCircle2 size={14} /> Paid ({b.paymentReceipt})
+                          </span>
+                        )}
+
                         <button
                           className="customer-btn-details"
                           onClick={() => setSelectedBookingDetails(b)}
                         >
                           Details
                         </button>
+
                         {b.status === 'Completed' && (
                           b.rawBooking?.has_reviewed ? (
                             <span
@@ -2273,7 +2422,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
             .filter(b => b.provider_user_id || b.venue_details?.owner_user_id || b.vendor_details?.user)
             .map(b => {
               const pid = b.provider_user_id || b.venue_details?.owner_user_id || b.vendor_details?.user!;
-              const name = b.venue_details?.title 
+              const name = b.venue_details?.title
                 ? `${b.venue_details.title} (${b.venue_details.owner_name || 'Host'})`
                 : b.vendor_details?.business_name || 'Provider';
               return {
@@ -2326,7 +2475,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                   </p>
                   <button
                     className="customer-promo-btn"
-                    onClick={() => (onNavigate ? onNavigate('venues') : setActiveTab('dashboard'))}
+                    onClick={() => setActiveTab('venues')}
                   >
                     Browse Venues & Services
                   </button>
@@ -2654,7 +2803,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
               </p>
               <button
                 className="customer-promo-btn"
-                onClick={() => (onNavigate ? onNavigate('venues') : null)}
+                onClick={() => setActiveTab('venues')}
               >
                 Discover Spaces
               </button>
@@ -2984,8 +3133,8 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                     selectedBookingDetails.status === 'Confirmed'
                       ? 'badge-confirmed'
                       : selectedBookingDetails.status === 'Pending'
-                      ? 'badge-pending'
-                      : 'badge-inprogress'
+                        ? 'badge-pending'
+                        : 'badge-inprogress'
                   }
                 >
                   {selectedBookingDetails.status}
@@ -3031,45 +3180,34 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                   </div>
                 )}
 
-                {selectedBookingDetails.rawBooking?.rejection_reason && (
-                  <div style={{ marginTop: '12px', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', fontSize: '0.84rem' }}>
-                    <span style={{ color: '#991b1b', fontWeight: 700, display: 'block' }}>Decline Reason from Host</span>
-                    <span style={{ color: '#b91c1c' }}>{selectedBookingDetails.rawBooking.rejection_reason}</span>
+                {/* M-Pesa in Detail Modal */}
+                {selectedBookingDetails.status === 'Confirmed' && !selectedBookingDetails.isPaid && (
+                  <div style={{ marginTop: '16px' }}>
+                    <button
+                      className="customer-promo-btn"
+                      onClick={() => {
+                        setSelectedBookingDetails(null);
+                        setPaymentBooking(selectedBookingDetails.rawBooking);
+                      }}
+                      style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', background: '#059669' }}
+                    >
+                      <Smartphone size={16} /> Pay KES {Number(selectedBookingDetails.rawBooking.total_price).toLocaleString()} via M-Pesa
+                    </button>
+                  </div>
+                )}
+                {selectedBookingDetails.isPaid && (
+                  <div style={{ marginTop: '16px', padding: '12px', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px', color: '#059669', fontWeight: 700 }}>
+                    <CheckCircle2 size={18} /> Paid via M-Pesa (Receipt: {selectedBookingDetails.paymentReceipt})
                   </div>
                 )}
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                {(selectedBookingDetails.status === 'Pending' || selectedBookingDetails.status === 'Confirmed') && (
-                  <button
-                    style={{
-                      padding: '8px 18px',
-                      borderRadius: '8px',
-                      background: '#fee2e2',
-                      color: '#b91c1c',
-                      border: '1px solid rgba(185, 28, 28, 0.2)',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      fontSize: '0.85rem',
-                    }}
-                    onClick={() => {
-                      const raw = selectedBookingDetails.rawBooking || selectedBookingDetails;
-                      setSelectedBookingDetails(null);
-                      setCancellingBooking(raw);
-                      setCancellationReason('');
-                    }}
-                  >
-                    Cancel Booking
-                  </button>
-                )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                 <button
-                  className="customer-promo-btn"
-                  onClick={() => {
-                    setSelectedBookingDetails(null);
-                    setActiveTab('messages');
-                  }}
+                  className="customer-btn-details"
+                  onClick={() => setSelectedBookingDetails(null)}
                 >
-                  <MessageSquare size={16} /> Contact Host
+                  Close
                 </button>
               </div>
             </div>
@@ -3077,140 +3215,52 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
         </div>
       )}
 
-      {/* Custom Booking Cancellation Modal */}
+      {/* M-Pesa Payment Modal */}
+      {paymentBooking && (
+        <MpesaPaymentModal
+          isOpen={!!paymentBooking}
+          booking={paymentBooking}
+          onClose={() => setPaymentBooking(null)}
+          onSuccess={(payment) => {
+            setPayments(prev => ({ ...prev, [paymentBooking.id]: payment }));
+            syncBookings(); // Refresh bookings from server
+            setPaymentBooking(null);
+          }}
+        />
+      )}
+
+      {/* Cancellation Modal */}
       {cancellingBooking && (
-        <div
-          className="modal-overlay"
-          onClick={() => {
-            if (!isSubmittingCancel) {
-              setCancellingBooking(null);
-              setCancellationReason('');
-            }
-          }}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.75)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1100,
-            padding: '16px',
-            backdropFilter: 'blur(4px)',
-          }}
-        >
-          <div
-            className="modal-content"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: '#ffffff',
-              borderRadius: '16px',
-              maxWidth: '520px',
-              width: '100%',
-              padding: '24px',
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#dc2626' }}>
-                <AlertTriangle size={22} />
-              </div>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
-                  Cancel Booking Reservation
-                </h3>
-                <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
-                  Booking ID #{cancellingBooking.id} · {cancellingBooking.event_title || 'Reservation'}
-                </span>
-              </div>
-            </div>
-
-            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px', marginBottom: '16px', fontSize: '0.88rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <span style={{ color: '#64748b' }}>Scheduled Event Date:</span>
-                <strong style={{ color: '#0f172a' }}>{cancellingBooking.event_date}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <span style={{ color: '#64748b' }}>Current Status:</span>
-                <strong style={{ color: cancellingBooking.status === 'APPROVED' ? '#059669' : '#d97706' }}>
-                  {cancellingBooking.status === 'APPROVED' ? 'Confirmed' : 'Pending Request'}
-                </strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b' }}>Cancellation Policy:</span>
-                <strong style={{ color: '#0d8a73' }}>
-                  {cancellingBooking.venue_details?.cancellation_policy === 'STRICT'
-                    ? 'Strict (Cancel ≥ 7 days before event)'
-                    : cancellingBooking.venue_details?.cancellation_policy === 'MODERATE'
-                    ? 'Moderate (Cancel ≥ 3 days before event)'
-                    : 'Flexible (Cancel ≥ 24h before event)'}
-                </strong>
-              </div>
-            </div>
-
-            <p style={{ fontSize: '0.86rem', color: '#475569', lineHeight: 1.5, margin: '0 0 16px 0' }}>
-              Please review the cancellation policy above. Confirmed bookings cancelled after the designated notice deadline cannot be processed automatically.
+        <div className="customer-modal-backdrop" onClick={() => setCancellingBooking(null)}>
+          <div className="customer-modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '450px', padding: '24px' }}>
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', marginBottom: '8px' }}>
+              Cancel Booking
+            </h3>
+            <p style={{ fontSize: '0.88rem', color: '#64748b', marginBottom: '16px' }}>
+              Are you sure you want to cancel your booking for <strong>{cancellingBooking.event_title}</strong>? This action cannot be undone.
             </p>
-
             <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                Reason for Cancellation (Required):
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                Reason for Cancellation (Optional)
               </label>
               <textarea
-                rows={3}
-                placeholder="Please state why you are cancelling this booking..."
                 value={cancellationReason}
                 onChange={(e) => setCancellationReason(e.target.value)}
-                style={{
-                  width: '100%',
-                  boxSizing: 'border-box',
-                  padding: '10px 12px',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '0.9rem',
-                  fontFamily: 'inherit',
-                }}
+                placeholder="Let the provider know why you are cancelling..."
+                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.88rem', minHeight: '80px', resize: 'vertical' }}
               />
             </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
               <button
-                type="button"
-                disabled={isSubmittingCancel}
-                onClick={() => {
-                  setCancellingBooking(null);
-                  setCancellationReason('');
-                }}
-                style={{
-                  padding: '10px 16px',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  background: '#ffffff',
-                  fontWeight: 600,
-                  fontSize: '0.88rem',
-                  cursor: isSubmittingCancel ? 'not-allowed' : 'pointer',
-                  color: '#475569',
-                }}
+                onClick={() => setCancellingBooking(null)}
+                style={{ padding: '8px 16px', borderRadius: '8px', background: '#f1f5f9', color: '#334155', border: 'none', fontWeight: 600, cursor: 'pointer' }}
               >
                 Keep Booking
               </button>
               <button
-                type="button"
-                disabled={isSubmittingCancel || !cancellationReason.trim()}
                 onClick={handleConfirmCancellation}
-                style={{
-                  padding: '10px 20px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  background: isSubmittingCancel || !cancellationReason.trim() ? '#fca5a5' : '#dc2626',
-                  color: '#ffffff',
-                  fontWeight: 700,
-                  fontSize: '0.88rem',
-                  cursor: isSubmittingCancel || !cancellationReason.trim() ? 'not-allowed' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
+                disabled={isSubmittingCancel}
+                style={{ padding: '8px 16px', borderRadius: '8px', background: '#ef4444', color: '#fff', border: 'none', fontWeight: 600, cursor: isSubmittingCancel ? 'not-allowed' : 'pointer' }}
               >
                 {isSubmittingCancel ? 'Cancelling...' : 'Confirm Cancellation'}
               </button>
@@ -3219,190 +3269,57 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
         </div>
       )}
 
-      {/* Customer Leave a Review Modal (Phase 5) */}
+      {/* Review Modal */}
       {reviewModalBooking && (
-        <div
-          className="modal-overlay"
-          onClick={() => {
-            if (!submittingReview) setReviewModalBooking(null);
-          }}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.75)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-            padding: '16px',
-            backdropFilter: 'blur(4px)',
-          }}
-        >
-          <div
-            className="modal-content"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: '#ffffff',
-              borderRadius: '20px',
-              maxWidth: '520px',
-              width: '100%',
-              padding: '28px',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-              position: 'relative',
-              color: '#0f172a',
-            }}
-          >
-            <button
-              onClick={() => {
-                if (!submittingReview) setReviewModalBooking(null);
-              }}
-              style={{
-                position: 'absolute',
-                top: '20px',
-                right: '20px',
-                background: '#f1f5f9',
-                border: 'none',
-                borderRadius: '50%',
-                width: '32px',
-                height: '32px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                color: '#64748b',
-              }}
-            >
-              <X size={18} />
-            </button>
-
-            <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-              <div
-                style={{
-                  width: '56px',
-                  height: '56px',
-                  borderRadius: '50%',
-                  background: 'rgba(13, 138, 115, 0.1)',
-                  color: '#0d8a73',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  margin: '0 auto 12px',
-                }}
-              >
-                <Star size={28} fill="#0d8a73" stroke="#0d8a73" />
-              </div>
-              <h3 style={{ fontSize: '1.4rem', fontWeight: 800, margin: '0 0 6px 0', color: '#0f172a' }}>
-                Rate Your Experience
+        <div className="customer-modal-backdrop" onClick={() => setReviewModalBooking(null)}>
+          <div className="customer-modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '450px', padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                Leave a Review
               </h3>
-              <p style={{ color: '#64748b', fontSize: '0.88rem', margin: 0 }}>
-                {reviewModalBooking.venue_details?.title || reviewModalBooking.vendor_details?.business_name || reviewModalBooking.event_title}
-              </p>
+              <button onClick={() => setReviewModalBooking(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+                <X size={20} />
+              </button>
             </div>
-
-            {/* Star Rating Selector */}
-            <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '10px' }}>
-                Select Your Rating (1 to 5 Stars) *
-              </span>
-              <div style={{ display: 'inline-flex', gap: '8px', cursor: 'pointer' }}>
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <button
-                    key={star}
-                    type="button"
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      padding: '4px',
-                      transition: 'transform 0.15s ease',
-                      transform: (hoverRating || ratingScore) >= star ? 'scale(1.15)' : 'scale(1)',
-                    }}
-                    onMouseEnter={() => setHoverRating(star)}
-                    onMouseLeave={() => setHoverRating(0)}
-                    onClick={() => setRatingScore(star)}
-                  >
-                    <Star
-                      size={34}
-                      fill={(hoverRating || ratingScore) >= star ? '#f59e0b' : 'transparent'}
-                      stroke={(hoverRating || ratingScore) >= star ? '#f59e0b' : '#cbd5e1'}
-                    />
-                  </button>
-                ))}
-              </div>
-              <div style={{ height: '22px', marginTop: '6px', fontSize: '0.85rem', fontWeight: 700, color: '#0d8a73' }}>
-                {(hoverRating || ratingScore) === 1 && '1 Star — Poor'}
-                {(hoverRating || ratingScore) === 2 && '2 Stars — Fair'}
-                {(hoverRating || ratingScore) === 3 && '3 Stars — Good'}
-                {(hoverRating || ratingScore) === 4 && '4 Stars — Very Good'}
-                {(hoverRating || ratingScore) === 5 && '5 Stars — Excellent!'}
-                {!(hoverRating || ratingScore) && <span style={{ color: '#94a3b8', fontWeight: 400 }}>Click a star to rate</span>}
-              </div>
+            <p style={{ fontSize: '0.88rem', color: '#64748b', marginBottom: '16px' }}>
+              How was your experience with <strong>{reviewModalBooking.venue_details?.title || reviewModalBooking.vendor_details?.business_name}</strong>?
+            </p>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginBottom: '20px' }}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  onClick={() => setRatingScore(star)}
+                  onMouseEnter={() => setHoverRating(star)}
+                  onMouseLeave={() => setHoverRating(0)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                >
+                  <Star
+                    size={32}
+                    fill={(hoverRating || ratingScore) >= star ? '#f59e0b' : 'transparent'}
+                    stroke={(hoverRating || ratingScore) >= star ? '#f59e0b' : '#cbd5e1'}
+                  />
+                </button>
+              ))}
             </div>
-
-            {/* Comment Area */}
-            <div style={{ marginBottom: '24px' }}>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-                Written Review (Optional)
-              </label>
-              <textarea
-                rows={4}
-                value={reviewComment}
-                onChange={(e) => setReviewComment(e.target.value)}
-                placeholder="Share your detailed feedback about the service quality, amenities, professionalism, and atmosphere..."
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  borderRadius: '10px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '0.9rem',
-                  fontFamily: 'inherit',
-                  color: '#0f172a',
-                  boxSizing: 'border-box',
-                  resize: 'vertical',
-                }}
-              />
-            </div>
-
-            {/* Actions */}
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+            <textarea
+              value={reviewComment}
+              onChange={(e) => setReviewComment(e.target.value)}
+              placeholder="Share details of your experience..."
+              style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.88rem', minHeight: '100px', resize: 'vertical', marginBottom: '20px' }}
+            />
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
               <button
-                type="button"
                 onClick={() => setReviewModalBooking(null)}
-                disabled={submittingReview}
-                style={{
-                  padding: '10px 18px',
-                  borderRadius: '10px',
-                  background: '#f1f5f9',
-                  border: 'none',
-                  color: '#475569',
-                  fontWeight: 600,
-                  fontSize: '0.9rem',
-                  cursor: 'pointer',
-                }}
+                style={{ padding: '8px 16px', borderRadius: '8px', background: '#f1f5f9', color: '#334155', border: 'none', fontWeight: 600, cursor: 'pointer' }}
               >
                 Cancel
               </button>
               <button
-                type="button"
                 onClick={handleSubmitReview}
-                disabled={submittingReview}
-                style={{
-                  padding: '10px 22px',
-                  borderRadius: '10px',
-                  background: '#0d8a73',
-                  border: 'none',
-                  color: '#ffffff',
-                  fontWeight: 700,
-                  fontSize: '0.9rem',
-                  cursor: submittingReview ? 'not-allowed' : 'pointer',
-                  opacity: submittingReview ? 0.7 : 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  boxShadow: '0 4px 6px -1px rgba(13, 138, 115, 0.3)',
-                }}
+                disabled={submittingReview || ratingScore === 0}
+                style={{ padding: '8px 16px', borderRadius: '8px', background: '#0d8a73', color: '#fff', border: 'none', fontWeight: 600, cursor: (submittingReview || ratingScore === 0) ? 'not-allowed' : 'pointer', opacity: (submittingReview || ratingScore === 0) ? 0.7 : 1 }}
               >
-                {submittingReview ? 'Submitting...' : 'Submit Verified Review'}
+                {submittingReview ? 'Submitting...' : 'Submit Review'}
               </button>
             </div>
           </div>

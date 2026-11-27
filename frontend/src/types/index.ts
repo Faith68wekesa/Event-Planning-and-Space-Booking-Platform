@@ -134,7 +134,7 @@ export interface Venue {
   owner_user_id?: number;
   title: string;
   description: string;
-  category: VenueCategory;
+  category: string;
   category_display: string;
   location: string;
   address?: string;
