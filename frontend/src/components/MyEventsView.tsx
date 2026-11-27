@@ -328,7 +328,7 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
         </div>
 
         {/* 2-Column Layout */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '24px', alignItems: 'start' }}>
+        <div className="event-overview-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '24px', alignItems: 'start' }}>
           {/* Left Column: Event details card, progress card, and checklist tasks */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
             {/* Event Details Card */}
@@ -368,7 +368,7 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
                 </button>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: '20px' }}>
+              <div className="event-detail-grid" style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: '20px' }}>
                 <img
                   src={getEventImage(ev)}
                   alt={ev.name}
@@ -1307,6 +1307,7 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
 
       {/* Filter / Search Bar Row */}
       <div
+        className="event-filter-grid"
         style={{
           display: 'grid',
           gridTemplateColumns: '1fr 180px 180px 180px',
@@ -1498,6 +1499,7 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
         <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
           {filteredEvents.map((ev) => (
             <div
+              className="event-list-card"
               key={ev.id}
               style={{
                 background: '#ffffff',

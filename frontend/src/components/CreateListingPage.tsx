@@ -1,15 +1,27 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Wrench,
   Building2,
   ArrowLeft,
   ChevronDown,
-  Info
+  ChevronUp,
+  Info,
+  ImagePlus,
+  Trash2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ApiService } from '../services/api';
 import type { Venue } from '../types';
 import { cleanImageUrl } from '../utils/imageUtils';
+
+interface PortfolioDraft {
+  id?: number;
+  image_url: string;
+  caption: string;
+  display_order: number;
+  file?: File;
+  preview_url: string;
+}
 
 interface CreateListingPageProps {
   onBack: () => void;
@@ -45,6 +57,182 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
       : defaultMode
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [persistedListingId, setPersistedListingId] = useState<number | null>(editingListing?.id ?? null);
+  const [portfolioImages, setPortfolioImages] = useState<PortfolioDraft[]>(() => (
+    editingListing?.portfolio?.map(image => ({
+      id: image.id,
+      image_url: image.image_url,
+      caption: image.caption || '',
+      display_order: image.display_order,
+      preview_url: cleanImageUrl(image.image_url),
+    })) || []
+  ));
+  const [removedPortfolioIds, setRemovedPortfolioIds] = useState<number[]>([]);
+  const portfolioObjectUrls = useRef<string[]>([]);
+
+  useEffect(() => () => {
+    portfolioObjectUrls.current.forEach(url => URL.revokeObjectURL(url));
+  }, []);
+
+  useEffect(() => {
+    setPersistedListingId(editingListing?.id ?? null);
+    setPortfolioImages(editingListing?.portfolio?.map(image => ({
+      id: image.id,
+      image_url: image.image_url,
+      caption: image.caption || '',
+      display_order: image.display_order,
+      preview_url: cleanImageUrl(image.image_url),
+    })) || []);
+    setRemovedPortfolioIds([]);
+  }, [editingListing?.id]);
+
+  const handlePortfolioFiles = (files: FileList | null) => {
+    if (!files) return;
+    const newImages: PortfolioDraft[] = [];
+
+    Array.from(files).forEach(file => {
+      if (!file.type.startsWith('image/')) {
+        toast.error(`${file.name} is not an image.`);
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error(`${file.name} exceeds the 5 MB image limit.`);
+        return;
+      }
+
+      const previewUrl = URL.createObjectURL(file);
+      portfolioObjectUrls.current.push(previewUrl);
+      newImages.push({
+        image_url: '',
+        caption: '',
+        display_order: portfolioImages.length + newImages.length + 1,
+        file,
+        preview_url: previewUrl,
+      });
+    });
+
+    if (newImages.length) {
+      setPortfolioImages(previous => [...previous, ...newImages]);
+    }
+  };
+
+  const removePortfolioImage = (index: number) => {
+    const image = portfolioImages[index];
+    if (image?.id) setRemovedPortfolioIds(ids => [...ids, image.id!]);
+    setPortfolioImages(previous => previous.filter((_, currentIndex) => currentIndex !== index));
+  };
+
+  const movePortfolioImage = (index: number, direction: -1 | 1) => {
+    setPortfolioImages(previous => {
+      const targetIndex = index + direction;
+      if (targetIndex < 0 || targetIndex >= previous.length) return previous;
+      const reordered = [...previous];
+      [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
+      return reordered;
+    });
+  };
+
+  const persistPortfolio = async (venueId: number) => {
+    for (const id of removedPortfolioIds) {
+      const deleted = await ApiService.deletePortfolioImage(id);
+      if (!deleted) throw new Error('Failed to remove a portfolio image.');
+      setRemovedPortfolioIds(previous => previous.filter(removedId => removedId !== id));
+    }
+
+    for (const [index, image] of portfolioImages.entries()) {
+      const imageData = {
+        caption: image.caption.trim(),
+        display_order: index + 1,
+      };
+
+      if (image.id) {
+        await ApiService.updatePortfolioImage(image.id, imageData);
+        continue;
+      }
+
+      const imageUrl = image.file ? await ApiService.uploadImage(image.file) : image.image_url;
+      if (!imageUrl) throw new Error('Failed to upload a portfolio image.');
+      const createdImage = await ApiService.createPortfolioImage({
+        venue: venueId,
+        image_url: imageUrl,
+        ...imageData,
+      });
+      setPortfolioImages(previous => previous.map((item, currentIndex) => (
+        currentIndex === index
+          ? { ...item, id: createdImage.id, image_url: createdImage.image_url, file: undefined, preview_url: createdImage.image_url }
+          : item
+      )));
+    }
+  };
+
+  const portfolioSection = (
+    <section style={{ margin: '8px 0 20px', padding: '18px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap', marginBottom: '14px' }}>
+        <div>
+          <h3 style={{ margin: '0 0 5px', color: '#0f172a', fontSize: '1.05rem', fontWeight: 800 }}>Portfolio</h3>
+          <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem', lineHeight: 1.45 }}>
+            Showcase your work with photos that help customers understand what they can expect.
+          </p>
+        </div>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '9px 13px', borderRadius: '8px', background: '#0d8a73', color: '#fff', fontSize: '0.84rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          <ImagePlus size={16} /> Add Portfolio Image
+          <input
+            type="file"
+            accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+            multiple
+            hidden
+            onChange={(event) => {
+              handlePortfolioFiles(event.target.files);
+              event.target.value = '';
+            }}
+          />
+        </label>
+      </div>
+
+      {portfolioImages.length === 0 ? (
+        <div style={{ padding: '24px 12px', textAlign: 'center', background: '#fff', border: '1px dashed #cbd5e1', borderRadius: '9px', color: '#64748b', fontSize: '0.88rem' }}>
+          No portfolio images have been added yet.
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '12px' }}>
+          {portfolioImages.map((image, index) => (
+            <div key={image.id ?? image.preview_url} style={{ overflow: 'hidden', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px' }}>
+              <div style={{ height: '118px', position: 'relative', background: '#e2e8f0' }}>
+                <img
+                  src={image.preview_url}
+                  alt={image.caption || `Portfolio image ${index + 1}`}
+                  onError={(event) => { event.currentTarget.style.visibility = 'hidden'; }}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+                <div style={{ position: 'absolute', right: '6px', top: '6px', display: 'flex', gap: '4px' }}>
+                  <button type="button" onClick={() => movePortfolioImage(index, -1)} disabled={index === 0} aria-label="Move image earlier" style={{ width: '28px', height: '28px', display: 'grid', placeItems: 'center', border: 0, borderRadius: '6px', background: '#ffffffed', color: '#334155', cursor: index === 0 ? 'not-allowed' : 'pointer', opacity: index === 0 ? 0.5 : 1 }}>
+                    <ChevronUp size={16} />
+                  </button>
+                  <button type="button" onClick={() => movePortfolioImage(index, 1)} disabled={index === portfolioImages.length - 1} aria-label="Move image later" style={{ width: '28px', height: '28px', display: 'grid', placeItems: 'center', border: 0, borderRadius: '6px', background: '#ffffffed', color: '#334155', cursor: index === portfolioImages.length - 1 ? 'not-allowed' : 'pointer', opacity: index === portfolioImages.length - 1 ? 0.5 : 1 }}>
+                    <ChevronDown size={16} />
+                  </button>
+                  <button type="button" onClick={() => removePortfolioImage(index)} aria-label="Remove portfolio image" style={{ width: '28px', height: '28px', display: 'grid', placeItems: 'center', border: 0, borderRadius: '6px', background: '#ffffffed', color: '#b91c1c', cursor: 'pointer' }}>
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </div>
+              <div style={{ padding: '8px' }}>
+                <input
+                  type="text"
+                  maxLength={240}
+                  value={image.caption}
+                  onChange={(event) => setPortfolioImages(previous => previous.map((item, currentIndex) => currentIndex === index ? { ...item, caption: event.target.value } : item))}
+                  placeholder="Optional caption"
+                  aria-label={`Caption for portfolio image ${index + 1}`}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '7px 8px', border: '1px solid #e2e8f0', borderRadius: '6px', color: '#334155', fontSize: '0.8rem' }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 
   // Service form fields
   const [serviceName, setServiceName] = useState(editingListing?.title || '');
@@ -61,7 +249,11 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
   const [serviceInclusions, setServiceInclusions] = useState('');
   const [serviceEventTypes, setServiceEventTypes] = useState('Weddings, Birthdays, Corporate Events');
   const [serviceDuration, setServiceDuration] = useState('4 hours');
-  const [serviceMaxGuests, setServiceMaxGuests] = useState<number | ''>('');
+  const [serviceMaxGuests, setServiceMaxGuests] = useState<number | ''>(
+    editingListing?.listing_type === 'SERVICE' && editingListing.capacity > 0
+      ? editingListing.capacity
+      : ''
+  );
   const [serviceArea, setServiceArea] = useState(
     editingListing?.location.trim().toLowerCase() === nyeriCountyLocation.toLowerCase()
       ? editingListing.location
@@ -124,6 +316,10 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
       toast.error('Please enter a service category.');
       return;
     }
+    if (!serviceMaxGuests || Number(serviceMaxGuests) <= 0) {
+      toast.error('Please enter the maximum number of guests this service can support.');
+      return;
+    }
     if (!servicePrice || Number(servicePrice) <= 0) {
       toast.error('Please enter a valid starting price.');
       return;
@@ -146,21 +342,24 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
         title: serviceName.trim(),
         category,
         location: serviceArea,
-        capacity: serviceMaxGuests ? Number(serviceMaxGuests) : 0,
+        capacity: Number(serviceMaxGuests),
         price_per_day: Number(servicePrice),
         description: fullDescription,
         image_url: cleanImageUrl(serviceCoverUrl),
       };
 
-      if (editingListing) {
-        await ApiService.updateVenue(editingListing.id, listingData);
-        toast.success('Service listing updated.');
+      let listingId = persistedListingId;
+      if (listingId) {
+        await ApiService.updateVenue(listingId, listingData);
       } else {
         const { vendorId, ownerId } = await resolveIds();
-        await ApiService.addVenue({ ...listingData, vendor: vendorId, owner: ownerId });
-        toast.success('Service listing created and submitted for review!');
+        const createdListing = await ApiService.addVenue({ ...listingData, vendor: vendorId, owner: ownerId });
+        listingId = createdListing.id;
+        setPersistedListingId(createdListing.id);
       }
 
+      await persistPortfolio(listingId);
+      toast.success(editingListing || persistedListingId ? 'Service listing updated.' : 'Service listing created and submitted for review!');
       onSuccess();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to submit service listing.');
@@ -220,15 +419,18 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
         image_url: cleanImageUrl(venueCoverUrl),
       };
 
-      if (editingListing) {
-        await ApiService.updateVenue(editingListing.id, listingData);
-        toast.success('Venue listing updated.');
+      let listingId = persistedListingId;
+      if (listingId) {
+        await ApiService.updateVenue(listingId, listingData);
       } else {
         const { vendorId, ownerId } = await resolveIds();
-        await ApiService.addVenue({ ...listingData, owner: ownerId, vendor: vendorId });
-        toast.success('Venue listing created and submitted for review!');
+        const createdListing = await ApiService.addVenue({ ...listingData, owner: ownerId, vendor: vendorId });
+        listingId = createdListing.id;
+        setPersistedListingId(createdListing.id);
       }
 
+      await persistPortfolio(listingId);
+      toast.success(editingListing || persistedListingId ? 'Venue listing updated.' : 'Venue listing created and submitted for review!');
       onSuccess();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to submit venue listing.');
@@ -424,6 +626,8 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
               </div>
             </div>
 
+            {portfolioSection}
+
             {/* What's Included / Package Details */}
             <div className="listing-field-group">
               <div className="field-label-with-counter">
@@ -467,15 +671,16 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
               </div>
             </div>
 
-            {/* Maximum Guests (Optional) & Service Area */}
+            {/* Maximum Guests & Service Area */}
             <div className="listing-field-row-split">
               <div className="listing-field-group">
-                <label className="listing-field-label">Maximum Guests (Optional)</label>
+                <label className="listing-field-label">Maximum Guests Supported *</label>
                 <input
                   type="number"
+                  required
                   min="1"
                   className="listing-input"
-                  placeholder="e.g. 200"
+                  placeholder="Enter maximum guests"
                   value={serviceMaxGuests}
                   onChange={(e) => setServiceMaxGuests(e.target.value === '' ? '' : Number(e.target.value))}
                 />
@@ -716,6 +921,8 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
               </div>
             </div>
 
+            {portfolioSection}
+
             {/* Maximum Guest Capacity & Available Spaces / Layout Details */}
             <div className="listing-field-row-split">
               <div className="listing-field-group">
@@ -725,7 +932,7 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
                   required
                   min="1"
                   className="listing-input"
-                  placeholder="e.g. 200"
+                  placeholder="Enter maximum guests"
                   value={venueCapacity}
                   onChange={(e) => setVenueCapacity(e.target.value === '' ? '' : Number(e.target.value))}
                 />

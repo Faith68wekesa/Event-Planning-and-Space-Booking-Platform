@@ -2,13 +2,15 @@
 # pyrefly: ignore[missing-import]
 from .models import (
     User, VendorProfile, VenueOwnerProfile, Venue, Booking, Review, Message, Event, EventService,
-    Notification, CustomerReminderPreference, VerificationDocument, UserInteraction, Recommendation, FraudAlert, ProviderAvailabilitySetting,
+    PortfolioImage, Notification, CustomerReminderPreference, VerificationDocument, UserInteraction, Recommendation, FraudAlert, ProviderAvailabilitySetting,
     Payment,
 )
 from .location_utils import is_nyeri_county_location
 
 
 class ProviderAvailabilitySettingSerializer(serializers.ModelSerializer):
+    max_guests = serializers.IntegerField(min_value=1, required=False)
+
     class Meta:
         model = ProviderAvailabilitySetting
         fields = [
@@ -133,6 +135,7 @@ class VenueSerializer(serializers.ModelSerializer):
     category = serializers.CharField(max_length=100)
     category_display = serializers.SerializerMethodField()
     owner_user_id = serializers.SerializerMethodField()
+    portfolio = serializers.SerializerMethodField()
 
     def get_category_display(self, obj):
         return dict(Venue.CATEGORY_CHOICES).get(obj.category, obj.category)
@@ -143,6 +146,31 @@ class VenueSerializer(serializers.ModelSerializer):
         if obj.vendor and obj.vendor.user_id:
             return obj.vendor.user_id
         return None
+
+    def get_portfolio(self, obj):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        is_admin = bool(
+            user
+            and user.is_authenticated
+            and (
+                getattr(user, 'role', '') == 'ADMIN'
+                or getattr(user, 'is_staff', False)
+                or getattr(user, 'is_superuser', False)
+            )
+        )
+        if not obj.is_publicly_visible and not is_admin:
+            owns_listing = bool(
+                user
+                and user.is_authenticated
+                and (
+                    (obj.owner and obj.owner.user_id == user.id)
+                    or (obj.vendor and obj.vendor.user_id == user.id)
+                )
+            )
+            if not owns_listing:
+                return []
+        return PortfolioImageSerializer(obj.portfolio.all(), many=True, context=self.context).data
 
     def validate(self, attrs):
         listing_type = attrs.get(
@@ -169,11 +197,19 @@ class VenueSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'category': 'Select a valid service category.'})
         if listing_type == 'VENUE' and category in service_categories:
             raise serializers.ValidationError({'category': 'Select a valid venue category.'})
-        if capacity is not None:
-            if capacity < 0:
-                raise serializers.ValidationError({'capacity': 'Capacity cannot be negative.'})
-            if listing_type == 'VENUE' and capacity <= 0:
-                raise serializers.ValidationError({'capacity': 'Venue capacity must be greater than zero.'})
+        if capacity is None:
+            message = (
+                'Venue capacity is required.'
+                if listing_type == 'VENUE'
+                else 'Maximum guests supported is required.'
+            )
+            raise serializers.ValidationError({'capacity': message})
+        if capacity < 0:
+            raise serializers.ValidationError({'capacity': 'Capacity cannot be negative.'})
+        if listing_type == 'VENUE' and capacity == 0:
+            raise serializers.ValidationError({'capacity': 'Venue capacity must be greater than zero.'})
+        if listing_type == 'SERVICE' and capacity == 0:
+            raise serializers.ValidationError({'capacity': 'Maximum guests supported must be greater than zero.'})
         return attrs
 
     def to_internal_value(self, data):
@@ -190,6 +226,7 @@ class VenueSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'vendor', 'vendor_name', 'owner', 'owner_name', 'owner_user_id', 'listing_type', 'title', 'description', 'category',
             'category_display', 'location', 'address', 'capacity', 'price_per_day',
+            'portfolio',
             'price_per_hour', 'amenities', 'image_url', 'is_verified', 'approval_status', 'rejection_reason',
             'cancellation_policy', 'is_available', 'rating', 'review_count', 'created_at', 'updated_at'
         ]
@@ -197,6 +234,13 @@ class VenueSerializer(serializers.ModelSerializer):
             'vendor', 'owner', 'is_verified', 'approval_status', 'rejection_reason',
             'rating', 'review_count', 'created_at', 'updated_at',
         ]
+
+
+class PortfolioImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PortfolioImage
+        fields = ['id', 'venue', 'image_url', 'caption', 'display_order', 'created_at']
+        read_only_fields = ['id', 'created_at']
 
 
 class ReviewSerializer(serializers.ModelSerializer):
@@ -230,6 +274,7 @@ class ReviewSerializer(serializers.ModelSerializer):
 
 
 class BookingSerializer(serializers.ModelSerializer):
+    guest_count = serializers.IntegerField(min_value=1)
     customer_name = serializers.ReadOnlyField(source='customer.username')
     customer_email = serializers.ReadOnlyField(source='customer.email')
     venue_details = VenueSerializer(source='venue', read_only=True)

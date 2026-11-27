@@ -86,13 +86,7 @@ export const VenueCard: React.FC<VenueCardProps> = ({ venue, onSelect, onBook })
           fontWeight: 700,
           color: (venue.review_count || 0) > 0 ? '#d97706' : '#64748b'
         }}>
-          {(venue.review_count || 0) > 0 ? (
-            <>
-              <Star size={14} fill="#fbbf24" stroke="#d97706" /> {Number(venue.rating).toFixed(1)} ({venue.review_count})
-            </>
-          ) : (
-            <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>No reviews yet</span>
-          )}
+          <Star size={14} fill="#fbbf24" stroke="#d97706" /> {Number(venue.rating || 0).toFixed(1)} ({Number(venue.review_count || 0)})
         </div>
       </div>
 
@@ -108,11 +102,9 @@ export const VenueCard: React.FC<VenueCardProps> = ({ venue, onSelect, onBook })
             <MapPin size={14} color="#0d8a73" />
             {isService ? `Location: ${venue.location}` : venue.location}
           </span>
-          {!isService && (
-            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#ecfdf5', color: '#059669', padding: '2px 8px', borderRadius: '6px', fontWeight: 700, fontSize: '0.78rem' }}>
-              <Users size={13} color="#059669" /> Capacity: {venue.capacity} guests
-            </span>
-          )}
+          <span style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#ecfdf5', color: '#059669', padding: '2px 8px', borderRadius: '6px', fontWeight: 700, fontSize: '0.78rem' }}>
+            <Users size={13} color="#059669" /> {Number(venue.capacity) > 0 ? `Max ${venue.capacity} guests` : 'Guest limit not set'}
+          </span>
         </div>
 
         <p style={{
@@ -168,7 +160,7 @@ export const VenueCard: React.FC<VenueCardProps> = ({ venue, onSelect, onBook })
               Details
             </button>
 
-            {venue.approval_status === 'APPROVED' && venue.is_available ? (
+            {venue.approval_status === 'APPROVED' && venue.is_available && Number(venue.capacity) > 0 ? (
               <button
                 className="btn-primary"
                 onClick={() => onBook(venue)}
@@ -189,9 +181,19 @@ export const VenueCard: React.FC<VenueCardProps> = ({ venue, onSelect, onBook })
                   fontWeight: 600,
                   cursor: 'not-allowed'
                 }}
-                title={venue.approval_status !== 'APPROVED' ? 'Pending Admin Approval' : 'Currently Unavailable'}
+                title={
+                  venue.approval_status !== 'APPROVED'
+                    ? 'Pending Admin Approval'
+                    : !venue.is_available
+                      ? 'Currently Unavailable'
+                      : 'Provider must set a guest limit before this listing can be booked'
+                }
               >
-                {venue.approval_status !== 'APPROVED' ? 'Pending Approval' : 'Unavailable'}
+                {venue.approval_status !== 'APPROVED'
+                  ? 'Pending Approval'
+                  : !venue.is_available
+                    ? 'Unavailable'
+                    : 'Capacity Needed'}
               </button>
             )}
           </div>

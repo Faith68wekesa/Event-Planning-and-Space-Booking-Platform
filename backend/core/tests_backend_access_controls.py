@@ -118,7 +118,7 @@ class BackendAccessControlTests(TestCase):
             'title': 'Live Streaming Service',
             'category': 'Live Streaming',
             'location': 'Nyeri County, Kenya',
-            'capacity': 0,
+            'capacity': 100,
             'price_per_day': '12000',
         })
 
@@ -134,7 +134,7 @@ class BackendAccessControlTests(TestCase):
             'title': 'Custom Live Streaming',
             'category': 'Live Streaming',
             'location': 'Nyeri County, Kenya',
-            'capacity': 0,
+            'capacity': 100,
             'price_per_day': '12000',
         }, format='json')
 
@@ -171,23 +171,35 @@ class BackendAccessControlTests(TestCase):
             'price_per_day': '10000',
         }
 
-        # Services may have no specified guest limit.
+        # Both listing types require the provider to enter a positive guest limit.
         service_zero = VenueSerializer(data={
             **base_data,
             'listing_type': 'SERVICE',
             'category': 'PHOTOGRAPHY',
             'capacity': 0,
         })
+        service_missing = VenueSerializer(data={
+            'title': 'Capacity test',
+            'location': 'Nyeri County, Kenya',
+            'price_per_day': '10000',
+            'listing_type': 'SERVICE',
+            'category': 'PHOTOGRAPHY',
+        })
 
-        # Venues must have a positive guest capacity.
         venue_zero = VenueSerializer(data={
             **base_data,
             'listing_type': 'VENUE',
             'category': 'WEDDING',
             'capacity': 0,
         })
+        venue_missing = VenueSerializer(data={
+            'title': 'Capacity test',
+            'location': 'Nyeri County, Kenya',
+            'price_per_day': '10000',
+            'listing_type': 'VENUE',
+            'category': 'WEDDING',
+        })
 
-        # Neither listing type may have negative capacity.
         service_negative = VenueSerializer(data={
             **base_data,
             'listing_type': 'SERVICE',
@@ -202,10 +214,15 @@ class BackendAccessControlTests(TestCase):
             'capacity': -1,
         })
 
-        self.assertTrue(service_zero.is_valid(), service_zero.errors)
+        self.assertFalse(service_zero.is_valid())
+        self.assertIn('capacity', service_zero.errors)
+        self.assertFalse(service_missing.is_valid())
+        self.assertIn('capacity', service_missing.errors)
 
         self.assertFalse(venue_zero.is_valid())
         self.assertIn('capacity', venue_zero.errors)
+        self.assertFalse(venue_missing.is_valid())
+        self.assertIn('capacity', venue_missing.errors)
 
         self.assertFalse(service_negative.is_valid())
         self.assertIn('capacity', service_negative.errors)

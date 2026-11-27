@@ -24,7 +24,7 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
   const [endTime, setEndTime] = useState(initialEvent?.end_time || '');
   const [location, setLocation] = useState(initialEvent?.location || '');
   const [guestCount, setGuestCount] = useState<number | ''>(
-    initialEvent ? initialEvent.expected_guest_count : 50
+    initialEvent ? initialEvent.expected_guest_count : ''
   );
   const [budget, setBudget] = useState<string>(
     initialEvent ? String(initialEvent.budget) : '50000'
@@ -57,7 +57,7 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
       return;
     }
     if (guestCount === '' || Number(guestCount) < 0) {
-      setError('Expected guest count cannot be negative.');
+      setError('Enter an expected guest count of zero or more.');
       return;
     }
     if (budget === '' || Number(budget) < 0) {
@@ -338,7 +338,7 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
                 type="number"
                 min="0"
                 required
-                placeholder="e.g. 80"
+                placeholder="Enter expected guests"
                 value={guestCount}
                 onChange={(e) => setGuestCount(e.target.value === '' ? '' : Number(e.target.value))}
                 style={{

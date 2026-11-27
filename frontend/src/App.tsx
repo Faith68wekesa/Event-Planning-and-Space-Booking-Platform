@@ -41,7 +41,7 @@ export const App: React.FC = () => {
         const parsed = JSON.parse(saved);
         if (parsed?.user) return parsed.user;
       }
-    } catch (e) {}
+    } catch (e) { }
     return null;
   });
 
@@ -52,7 +52,7 @@ export const App: React.FC = () => {
         const parsed = JSON.parse(saved);
         if (parsed?.vendor_profile) return parsed.vendor_profile;
       }
-    } catch (e) {}
+    } catch (e) { }
     return null;
   });
 
@@ -63,7 +63,7 @@ export const App: React.FC = () => {
         const parsed = JSON.parse(saved);
         if (parsed?.venue_owner_profile) return parsed.venue_owner_profile;
       }
-    } catch (e) {}
+    } catch (e) { }
     return null;
   });
 
@@ -79,7 +79,7 @@ export const App: React.FC = () => {
           return 'PROVIDER';
         }
       }
-    } catch (e) {}
+    } catch (e) { }
     return 'CUSTOMER';
   });
 
@@ -92,9 +92,10 @@ export const App: React.FC = () => {
           return 'admin-dashboard';
         }
       }
-    } catch (e) {}
+    } catch (e) { }
     return 'landing';
   });
+  const [adminHomeRequest, setAdminHomeRequest] = useState(0);
 
   const [filters, setFilters] = useState<FilterState>({
     search: '',
@@ -131,7 +132,7 @@ export const App: React.FC = () => {
 
     if (!currentUser) {
       setIsAdminAuthModal(false);
-      setAuthMode('login'); 
+      setAuthMode('login');
       setShowAuthModal(true);
     }
   };
@@ -213,7 +214,7 @@ export const App: React.FC = () => {
           vendor_profile: currentVendor,
           venue_owner_profile: currentVenueOwner,
         }));
-      } catch (e) {}
+      } catch (e) { }
 
       ApiService.getBookings(currentUser.id).then(setBookings);
     } else {
@@ -223,15 +224,15 @@ export const App: React.FC = () => {
       try {
         localStorage.removeItem('locyfy_session_auth');
         localStorage.removeItem('locyfy_auth_token');
-      } catch (e) {}
+      } catch (e) { }
 
       setBookings([]);
     }
   }, [currentUser, currentVendor, currentVenueOwner, activeTab]);
 
   const isAdmin = Boolean(currentUser && (
-    currentUser.role === 'ADMIN' || 
-    currentUser.is_staff || 
+    currentUser.role === 'ADMIN' ||
+    currentUser.is_staff ||
     currentUser.is_superuser
   ));
 
@@ -306,7 +307,7 @@ export const App: React.FC = () => {
         setCurrentUser(data.user);
         if (data.vendor_profile) setCurrentVendor(data.vendor_profile);
         if (data.venue_owner_profile) setCurrentVenueOwner(data.venue_owner_profile);
-        
+
         if (role === 'CUSTOMER') {
           setActiveRole('CUSTOMER');
           setActiveTab(nextTab);
@@ -339,213 +340,219 @@ export const App: React.FC = () => {
       <Toaster position="top-center" reverseOrder={false} />
       <>
         {activeTab !== 'my-bookings' &&
+          activeTab !== 'admin-dashboard' &&
           activeTab !== 'provider-dashboard' &&
           activeTab !== 'vendor-dashboard' &&
           activeTab !== 'venue-owner-dashboard' && (
-          <Navbar
-            activeTab={activeTab}
-            setActiveTab={handleNavbarTabChange}
-            activeRole={activeRole}
-            setActiveRole={setActiveRole}
+            <Navbar
+              activeTab={activeTab}
+              setActiveTab={handleNavbarTabChange}
+              activeRole={activeRole}
+              setActiveRole={setActiveRole}
+              currentUser={currentUser}
+              onAdminHomeClick={() => setAdminHomeRequest((request) => request + 1)}
+              onLoginClick={() => { setIsAdminAuthModal(false); setAuthMode('login'); setShowAuthModal(true); }}
+              onRegisterClick={() => { setIsAdminAuthModal(false); setAuthMode('register'); setShowAuthModal(true); }}
+              onRequestRole={handleRequestRole}
+              searchQuery={filters.search}
+              onSearchChange={(q) => setFilters((f) => ({ ...f, search: q }))}
+              onLogoutClick={() => {
+                setCurrentUser(null);
+                setActiveRole('CUSTOMER');
+                setActiveTab('landing');
+              }}
+            />
+          )}
+
+        <main style={{ flexGrow: 1 }}>
+          {activeTab === 'landing' ? (
+            <LandingPage
+              onSearch={(newFilters) => {
+                setFilters(newFilters);
+                navigateToTab(
+                  SERVICE_CATEGORY_CODES.has(newFilters.category) ? 'services' : 'venues'
+                );
+              }}
+              filters={filters}
+              onExploreVenues={() => navigateToTab('venues')}
+              onExploreServices={() => navigateToTab('services')}
+              onSelectVenue={(venue) => handleSelectVenueWithTracking(venue, 'landing_page')}
+              onBookVenue={handleInterceptBook}
+              onOpenAdmin={handleOpenAdmin}
+              currentUser={currentUser}
+            />
+          ) : (
+            <>
+              {(activeTab === 'venues' || activeTab === 'services' || activeTab === 'vendors') && (
+                <>
+                  <HeroSearch
+                    filters={filters}
+                    setFilters={setFilters}
+                    stats={stats}
+                    onSearch={loadData}
+                  />
+
+                  <div
+                    className="listing-browser-layout"
+                    style={{
+                      maxWidth: '1280px',
+                      margin: '0 auto',
+                      padding: '32px 24px',
+                      display: 'grid',
+                      gridTemplateColumns: '260px 1fr',
+                      gap: '28px',
+                      alignItems: 'start',
+                    }}
+                  >
+                    <FilterSidebar
+                      filters={filters}
+                      setFilters={setFilters}
+                      activeTab={activeTab === 'venues' ? 'venues' : 'services'}
+                    />
+
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1e293b' }}>
+                          {activeTab === 'venues'
+                            ? `Available Event Venues (${venues.length})`
+                            : `Available Event Services (${services.length})`}
+                        </h2>
+                      </div>
+
+                      {activeTab === 'venues' ? (
+                        <VenueGrid
+                          venues={venues}
+                          onSelectVenue={(venue) => handleSelectVenueWithTracking(venue, 'catalog_grid')}
+                          onBookVenue={handleInterceptBook}
+                        />
+                      ) : activeTab === 'services' ? (
+                        <VenueGrid
+                          venues={services}
+                          onSelectVenue={(service) => handleSelectVenueWithTracking(service, 'catalog_grid')}
+                          onBookVenue={handleInterceptBook}
+                          emptyMessage="No Services Found"
+                        />
+                      ) : (
+                        <VenueGrid
+                          venues={services}
+                          onSelectVenue={(service) => handleSelectVenueWithTracking(service, 'catalog_grid')}
+                          onBookVenue={handleInterceptBook}
+                          emptyMessage="No Service Listings Found"
+                        />
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {(activeTab === 'my-bookings' || activeTab === 'my-events') && (
+                <CustomerDashboard
+                  bookings={bookings}
+                  currentUser={currentUser}
+                  initialTab={customerChatPartnerId ? 'messages' : (activeTab === 'my-events' ? 'events' : 'dashboard')}
+                  initialChatPartnerId={customerChatPartnerId}
+                  onCancelBooking={handleCancelBooking}
+                  onNavigate={(tab) => {
+                    if (tab !== 'messages') setCustomerChatPartnerId(null);
+                    navigateToTab(tab);
+                  }}
+                  handleSelectVenueWithTracking={handleSelectVenueWithTracking}
+                  onBookVenue={handleInterceptBook}
+                  venues={venues}
+                  services={services}
+                  onLogout={() => {
+                    setCurrentUser(null);
+                    setActiveRole('CUSTOMER');
+                    setActiveTab('landing');
+                    setCustomerChatPartnerId(null);
+                  }}
+                  onRequestRole={handleRequestRole}
+                />
+              )}
+
+              {(activeTab === 'provider-dashboard' || activeTab === 'vendor-dashboard' || activeTab === 'venue-owner-dashboard') && (
+                <ProviderDashboard
+                  currentUser={currentUser}
+                  currentVendor={currentVendor}
+                  currentVenueOwner={currentVenueOwner}
+                  onLogout={() => {
+                    setCurrentUser(null);
+                    setCurrentVendor(null);
+                    setCurrentVenueOwner(null);
+                    setActiveRole('CUSTOMER');
+                    setActiveTab('landing');
+                  }}
+                  onExplore={() => handleRequestRole('CUSTOMER')}
+                />
+              )}
+
+              {activeTab === 'admin-dashboard' && (
+                <AdminDashboard
+                  venues={venues}
+                  vendors={vendors}
+                  onToggleVerifyVenue={handleToggleVerifyVenue}
+                  onToggleVerifyVendor={handleToggleVerifyVendor}
+                  currentUser={currentUser}
+                  homeRequest={adminHomeRequest}
+                  searchQuery={filters.search}
+                  onSearchChange={(search) => setFilters((current) => ({ ...current, search }))}
+                  onDataChange={loadData}
+                  onNavigateHome={() => {
+                    loadData();
+                    navigateToTab('venues');
+                  }}
+                  onLoginClick={() => {
+                    setIsAdminAuthModal(true);
+                    setAuthMode('login');
+                    setShowAuthModal(true);
+                  }}
+                  onLogout={() => {
+                    setCurrentUser(null);
+                    setActiveRole('CUSTOMER');
+                    setActiveTab('landing');
+                  }}
+                />
+              )}
+            </>
+          )}
+        </main>
+
+        {selectedVenue && (
+          <VenueModal
+            venue={selectedVenue}
             currentUser={currentUser}
-            onLoginClick={() => { setIsAdminAuthModal(false); setAuthMode('login'); setShowAuthModal(true); }}
-            onRegisterClick={() => { setIsAdminAuthModal(false); setAuthMode('register'); setShowAuthModal(true); }}
-            onRequestRole={handleRequestRole}
-            searchQuery={filters.search}
-            onSearchChange={(q) => setFilters((f) => ({ ...f, search: q }))}
-            onLogoutClick={() => {
-              setCurrentUser(null);
+            onClose={() => setSelectedVenue(null)}
+            onBook={(v) => setBookingTargetVenue(v)}
+            onMessage={(target) => {
+              setSelectedVenue(null);
+              if (target?.recipientId) {
+                setCustomerChatPartnerId(target.recipientId);
+              }
               setActiveRole('CUSTOMER');
-              setActiveTab('landing');
+              setActiveTab('my-bookings');
             }}
           />
         )}
 
-          <main style={{ flexGrow: 1 }}>
-            {activeTab === 'landing' ? (
-              <LandingPage
-                onSearch={(newFilters) => {
-                  setFilters(newFilters);
-                  navigateToTab(
-                    SERVICE_CATEGORY_CODES.has(newFilters.category) ? 'services' : 'venues'
-                  );
-                }}
-                filters={filters}
-                onExploreVenues={() => navigateToTab('venues')}
-                onExploreServices={() => navigateToTab('services')}
-                onSelectVenue={(venue) => handleSelectVenueWithTracking(venue, 'landing_page')}
-                onBookVenue={handleInterceptBook}
-                onOpenAdmin={handleOpenAdmin}
-                currentUser={currentUser}
-              />
-            ) : (
-              <>
-                {(activeTab === 'venues' || activeTab === 'services' || activeTab === 'vendors') && (
-                  <>
-                    <HeroSearch
-                      filters={filters}
-                      setFilters={setFilters}
-                      stats={stats}
-                      onSearch={loadData}
-                    />
+        {currentUser && bookingTargetVenue && (
+          <BookingModal
+            venue={bookingTargetVenue}
+            currentUser={currentUser}
+            onClose={() => {
+              setBookingTargetVenue(null);
+            }}
+            onSuccess={handleBookSuccess}
+          />
+        )}
 
-                    <div
-                      style={{
-                        maxWidth: '1280px',
-                        margin: '0 auto',
-                        padding: '32px 24px',
-                        display: 'grid',
-                        gridTemplateColumns: '260px 1fr',
-                        gap: '28px',
-                        alignItems: 'start',
-                      }}
-                    >
-                      <FilterSidebar
-                        filters={filters}
-                        setFilters={setFilters}
-                        activeTab={activeTab === 'venues' ? 'venues' : 'services'}
-                      />
-
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                          <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1e293b' }}>
-                            {activeTab === 'venues'
-                              ? `Available Event Venues (${venues.length})`
-                              : `Available Event Services (${services.length})`}
-                          </h2>
-                        </div>
-
-                        {activeTab === 'venues' ? (
-                          <VenueGrid
-                            venues={venues}
-                            onSelectVenue={(venue) => handleSelectVenueWithTracking(venue, 'catalog_grid')}
-                            onBookVenue={handleInterceptBook}
-                          />
-                        ) : activeTab === 'services' ? (
-                          <VenueGrid
-                            venues={services}
-                            onSelectVenue={(service) => handleSelectVenueWithTracking(service, 'catalog_grid')}
-                            onBookVenue={handleInterceptBook}
-                            emptyMessage="No Services Found"
-                          />
-                        ) : (
-                          <VenueGrid
-                            venues={services}
-                            onSelectVenue={(service) => handleSelectVenueWithTracking(service, 'catalog_grid')}
-                            onBookVenue={handleInterceptBook}
-                            emptyMessage="No Service Listings Found"
-                          />
-                        )}
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {(activeTab === 'my-bookings' || activeTab === 'my-events') && (
-                  <CustomerDashboard
-                    bookings={bookings}
-                    currentUser={currentUser}
-                    initialTab={customerChatPartnerId ? 'messages' : (activeTab === 'my-events' ? 'events' : 'dashboard')}
-                    initialChatPartnerId={customerChatPartnerId}
-                    onCancelBooking={handleCancelBooking}
-                    onNavigate={(tab) => {
-                      if (tab !== 'messages') setCustomerChatPartnerId(null);
-                      navigateToTab(tab);
-                    }}
-                    handleSelectVenueWithTracking={handleSelectVenueWithTracking}
-                    onBookVenue={handleInterceptBook}
-                    venues={venues}
-                    services={services}
-                    onLogout={() => {
-                      setCurrentUser(null);
-                      setActiveRole('CUSTOMER');
-                      setActiveTab('landing');
-                      setCustomerChatPartnerId(null);
-                    }}
-                    onRequestRole={handleRequestRole}
-                  />
-                )}
-
-                {(activeTab === 'provider-dashboard' || activeTab === 'vendor-dashboard' || activeTab === 'venue-owner-dashboard') && (
-                  <ProviderDashboard
-                    currentUser={currentUser}
-                    currentVendor={currentVendor}
-                    currentVenueOwner={currentVenueOwner}
-                    onLogout={() => {
-                      setCurrentUser(null);
-                      setCurrentVendor(null);
-                      setCurrentVenueOwner(null);
-                      setActiveRole('CUSTOMER');
-                      setActiveTab('landing');
-                    }}
-                    onExplore={() => handleRequestRole('CUSTOMER')}
-                  />
-                )}
-
-                {activeTab === 'admin-dashboard' && (
-                  <AdminDashboard
-                    venues={venues}
-                    vendors={vendors}
-                    onToggleVerifyVenue={handleToggleVerifyVenue}
-                    onToggleVerifyVendor={handleToggleVerifyVendor}
-                    currentUser={currentUser}
-                    onDataChange={loadData}
-                    onNavigateHome={() => {
-                      loadData();
-                      navigateToTab('venues');
-                    }}
-                    onLoginClick={() => {
-                      setIsAdminAuthModal(true);
-                      setAuthMode('login');
-                      setShowAuthModal(true);
-                    }}
-                    onLogout={() => {
-                      setCurrentUser(null);
-                      setActiveRole('CUSTOMER');
-                      setActiveTab('landing');
-                    }}
-                  />
-                )}
-              </>
-            )}
-          </main>
-
-          {selectedVenue && (
-            <VenueModal
-              venue={selectedVenue}
-              currentUser={currentUser}
-              onClose={() => setSelectedVenue(null)}
-              onBook={(v) => setBookingTargetVenue(v)}
-              onMessage={(target) => {
-                setSelectedVenue(null);
-                if (target?.recipientId) {
-                  setCustomerChatPartnerId(target.recipientId);
-                }
-                setActiveRole('CUSTOMER');
-                setActiveTab('my-bookings');
-              }}
-            />
-          )}
-
-          {currentUser && bookingTargetVenue && (
-            <BookingModal
-              venue={bookingTargetVenue}
-              currentUser={currentUser}
-              onClose={() => {
-                setBookingTargetVenue(null);
-              }}
-              onSuccess={handleBookSuccess}
-            />
-          )}
-
-          {![
-            'my-bookings',
-            'my-events',
-            'provider-dashboard',
-            'vendor-dashboard',
-            'venue-owner-dashboard',
-            'admin-dashboard',
-          ].includes(activeTab) && (
+        {![
+          'my-bookings',
+          'my-events',
+          'provider-dashboard',
+          'vendor-dashboard',
+          'venue-owner-dashboard',
+          'admin-dashboard',
+        ].includes(activeTab) && (
             <footer
               style={{
                 background: '#0F8F7A',
@@ -556,58 +563,58 @@ export const App: React.FC = () => {
                 marginTop: 'auto',
               }}
             >
-            <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '32px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '32px' }}>
-                <div>
-                  <h3 style={{ fontSize: '1.4rem', fontWeight: 800, marginBottom: '14px', letterSpacing: '-0.5px' }}>Locyfy</h3>
-                  <p style={{ color: '#e6f7f3', lineHeight: 1.6, maxWidth: '280px', fontSize: '0.9rem' }}>
-                    Your unified platform for discovering, listing, and booking physical event spaces and trusted services across Nyeri County.
-                  </p>
+              <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '32px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '32px' }}>
+                  <div>
+                    <h3 style={{ fontSize: '1.4rem', fontWeight: 800, marginBottom: '14px', letterSpacing: '-0.5px' }}>Locyfy</h3>
+                    <p style={{ color: '#e6f7f3', lineHeight: 1.6, maxWidth: '280px', fontSize: '0.9rem' }}>
+                      Your unified platform for discovering, listing, and booking physical event spaces and trusted services across Nyeri County.
+                    </p>
+                  </div>
+
+                  <div>
+                    <h4 style={{ fontWeight: 700, marginBottom: '16px', letterSpacing: '0.05em', textTransform: 'uppercase', fontSize: '0.8rem' }}>Explore</h4>
+                    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => navigateToTab('venues')}>Venues</li>
+                      <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => navigateToTab('services')}>Service Listings</li>
+                      <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => setActiveTab('my-bookings')}>My Bookings</li>
+                    </ul>
+                  </div>
+
+                  <div>
+                    <h4 style={{ fontWeight: 700, marginBottom: '16px', letterSpacing: '0.05em', textTransform: 'uppercase', fontSize: '0.8rem' }}>For Providers</h4>
+                    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => { setIsAdminAuthModal(false); setAuthMode('register'); setShowAuthModal(true); }}>Become a Business Provider</li>
+                      <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => { setIsAdminAuthModal(false); setAuthMode('register'); setShowAuthModal(true); }}>List Spaces & Services</li>
+                    </ul>
+                  </div>
+
+                  <div>
+                    <h4 style={{ fontWeight: 700, marginBottom: '16px', letterSpacing: '0.05em', textTransform: 'uppercase', fontSize: '0.8rem' }}>Support</h4>
+                    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <li style={{ cursor: 'pointer', color: '#e6f7f3' }}>Contact Us</li>
+                      <li style={{ cursor: 'pointer', color: '#e6f7f3' }}>FAQs</li>
+                      <li style={{ cursor: 'pointer', color: '#e6f7f3' }}>Help</li>
+                      {(!currentUser || isAdmin) && (
+                        <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={handleOpenAdmin}>Admin Portal</li>
+                      )}
+                    </ul>
+                  </div>
                 </div>
 
-                <div>
-                  <h4 style={{ fontWeight: 700, marginBottom: '16px', letterSpacing: '0.05em', textTransform: 'uppercase', fontSize: '0.8rem' }}>Explore</h4>
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => navigateToTab('venues')}>Venues</li>
-                    <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => navigateToTab('services')}>Service Listings</li>
-                    <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => setActiveTab('my-bookings')}>My Bookings</li>
-                  </ul>
-                </div>
-
-                <div>
-                  <h4 style={{ fontWeight: 700, marginBottom: '16px', letterSpacing: '0.05em', textTransform: 'uppercase', fontSize: '0.8rem' }}>For Providers</h4>
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => { setIsAdminAuthModal(false); setAuthMode('register'); setShowAuthModal(true); }}>Become a Business Provider</li>
-                    <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={() => { setIsAdminAuthModal(false); setAuthMode('register'); setShowAuthModal(true); }}>List Spaces & Services</li>
-                  </ul>
-                </div>
-
-                <div>
-                  <h4 style={{ fontWeight: 700, marginBottom: '16px', letterSpacing: '0.05em', textTransform: 'uppercase', fontSize: '0.8rem' }}>Support</h4>
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <li style={{ cursor: 'pointer', color: '#e6f7f3' }}>Contact Us</li>
-                    <li style={{ cursor: 'pointer', color: '#e6f7f3' }}>FAQs</li>
-                    <li style={{ cursor: 'pointer', color: '#e6f7f3' }}>Help</li>
-                    {(!currentUser || isAdmin) && (
-                      <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={handleOpenAdmin}>Admin Portal</li>
-                    )}
-                  </ul>
+                <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.2)', paddingTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', fontSize: '0.8rem', color: '#e6f7f3' }}>
+                  <div style={{ display: 'flex', gap: '24px' }}>
+                    <span style={{ cursor: 'pointer' }}>Privacy Policy</span>
+                    <span style={{ cursor: 'pointer' }}>Terms of Service</span>
+                  </div>
+                  <div>
+                    &copy; {new Date().getFullYear()} Locyfy. All rights reserved.
+                  </div>
                 </div>
               </div>
-
-              <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.2)', paddingTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', fontSize: '0.8rem', color: '#e6f7f3' }}>
-                <div style={{ display: 'flex', gap: '24px' }}>
-                  <span style={{ cursor: 'pointer' }}>Privacy Policy</span>
-                  <span style={{ cursor: 'pointer' }}>Terms of Service</span>
-                </div>
-                <div>
-                  &copy; {new Date().getFullYear()} Locyfy. All rights reserved.
-                </div>
-              </div>
-            </div>
             </footer>
           )}
-        </>
+      </>
 
       {showAuthModal && (
         <AuthModal
@@ -624,7 +631,7 @@ export const App: React.FC = () => {
             setCurrentUser(data.user);
             if (data.vendor_profile) setCurrentVendor(data.vendor_profile);
             if (data.venue_owner_profile) setCurrentVenueOwner(data.venue_owner_profile);
-            
+
             // Set primary active role based on selection or roles available
             if (data.roles?.is_admin || data.user?.role === 'ADMIN') {
               setActiveRole('ADMIN');

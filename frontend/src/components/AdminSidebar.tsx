@@ -2,37 +2,30 @@ import React from 'react';
 import {
   LayoutDashboard,
   Users,
-  Calendar,
   Building2,
   UserCheck,
-  Star,
   BarChart3,
-  Settings,
-  Globe,
   LogOut,
   ShieldCheck,
   X,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  User as UserIcon
 } from 'lucide-react';
-import type { User } from '../types';
 import './admin-sidebar.css';
 
 export type AdminMenuItemId =
   | 'overview'
   | 'users'
-  | 'bookings'
   | 'venues'
   | 'verifications'
-  | 'reviews'
   | 'analytics'
-  | 'settings';
+  | 'settings'
+  | 'profile';
 
 export interface AdminSidebarProps {
   activeItem: AdminMenuItemId;
   onSelectItem: (item: AdminMenuItemId) => void;
-  currentUser?: User | null;
-  onNavigateHome?: () => void;
   onLogout?: () => void;
   isMobileOpen?: boolean;
   onToggleMobile?: () => void;
@@ -40,18 +33,14 @@ export interface AdminSidebarProps {
   onToggleCollapsed?: () => void;
   badgeCounts?: {
     users?: number;
-    bookings?: number;
     venues?: number;
     verifications?: number;
-    reviews?: number;
   };
 }
 
 export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   activeItem,
   onSelectItem,
-  currentUser,
-  onNavigateHome,
   onLogout,
   isMobileOpen = false,
   onToggleMobile,
@@ -65,27 +54,18 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     icon: React.ComponentType<{ size?: number; className?: string }>;
     badge?: number;
   }> = [
-    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-    { id: 'users', label: 'Users', icon: Users, badge: badgeCounts.users },
-    { id: 'bookings', label: 'Bookings', icon: Calendar, badge: badgeCounts.bookings },
-    { id: 'venues', label: 'Provider Listings', icon: Building2, badge: badgeCounts.venues },
-    {
-      id: 'verifications',
-      label: 'Verification Queue',
-      icon: UserCheck,
-      badge: badgeCounts.verifications,
-    },
-    { id: 'reviews', label: 'Reviews & Ratings', icon: Star, badge: badgeCounts.reviews },
-    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-    { id: 'settings', label: 'Settings', icon: Settings },
-  ];
-
-  const adminName = currentUser?.first_name && currentUser?.last_name
-    ? `${currentUser.first_name} ${currentUser.last_name}`
-    : currentUser?.username || 'Administrator';
-
-  const adminEmail = currentUser?.email || 'admin@locyfy.com';
-  const avatarUrl = currentUser?.avatar_url;
+      { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+      { id: 'users', label: 'Users', icon: Users, badge: badgeCounts.users },
+      { id: 'venues', label: 'Provider Listings', icon: Building2, badge: badgeCounts.venues },
+      {
+        id: 'verifications',
+        label: 'Verification Queue',
+        icon: UserCheck,
+        badge: badgeCounts.verifications,
+      },
+      { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+      { id: 'profile', label: 'My Profile', icon: UserIcon },
+    ];
 
   return (
     <>
@@ -101,7 +81,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       <aside className={`admin-sidebar ${isMobileOpen ? 'open' : ''} ${isCollapsed ? 'collapsed' : ''}`}>
         {/* Header / Brand */}
         <div className="admin-sidebar-header">
-          <div className="admin-brand-logo" onClick={onNavigateHome} title="Return to Website">
+          <div className="admin-brand-logo" onClick={() => onSelectItem('overview')} title="Admin dashboard home">
             <div className="admin-logo-icon">
               <ShieldCheck size={22} color="#5eead4" />
             </div>
@@ -173,23 +153,6 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           {/* Action Links */}
           <div className="admin-sidebar-section-label">QUICK ACTIONS</div>
 
-          {onNavigateHome && (
-            <button
-              className="admin-sidebar-item quick-action"
-              onClick={() => {
-                onNavigateHome();
-                if (isMobileOpen && onToggleMobile) {
-                  onToggleMobile();
-                }
-              }}
-            >
-              <div className="admin-item-content">
-                <Globe size={19} className="admin-item-icon" />
-                <span className="admin-item-label">Back to Website</span>
-              </div>
-            </button>
-          )}
-
           {onLogout && (
             <button
               className="admin-sidebar-item logout-action"
@@ -207,30 +170,6 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             </button>
           )}
         </nav>
-
-        {/* Logged-in Administrator Profile Footer */}
-        <div className="admin-sidebar-footer">
-          <div className="admin-user-profile">
-            <div className="admin-avatar">
-              {avatarUrl ? (
-                <img src={avatarUrl} alt={adminName} />
-              ) : (
-                <div className="admin-avatar-fallback">
-                  {adminName.charAt(0).toUpperCase()}
-                </div>
-              )}
-            </div>
-            <div className="admin-user-info">
-              <span className="admin-user-name" title={adminName}>
-                {adminName}
-              </span>
-              <span className="admin-user-email" title={adminEmail}>
-                {adminEmail}
-              </span>
-            </div>
-            <div className="admin-role-pill">ADMIN</div>
-          </div>
-        </div>
       </aside>
     </>
   );

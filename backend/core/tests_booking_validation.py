@@ -77,6 +77,105 @@ class BookingCapacityValidationTestCase(TestCase):
         error_msg = str(res.data)
         self.assertTrue('maximum capacity of 100 guests' in error_msg)
 
+    def test_booking_requires_customer_entered_guest_count(self):
+        response = self.client.post(
+            '/api/bookings/',
+            {
+                'customer': self.customer.id,
+                'venue': self.venue.id,
+                'event_title': 'Guest Count Required',
+                'event_type': 'Wedding Reception',
+                'event_date': '2026-12-15',
+                'total_price': 50000,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('guest_count', response.data)
+
+    def test_service_booking_uses_provider_entered_listing_capacity(self):
+        service = Venue.objects.create(
+            owner=self.owner_profile,
+            listing_type='SERVICE',
+            title='Catering Service',
+            category='CATERING',
+            location='Nyeri County, Kenya',
+            capacity=50,
+            price_per_day=25000,
+            is_verified=True,
+            approval_status='APPROVED',
+            is_available=True,
+        )
+        event_date = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
+        payload = {
+            'customer': self.customer.id,
+            'venue': service.id,
+            'event_title': 'Catering Request',
+            'event_type': 'Wedding Reception',
+            'event_date': event_date,
+            'guest_count': 51,
+        }
+
+        over_listing_capacity = self.client.post('/api/bookings/', payload, format='json')
+        self.assertEqual(over_listing_capacity.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('maximum capacity of 50 guests', str(over_listing_capacity.data))
+
+        payload['guest_count'] = 40
+        response = self.client.post('/api/bookings/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+        Booking.objects.filter(id=response.data['id']).update(status='APPROVED')
+        payload['guest_count'] = 11
+        over_daily_capacity = self.client.post('/api/bookings/', payload, format='json')
+
+        self.assertEqual(over_daily_capacity.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('Only 10 capacity remains', str(over_daily_capacity.data))
+
+    def test_service_booking_requires_capacity_to_be_set(self):
+        service = Venue.objects.create(
+            owner=self.owner_profile,
+            listing_type='SERVICE',
+            title='Catering Service Without Capacity',
+            category='CATERING',
+            location='Nyeri County, Kenya',
+            capacity=0,
+            price_per_day=25000,
+            is_verified=True,
+            approval_status='APPROVED',
+            is_available=True,
+        )
+        payload = {
+            'customer': self.customer.id,
+            'venue': service.id,
+            'event_title': 'Catering Request',
+            'event_type': 'Wedding Reception',
+            'event_date': (datetime.date.today() + datetime.timedelta(days=30)).isoformat(),
+            'guest_count': 50,
+        }
+
+        response = self.client.post('/api/bookings/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('has no maximum guest capacity set', str(response.data))
+
+    def test_service_listing_cannot_be_created_without_capacity(self):
+        self.client.force_authenticate(user=self.provider_user)
+        listing_data = {
+            'listing_type': 'SERVICE',
+            'title': 'Catering Service Without Capacity',
+            'category': 'CATERING',
+            'location': 'Nyeri County, Kenya',
+            'price_per_day': 25000,
+        }
+
+        for capacity in (0, None):
+            payload = dict(listing_data)
+            if capacity is not None:
+                payload['capacity'] = capacity
+            response = self.client.post('/api/venues/', payload, format='json')
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertIn('capacity', response.data)
+
     def test_rejection_when_date_is_marked_unavailable(self):
         """2. Booking on provider unavailable dates should be rejected."""
         payload = {
@@ -215,6 +314,7 @@ class BookingCapacityValidationTestCase(TestCase):
             is_verified=True,
             verification_status='APPROVED'
         )
+        ProviderAvailabilitySetting.objects.create(user=vendor_user, max_guests=100)
         # Client submits manipulated total_price of 9.99 for vendor
         vendor_payload = {
             'customer': self.customer.id,
@@ -229,6 +329,39 @@ class BookingCapacityValidationTestCase(TestCase):
         self.assertEqual(res_vendor.status_code, status.HTTP_201_CREATED)
         saved_vendor_b = Booking.objects.get(id=res_vendor.data['id'])
         self.assertEqual(float(saved_vendor_b.total_price), 75000.0)
+
+    def test_vendor_profile_booking_requires_provider_entered_daily_capacity(self):
+        vendor_user = User.objects.create_user(
+            username='capacity_vendor_user',
+            email='capacity_vendor@example.com',
+            password='Password123!',
+            role='VENDOR',
+        )
+        vendor_profile = VendorProfile.objects.create(
+            user=vendor_user,
+            business_name='Capacity Configured Vendor',
+            vendor_type='Catering',
+            starting_price=20000,
+            is_verified=True,
+            verification_status='APPROVED',
+        )
+        payload = {
+            'customer': self.customer.id,
+            'vendor': vendor_profile.id,
+            'event_title': 'Vendor Capacity Request',
+            'event_type': 'Wedding Reception',
+            'event_date': (datetime.date.today() + datetime.timedelta(days=30)).isoformat(),
+            'guest_count': 20,
+        }
+
+        missing_capacity = self.client.post('/api/bookings/', payload, format='json')
+        self.assertEqual(missing_capacity.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('maximum daily guest capacity set', str(missing_capacity.data))
+
+        ProviderAvailabilitySetting.objects.create(user=vendor_user, max_guests=10)
+        over_capacity = self.client.post('/api/bookings/', payload, format='json')
+        self.assertEqual(over_capacity.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('Only 10 capacity remains', str(over_capacity.data))
 
     def test_rejection_of_unavailable_and_unapproved_listings(self):
         """7. Reject bookings for unavailable or unapproved venues and vendors."""
@@ -481,8 +614,8 @@ class BookingCapacityValidationTestCase(TestCase):
         self.assertEqual(res_patch_unavail.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertTrue('currently marked as unavailable or inactive' in str(res_patch_unavail.data))
 
-    def test_unverified_vendor_and_venue_owner(self):
-        """11. Reject bookings for unverified vendor or unverified venue owner."""
+    def test_unverified_vendor_blocked_but_verified_listing_is_bookable(self):
+        """A profile-only vendor needs verification; an approved listing does not."""
         # A. Unverified Vendor
         vnd_user_unv = User.objects.create_user(username='unv_vendor_user', email='unv@test.com', password='Password123!', role='VENDOR')
         unv_vendor = VendorProfile.objects.create(
@@ -529,8 +662,7 @@ class BookingCapacityValidationTestCase(TestCase):
             'event_date': '2026-11-28',
             'guest_count': 50
         }, format='json')
-        self.assertEqual(res_unv_owner.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertTrue('owner account is not verified' in str(res_unv_owner.data))
+        self.assertEqual(res_unv_owner.status_code, status.HTTP_201_CREATED, res_unv_owner.data)
 
     def test_missing_invalid_negative_prices_for_venue_and_vendor(self):
         """12. Individual tests for missing, invalid, zero, and negative prices."""
@@ -570,9 +702,9 @@ class BookingCapacityValidationTestCase(TestCase):
                 BookingCapacityValidator.validate_listing_eligibility(vendor=vnd_prof_m)
             self.assertTrue('invalid' in str(ctx.exception).lower())
 
-    def test_verification_document_policies_and_expiration(self):
-        """13. Verification document policy: missing docs allowed if profile approved, expired/unapproved docs rejected."""
-        # A. Venue owner with NO documents uploaded -> allowed because profile is verified & approved
+    def test_verified_listing_booking_is_not_gated_by_owner_documents(self):
+        """Approved listings are bookable regardless of owner document status."""
+        # A. Venue owner with NO documents uploaded
         res_ok_no_docs = self.client.post('/api/bookings/', {
             'customer': self.customer.id,
             'venue': self.venue.id,
@@ -582,9 +714,9 @@ class BookingCapacityValidationTestCase(TestCase):
         }, format='json')
         self.assertEqual(res_ok_no_docs.status_code, status.HTTP_201_CREATED)
 
-        # B. Venue owner uploaded expired document -> REJECTED
+        # B. An expired owner document does not override listing approval.
         from core.models import VerificationDocument
-        expired_doc = VerificationDocument.objects.create(
+        VerificationDocument.objects.create(
             user=self.provider_user,
             venue_owner=self.owner_profile,
             document_type='BUSINESS_PERMIT',
@@ -599,8 +731,7 @@ class BookingCapacityValidationTestCase(TestCase):
             'event_date': '2026-11-29',
             'guest_count': 50
         }, format='json')
-        self.assertEqual(res_expired.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertTrue('expired or unapproved verification documents' in str(res_expired.data))
+        self.assertEqual(res_expired.status_code, status.HTTP_201_CREATED, res_expired.data)
 
         # C. Add a valid, unexpired approved document alongside it -> ALLOWED
         VerificationDocument.objects.create(

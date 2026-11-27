@@ -9,13 +9,13 @@ from django.contrib.auth import authenticate
 from django.db import transaction
 from django.db.models import Q, Sum
 from .models import (
-    User, VendorProfile, VenueOwnerProfile, Venue, Booking, Review, EmailOTP, Message, Event, EventService,
+    User, VendorProfile, VenueOwnerProfile, Venue, PortfolioImage, Booking, Review, EmailOTP, Message, Event, EventService,
     Notification, CustomerReminderPreference, VerificationDocument, UserInteraction,
     Payment,
 )
 from .serializers import (
     UserSerializer, VendorProfileSerializer, VenueOwnerProfileSerializer, VenueSerializer, 
-    BookingSerializer, ReviewSerializer, MessageSerializer, EventSerializer, EventServiceSerializer,
+    PortfolioImageSerializer, BookingSerializer, ReviewSerializer, MessageSerializer, EventSerializer, EventServiceSerializer,
     NotificationSerializer, CustomerReminderPreferenceSerializer, VerificationDocumentSerializer,
     UserInteractionSerializer, PaymentSerializer,
 )
@@ -29,7 +29,7 @@ import os
 from django.utils import timezone
 from django.conf import settings
 from django.http import Http404
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from django.core.files.storage import FileSystemStorage
 from rest_framework.parsers import MultiPartParser, FormParser
 from .ml.recommender import (
@@ -73,36 +73,12 @@ def is_admin_user(request):
 
 def _get_public_catalog_queryset(queryset=None):
     queryset = queryset if queryset is not None else Venue.objects.all()
-    today = datetime.date.today()
-
-    verified_owner_ids = VerificationDocument.objects.filter(
-        venue_owner__isnull=False,
-        status='APPROVED'
-    ).filter(
-        Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
-    ).values_list('venue_owner_id', flat=True)
-
-    verified_vendor_ids = VerificationDocument.objects.filter(
-        vendor__isnull=False,
-        status='APPROVED'
-    ).filter(
-        Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
-    ).values_list('vendor_id', flat=True)
-
-    provider_verified_q = (
-        Q(owner__is_verified=True) |
-        Q(owner__verification_status='APPROVED') |
-        Q(owner_id__in=verified_owner_ids) |
-        Q(vendor__is_verified=True) |
-        Q(vendor__verification_status='APPROVED') |
-        Q(vendor_id__in=verified_vendor_ids)
-    )
 
     return queryset.filter(
         approval_status='APPROVED',
         is_available=True,
         is_verified=True
-    ).filter(provider_verified_q).filter(
+    ).filter(
         nyeri_county_location_filter()
     )
 
@@ -392,7 +368,7 @@ class VenueOwnerProfileViewSet(viewsets.ModelViewSet):
 
 
 class VenueViewSet(viewsets.ModelViewSet):
-    queryset = Venue.objects.all().order_by('-created_at')
+    queryset = Venue.objects.all().prefetch_related('portfolio').order_by('-created_at')
     serializer_class = VenueSerializer
 
     def get_permissions(self):
@@ -423,7 +399,7 @@ class VenueViewSet(viewsets.ModelViewSet):
         listings = Venue.objects.filter(
             Q(owner__user_id=user.pk) |
             Q(vendor__user_id=user.pk)
-        ).distinct().order_by('-created_at')
+        ).distinct().prefetch_related('portfolio').order_by('-created_at')
         serializer = self.get_serializer(listings, many=True)
         return Response(serializer.data)
 
@@ -604,6 +580,64 @@ class VenueViewSet(viewsets.ModelViewSet):
         venue.delete()
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class PortfolioImageViewSet(viewsets.ModelViewSet):
+    queryset = PortfolioImage.objects.select_related('venue', 'venue__owner', 'venue__vendor').all()
+    serializer_class = PortfolioImageSerializer
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsAuthenticated()]
+        return [AllowAny()]
+
+    def _owns_listing(self, venue, user):
+        return bool(
+            user
+            and user.is_authenticated
+            and (
+                (venue.owner and venue.owner.user_id == user.id)
+                or (venue.vendor and venue.vendor.user_id == user.id)
+            )
+        )
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if is_admin_user(self.request):
+            return queryset
+
+        user = self.request.user
+        owned = Q(venue__owner__user_id=user.pk) | Q(venue__vendor__user_id=user.pk)
+        if self.action in ['update', 'partial_update', 'destroy']:
+            return queryset.filter(owned) if user.is_authenticated else queryset.none()
+
+        public_venues = _get_public_catalog_queryset()
+        public_or_owned = Q(venue__in=public_venues)
+        if user.is_authenticated and (
+            getattr(user, 'is_vendor', False)
+            or getattr(user, 'is_venue_owner', False)
+            or getattr(user, 'role', '') in ['PROVIDER', 'VENDOR', 'VENUE_OWNER']
+        ):
+            public_or_owned |= owned
+        return queryset.filter(public_or_owned).distinct()
+
+    def _ensure_listing_owner(self, venue):
+        user = self.request.user
+        if not is_admin_user(self.request) and not self._owns_listing(venue, user):
+            raise PermissionDenied("You can only manage portfolio images for your own listings.")
+
+    def perform_create(self, serializer):
+        self._ensure_listing_owner(serializer.validated_data['venue'])
+        serializer.save()
+
+    def perform_update(self, serializer):
+        venue = serializer.validated_data.get('venue', serializer.instance.venue)
+        self._ensure_listing_owner(venue)
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._ensure_listing_owner(instance.venue)
+        instance.delete()
 
 
 class BookingViewSet(viewsets.ModelViewSet):
@@ -883,6 +917,52 @@ class ReviewViewSet(viewsets.ModelViewSet):
 
         return queryset
 
+    def _authorize_review_change(self, request, review):
+        is_admin = is_admin_user(request)
+        req_user_id = request.user.id if request.user and request.user.is_authenticated else None
+
+        if not req_user_id:
+            raw_user_id = (
+                request.headers.get('X-User-Id') or
+                request.headers.get('X-Admin-Id') or
+                request.query_params.get('admin_user_id') or
+                request.query_params.get('user_id')
+            )
+            try:
+                req_user_id = int(raw_user_id) if raw_user_id else None
+            except (ValueError, TypeError):
+                req_user_id = None
+
+        if req_user_id and not is_admin:
+            user = User.objects.filter(pk=req_user_id).only('role', 'is_staff', 'is_superuser').first()
+            is_admin = bool(user and (user.role == 'ADMIN' or user.is_staff or user.is_superuser))
+
+        if not is_admin and (not req_user_id or review.user_id != req_user_id):
+            raise PermissionDenied("Only administrators or the review author can change this review.")
+
+    def _update_review(self, request, *args, **kwargs):
+        review = self.get_object()
+        self._authorize_review_change(request, review)
+
+        editable_fields = {'rating', 'comment'}
+        submitted_fields = set(request.data.keys())
+        invalid_fields = submitted_fields - editable_fields
+        if invalid_fields:
+            raise ValidationError({'error': 'Only rating and comment can be edited.'})
+        if not submitted_fields:
+            raise ValidationError({'error': 'Provide a rating or comment to update.'})
+
+        serializer = self.get_serializer(review, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def update(self, request, *args, **kwargs):
+        return self._update_review(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        return self._update_review(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         if self.request.user and self.request.user.is_authenticated:
             serializer.save(customer=self.request.user)
@@ -969,36 +1049,7 @@ class ReviewViewSet(viewsets.ModelViewSet):
         except Http404:
             return Response({'message': 'Review already removed.'}, status=status.HTTP_204_NO_CONTENT)
 
-        is_admin = is_admin_user(request)
-        req_user_id = None
-        if request.user and request.user.is_authenticated:
-            req_user_id = request.user.id
-            if getattr(request.user, 'role', '') == 'ADMIN' or getattr(request.user, 'is_staff', False) or getattr(request.user, 'is_superuser', False):
-                is_admin = True
-
-        if not req_user_id:
-            raw_uid = (
-                request.headers.get('X-User-Id') or
-                request.headers.get('X-Admin-Id') or
-                getattr(request, 'query_params', {}).get('admin_user_id') or
-                getattr(request, 'query_params', {}).get('user_id')
-            )
-            if raw_uid:
-                try:
-                    req_user_id = int(raw_uid)
-                except (ValueError, TypeError):
-                    pass
-
-        if req_user_id and not is_admin:
-            try:
-                u = User.objects.get(pk=req_user_id)
-                if u.role == 'ADMIN' or u.is_staff or u.is_superuser:
-                    is_admin = True
-            except User.DoesNotExist:
-                pass
-
-        if not is_admin and (not req_user_id or review.user_id != req_user_id):
-            raise PermissionDenied("Access Denied: Only administrators or the review author can delete this review.")
+        self._authorize_review_change(request, review)
 
         venue = review.venue
         vendor = review.vendor

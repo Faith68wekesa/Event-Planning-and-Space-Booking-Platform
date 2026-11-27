@@ -41,7 +41,7 @@ export const VendorModal: React.FC<VendorModalProps> = ({ vendor, currentUser, o
     checked: boolean;
     available: boolean;
     message: string;
-    statusType: 'AVAILABLE' | 'UNAVAILABLE' | 'BOOKED';
+    statusType: 'AVAILABLE' | 'UNAVAILABLE' | 'BOOKED' | 'UNKNOWN';
   } | null>(null);
 
   const handleCheckDateAvailability = async () => {
@@ -69,12 +69,12 @@ export const VendorModal: React.FC<VendorModalProps> = ({ vendor, currentUser, o
 
       // 2. Check bookings for this vendor and calculate remaining guest capacity
       // Strictly respect the provider's assigned vendor capacity
-      const totalCapacityLimit = Number((vendor as any).capacity || (vendor as any).max_capacity) > 0
-        ? Number((vendor as any).capacity || (vendor as any).max_capacity)
-        : 100;
+      const configuredCapacity = Number((vendor as any).capacity || (vendor as any).max_capacity);
+      const hasCapacityLimit = Number.isFinite(configuredCapacity) && configuredCapacity > 0;
+      const totalCapacityLimit = hasCapacityLimit ? configuredCapacity : 0;
 
       const bookings = await ApiService.getBookings({ vendor: vendor.id });
-      const confirmedBookingsOnDate = bookings.filter(b => 
+      const confirmedBookingsOnDate = bookings.filter(b =>
         (b.vendor === vendor.id || (b.vendor_details && b.vendor_details.id === vendor.id)) &&
         (b.status === 'APPROVED' || b.status === 'COMPLETED') &&
         b.event_date.startsWith(checkDate)
@@ -91,6 +91,13 @@ export const VendorModal: React.FC<VendorModalProps> = ({ vendor, currentUser, o
           available: false,
           statusType: 'UNAVAILABLE',
           message: 'This service provider is marked as unavailable on this date.'
+        });
+      } else if (!hasCapacityLimit) {
+        setAvailabilityResult({
+          checked: true,
+          available: true,
+          statusType: 'UNKNOWN',
+          message: 'The provider has not published a guest capacity. Please confirm availability and capacity with them before booking.'
         });
       } else if (isDateFull) {
         setAvailabilityResult({
@@ -150,12 +157,12 @@ export const VendorModal: React.FC<VendorModalProps> = ({ vendor, currentUser, o
 
   const displayRating = reviews.length > 0
     ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1)
-    : (vendor.rating > 0 ? vendor.rating.toFixed(1) : null);
-  const displayCount = reviews.length > 0 ? reviews.length : vendor.review_count;
+    : Number(vendor.rating || 0).toFixed(1);
+  const displayCount = reviews.length > 0 ? reviews.length : Number(vendor.review_count || 0);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto' }}>
+      <div className="modal-content listing-detail-modal" onClick={(e) => e.stopPropagation()}>
         <button
           onClick={onClose}
           style={{
@@ -178,322 +185,332 @@ export const VendorModal: React.FC<VendorModalProps> = ({ vendor, currentUser, o
           <X size={18} />
         </button>
 
-        <div style={{
-          height: '260px',
-          borderRadius: '16px',
-          overflow: 'hidden',
-          position: 'relative',
-          marginBottom: '20px',
-          background: '#f1f5f9',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}>
-          {cover ? (
-            <img
-              src={cover}
-              alt={vendor.business_name}
-              onError={(e) => {
-                e.currentTarget.style.display = 'none';
-              }}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            />
-          ) : (
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '8px',
-              color: '#94a3b8'
-            }}>
-              <ImageOff size={36} />
-              <span style={{ fontSize: '0.85rem' }}>No image available</span>
-            </div>
-          )}
-          <div style={{ position: 'absolute', top: '16px', left: '16px' }}>
-            {vendor.is_verified ? (
-              <span className="badge-verified"><ShieldCheck size={16} /> Verified Platform Vendor</span>
+        <div className="listing-detail-body">
+          <div style={{
+            height: '180px',
+            borderRadius: '16px',
+            overflow: 'hidden',
+            position: 'relative',
+            marginBottom: '12px',
+            background: '#f1f5f9',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            {cover ? (
+              <img
+                src={cover}
+                alt={vendor.business_name}
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
             ) : (
-              <span className="badge-unverified">Unverified Provider</span>
-            )}
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '16px' }}>
-          <div>
-            <span style={{ fontSize: '0.8rem', color: '#0d8a73', fontWeight: 800, textTransform: 'uppercase' }}>
-              {vendor.vendor_type_display || vendor.vendor_type}
-            </span>
-            <h2 style={{ fontSize: '1.7rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
-              {vendor.business_name}
-            </h2>
-            <p style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', marginTop: '4px', fontSize: '0.9rem' }}>
-              <MapPin size={16} color="#0d8a73" /> Based in {vendor.location}
-            </p>
-          </div>
-
-          <div style={{ textAlign: 'right' }}>
-            <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Starting Package</span>
-            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#059669' }}>
-              KES {Number(vendor.starting_price || 0).toLocaleString()}
-            </div>
-          </div>
-        </div>
-
-        <div style={{
-          display: 'flex',
-          gap: '16px',
-          background: '#f8fafc',
-          border: '1px solid #e2e8f0',
-          borderRadius: '12px',
-          padding: '16px',
-          marginBottom: '20px',
-          flexWrap: 'wrap'
-        }}>
-          <div style={{ flex: 1, minWidth: '130px' }}>
-            <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Customer Rating</span>
-            <span style={{ fontWeight: 700, fontSize: '1.05rem', color: displayRating ? '#d97706' : '#64748b', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-              {displayRating ? (
-                <>
-                  <Star size={16} fill="#fbbf24" stroke="#d97706" /> {displayRating} / 5.0 ({displayCount} {displayCount === 1 ? 'review' : 'reviews'})
-                </>
-              ) : (
-                <span style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: 500 }}>No reviews yet</span>
-              )}
-            </span>
-          </div>
-
-          <div style={{ flex: 1, minWidth: '130px' }}>
-            <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Communication</span>
-            <span style={{ fontWeight: 700, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', color: '#0d8a73' }}>
-              <ShieldCheck size={14} color="#0d8a73" /> In-Platform Chat
-            </span>
-          </div>
-
-          <div style={{ flex: 1, minWidth: '130px' }}>
-            <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Protection</span>
-            <span style={{ fontWeight: 700, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', color: '#10b981' }}>
-              <ShieldCheck size={14} color="#10b981" /> 100% Locyfy Secured
-            </span>
-          </div>
-        </div>
-
-        <div style={{ marginBottom: '24px' }}>
-          <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a', marginBottom: '8px' }}>Provider Experience & Profile</h3>
-          <p style={{ color: '#475569', lineHeight: 1.6 }}>{vendor.description || 'Verified local service provider offering specialized event management, creative services, and quality assurance.'}</p>
-        </div>
-
-        {/* Real-time Customer Date Availability Checker (No login required) */}
-        <div style={{
-          marginBottom: '28px',
-          background: '#f8fafc',
-          border: '1px solid #e2e8f0',
-          borderRadius: '16px',
-          padding: '20px',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-            <Calendar size={18} color="#0d8a73" />
-            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
-              Check Date Availability
-            </h3>
-          </div>
-          <p style={{ margin: '0 0 16px 0', fontSize: '0.85rem', color: '#64748b' }}>
-            Select your planned event date to see if this service provider is available and open for bookings.
-          </p>
-
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-            <input
-              type="date"
-              min={new Date().toISOString().split('T')[0]}
-              value={checkDate}
-              onChange={(e) => {
-                setCheckDate(e.target.value);
-                setAvailabilityResult(null);
-              }}
-              style={{
-                padding: '10px 14px',
-                borderRadius: '8px',
-                border: '1px solid #cbd5e1',
-                fontSize: '0.9rem',
-                color: '#0f172a',
-                outline: 'none',
-                flex: '1',
-                minWidth: '200px'
-              }}
-            />
-            <button
-              type="button"
-              onClick={handleCheckDateAvailability}
-              disabled={checkingAvailability}
-              style={{
-                padding: '10px 20px',
-                borderRadius: '8px',
-                background: '#0d8a73',
-                color: '#ffffff',
-                border: 'none',
-                fontWeight: 700,
-                fontSize: '0.9rem',
-                cursor: 'pointer',
-                display: 'inline-flex',
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              {checkingAvailability ? 'Checking...' : 'Check Availability'}
-            </button>
-          </div>
-
-          {availabilityResult && (
-            <div style={{
-              marginTop: '16px',
-              padding: '14px 16px',
-              borderRadius: '10px',
-              border: `1px solid ${
-                availabilityResult.available ? '#a7f3d0' : '#fecaca'
-              }`,
-              background: availabilityResult.available ? '#ecfdf5' : '#fef2f2',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px'
-            }}>
-              {availabilityResult.available ? (
-                <CheckCircle2 size={20} color="#059669" />
-              ) : (
-                <AlertCircle size={20} color="#dc2626" />
-              )}
-              <div style={{ flex: 1 }}>
-                <div style={{
-                  fontSize: '0.9rem',
-                  fontWeight: 700,
-                  color: availabilityResult.available ? '#065f46' : '#991b1b'
-                }}>
-                  {availabilityResult.available ? 'Available on this date!' : 'Unavailable on this date'}
-                </div>
-                <div style={{
-                  fontSize: '0.82rem',
-                  color: availabilityResult.available ? '#047857' : '#b91c1c',
-                  marginTop: '2px'
-                }}>
-                  {availabilityResult.message}
-                </div>
+                gap: '8px',
+                color: '#94a3b8'
+              }}>
+                <ImageOff size={36} />
+                <span style={{ fontSize: '0.85rem' }}>No image available</span>
               </div>
-              {availabilityResult.available && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onClose();
-                    onBook(vendor);
-                  }}
-                  style={{
-                    padding: '6px 14px',
-                    borderRadius: '6px',
-                    background: '#059669',
-                    color: '#fff',
-                    border: 'none',
-                    fontWeight: 700,
-                    fontSize: '0.8rem',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Book Now
-                </button>
+            )}
+            <div style={{ position: 'absolute', top: '16px', left: '16px' }}>
+              {vendor.is_verified ? (
+                <span className="badge-verified"><ShieldCheck size={16} /> Verified Platform Vendor</span>
+              ) : (
+                <span className="badge-unverified">Unverified Provider</span>
               )}
             </div>
-          )}
-        </div>
-
-        {/* Customer Reviews Section */}
-        <div style={{ marginBottom: '28px', borderTop: '1px solid #e2e8f0', paddingTop: '20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-            <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              Customer Reviews {displayRating && <span style={{ fontSize: '0.9rem', color: '#d97706', fontWeight: 700 }}>★ {displayRating} ({displayCount})</span>}
-            </h3>
           </div>
 
-          {loadingReviews ? (
-            <div style={{ padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '0.9rem' }}>
-              Loading verified reviews...
-            </div>
-          ) : reviews.length === 0 ? (
-            <div style={{
-              background: '#f8fafc',
-              borderRadius: '12px',
-              padding: '24px',
-              textAlign: 'center',
-              color: '#64748b',
-              border: '1px dashed #cbd5e1'
-            }}>
-              <Star size={24} color="#94a3b8" style={{ margin: '0 auto 8px', display: 'block', opacity: 0.5 }} />
-              <p style={{ margin: 0, fontWeight: 600, color: '#334155' }}>No reviews yet</p>
-              <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: '#64748b' }}>
-                Reviews are submitted by verified customers after completing a booking.
+          <div className="listing-detail-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '12px' }}>
+            <div>
+              <span style={{ fontSize: '0.8rem', color: '#0d8a73', fontWeight: 800, textTransform: 'uppercase' }}>
+                {vendor.vendor_type_display || vendor.vendor_type}
+              </span>
+              <h2 style={{ fontSize: '1.7rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
+                {vendor.business_name}
+              </h2>
+              <p style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', marginTop: '4px', fontSize: '0.9rem' }}>
+                <MapPin size={16} color="#0d8a73" /> Based in {vendor.location}
               </p>
             </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {reviews.map((rev) => (
-                <div
-                  key={rev.id}
-                  style={{
-                    background: '#f8fafc',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '12px',
-                    padding: '16px'
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f172a' }}>{rev.user_name || 'Verified Customer'}</span>
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          fontSize: '0.72rem',
-                          background: '#ecfdf5',
-                          color: '#059669',
-                          border: '1px solid #a7f3d0',
-                          padding: '2px 8px',
-                          borderRadius: '999px',
-                          fontWeight: 700
-                        }}>
-                          <UserCheck size={12} /> Verified Booking
+
+            <div className="listing-detail-price" style={{ textAlign: 'right' }}>
+              <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Service Rate</span>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#059669' }}>
+                KES {Number(vendor.starting_price || 0).toLocaleString()}
+              </div>
+            </div>
+          </div>
+
+          <div className="listing-detail-facts" style={{
+            display: 'flex',
+            gap: '16px',
+            background: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            borderRadius: '12px',
+            padding: '16px',
+            marginBottom: '20px',
+            flexWrap: 'wrap'
+          }}>
+            <div style={{ flex: 1, minWidth: '130px' }}>
+              <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Customer Rating</span>
+              <span style={{ fontWeight: 700, fontSize: '1.05rem', color: displayCount > 0 ? '#d97706' : '#64748b', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                <Star size={16} fill="#fbbf24" stroke={displayCount > 0 ? '#d97706' : '#94a3b8'} /> {displayRating} / 5.0 ({displayCount} {displayCount === 1 ? 'review' : 'reviews'})
+              </span>
+            </div>
+
+            <div style={{ flex: 1, minWidth: '130px' }}>
+              <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Offering</span>
+              <span style={{ fontWeight: 700, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', color: '#0d8a73' }}>
+                <ShieldCheck size={14} color="#0d8a73" /> {vendor.vendor_type_display || vendor.vendor_type}
+              </span>
+            </div>
+
+            <div style={{ flex: 1, minWidth: '130px' }}>
+              <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Provider</span>
+              <span style={{ fontWeight: 700, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', color: '#10b981' }}>
+                <ShieldCheck size={14} color="#10b981" /> {vendor.business_name}
+              </span>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '24px' }}>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a', marginBottom: '8px' }}>About this Service</h3>
+            <p style={{ color: '#475569', lineHeight: 1.6 }}>{vendor.description || 'Verified local service provider offering specialized event management, creative services, and quality assurance.'}</p>
+          </div>
+
+          {/* Real-time Customer Date Availability Checker (No login required) */}
+          <div className="listing-detail-availability" style={{
+            marginBottom: '12px',
+            background: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            borderRadius: '16px',
+            padding: '20px',
+          }}>
+            <div className="listing-detail-availability-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <Calendar size={18} color="#0d8a73" />
+              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
+                Check Date Availability
+              </h3>
+            </div>
+            <p style={{ margin: '0 0 16px 0', fontSize: '0.85rem', color: '#64748b' }}>
+              Select your planned event date to see if this service provider is available and open for bookings.
+            </p>
+
+            <div className="listing-detail-availability-controls" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <input
+                type="date"
+                min={new Date().toISOString().split('T')[0]}
+                value={checkDate}
+                onChange={(e) => {
+                  setCheckDate(e.target.value);
+                  setAvailabilityResult(null);
+                }}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.9rem',
+                  color: '#0f172a',
+                  outline: 'none',
+                  flex: '1',
+                  minWidth: '200px'
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleCheckDateAvailability}
+                disabled={checkingAvailability}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: '8px',
+                  background: '#0d8a73',
+                  color: '#ffffff',
+                  border: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                {checkingAvailability ? 'Checking...' : 'Check Availability'}
+              </button>
+            </div>
+
+            {availabilityResult && (
+              <div style={{
+                marginTop: '16px',
+                padding: '14px 16px',
+                borderRadius: '10px',
+                border: `1px solid ${availabilityResult.statusType === 'UNKNOWN' ? '#fcd34d' : availabilityResult.available ? '#a7f3d0' : '#fecaca'
+                  }`,
+                background: availabilityResult.statusType === 'UNKNOWN' ? '#fffbeb' : availabilityResult.available ? '#ecfdf5' : '#fef2f2',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px'
+              }}>
+                {availabilityResult.statusType === 'UNKNOWN' ? (
+                  <AlertCircle size={20} color="#b45309" />
+                ) : availabilityResult.available ? (
+                  <CheckCircle2 size={20} color="#059669" />
+                ) : (
+                  <AlertCircle size={20} color="#dc2626" />
+                )}
+                <div style={{ flex: 1 }}>
+                  <div style={{
+                    fontSize: '0.9rem',
+                    fontWeight: 700,
+                    color: availabilityResult.statusType === 'UNKNOWN' ? '#92400e' : availabilityResult.available ? '#065f46' : '#991b1b'
+                  }}>
+                    {availabilityResult.statusType === 'UNKNOWN'
+                      ? 'Availability needs confirmation'
+                      : availabilityResult.available
+                        ? 'Available on this date!'
+                        : 'Unavailable on this date'}
+                  </div>
+                  <div style={{
+                    fontSize: '0.82rem',
+                    color: availabilityResult.statusType === 'UNKNOWN' ? '#a16207' : availabilityResult.available ? '#047857' : '#b91c1c',
+                    marginTop: '2px'
+                  }}>
+                    {availabilityResult.message}
+                  </div>
+                </div>
+                {availabilityResult.available && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onBook(vendor);
+                    }}
+                    style={{
+                      padding: '6px 14px',
+                      borderRadius: '6px',
+                      background: '#059669',
+                      color: '#fff',
+                      border: 'none',
+                      fontWeight: 700,
+                      fontSize: '0.8rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Book Now
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          <details className="listing-detail-section">
+            <summary><ShieldCheck size={18} /> Included Features & Amenities</summary>
+            <div className="listing-detail-section-content listing-detail-vendor-features">
+              <div><UserCheck size={16} /> {vendor.vendor_type_display || vendor.vendor_type}</div>
+              <div><MessageCircle size={16} /> In-Platform Chat</div>
+              {vendor.years_in_business ? <div><Calendar size={16} /> {vendor.years_in_business} years in business</div> : null}
+            </div>
+          </details>
+
+          {/* Customer Reviews Section */}
+          <div style={{ marginBottom: '28px', borderTop: '1px solid #e2e8f0', paddingTop: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                Customer Reviews <span style={{ fontSize: '0.9rem', color: displayCount > 0 ? '#d97706' : '#64748b', fontWeight: 700 }}>★ {displayRating} ({displayCount})</span>
+              </h3>
+            </div>
+
+            {loadingReviews ? (
+              <div style={{ padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '0.9rem' }}>
+                Loading verified reviews...
+              </div>
+            ) : reviews.length === 0 ? (
+              <div style={{
+                background: '#f8fafc',
+                borderRadius: '12px',
+                padding: '24px',
+                textAlign: 'center',
+                color: '#64748b',
+                border: '1px dashed #cbd5e1'
+              }}>
+                <Star size={24} color="#94a3b8" style={{ margin: '0 auto 8px', display: 'block', opacity: 0.5 }} />
+                <p style={{ margin: 0, fontWeight: 600, color: '#334155' }}>No reviews yet</p>
+                <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: '#64748b' }}>
+                  Reviews are submitted by verified customers after completing a booking.
+                </p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {reviews.map((rev) => (
+                  <div
+                    key={rev.id}
+                    style={{
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '12px',
+                      padding: '16px'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f172a' }}>{rev.user_name || 'Verified Customer'}</span>
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontSize: '0.72rem',
+                            background: '#ecfdf5',
+                            color: '#059669',
+                            border: '1px solid #a7f3d0',
+                            padding: '2px 8px',
+                            borderRadius: '999px',
+                            fontWeight: 700
+                          }}>
+                            <UserCheck size={12} /> Verified Booking
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                          {new Date(rev.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
                         </span>
                       </div>
-                      <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                        {new Date(rev.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
-                      </span>
+
+                      <div style={{ display: 'flex', gap: '2px' }}>
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Star
+                            key={star}
+                            size={15}
+                            fill={star <= rev.rating ? '#fbbf24' : 'transparent'}
+                            stroke={star <= rev.rating ? '#d97706' : '#cbd5e1'}
+                          />
+                        ))}
+                      </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '2px' }}>
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <Star
-                          key={star}
-                          size={15}
-                          fill={star <= rev.rating ? '#fbbf24' : 'transparent'}
-                          stroke={star <= rev.rating ? '#d97706' : '#cbd5e1'}
-                        />
-                      ))}
-                    </div>
+                    {rev.comment ? (
+                      <p style={{ margin: 0, fontSize: '0.92rem', color: '#334155', lineHeight: 1.5, fontWeight: 500 }}>
+                        "{rev.comment}"
+                      </p>
+                    ) : (
+                      <p style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                        No written comment provided.
+                      </p>
+                    )}
                   </div>
+                ))}
+              </div>
+            )}
+          </div>
 
-                  {rev.comment ? (
-                    <p style={{ margin: 0, fontSize: '0.92rem', color: '#334155', lineHeight: 1.5, fontWeight: 500 }}>
-                      "{rev.comment}"
-                    </p>
-                  ) : (
-                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8', fontStyle: 'italic' }}>
-                      No written comment provided.
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #e2e8f0', paddingTop: '20px' }}>
-          <button className="btn-secondary" onClick={onClose}>Back</button>
+        <div className="listing-detail-actions" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #e2e8f0', paddingTop: '10px' }}>
+          <button className="btn-secondary" onClick={onClose}>Back to Search</button>
           <div style={{ display: 'flex', gap: '12px' }}>
             <button
               className="btn-secondary"

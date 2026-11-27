@@ -25,7 +25,7 @@ export const ProviderAvailabilityDashboard: React.FC<ProviderAvailabilityDashboa
   bookings
 }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [maxGuests, setMaxGuests] = useState<number>(100);
+  const [maxGuests, setMaxGuests] = useState<number>(0);
   const [bufferTime, setBufferTime] = useState<number>(30);
   const [workingHoursStart, setWorkingHoursStart] = useState<string>('08:00');
   const [workingHoursEnd, setWorkingHoursEnd] = useState<string>('18:00');
@@ -43,7 +43,7 @@ export const ProviderAvailabilityDashboard: React.FC<ProviderAvailabilityDashboa
 
         if (cancelled) return;
 
-        setMaxGuests(saved.max_guests ?? 100);
+        setMaxGuests(saved.max_guests ?? 0);
         setBufferTime(saved.buffer_time_minutes ?? 30);
         setWorkingHoursStart(saved.working_hours_start ?? '08:00');
         setWorkingHoursEnd(saved.working_hours_end ?? '18:00');
@@ -204,7 +204,7 @@ export const ProviderAvailabilityDashboard: React.FC<ProviderAvailabilityDashboa
 
   return (
     <div className="provider-availability-container" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      
+
       {/* Page Title & Subtitle */}
       <div>
         <h1 style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0', letterSpacing: '-0.02em' }}>
@@ -217,7 +217,7 @@ export const ProviderAvailabilityDashboard: React.FC<ProviderAvailabilityDashboa
 
       {/* 4 Summary Stat Cards */}
       <div className="inspo-stat-grid" style={{ marginBottom: '8px' }}>
-        
+
         {/* Card 1: Available Days */}
         <div className="inspo-stat-card">
           <div className="inspo-stat-icon-wrap mint">
@@ -277,13 +277,13 @@ export const ProviderAvailabilityDashboard: React.FC<ProviderAvailabilityDashboa
       </div>
 
       {/* Main Grid: Calendar on Left, Unified Capacity on Right */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '24px', alignItems: 'start' }}>
-        
+      <div className="vendor-availability-grid" style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '24px', alignItems: 'start' }}>
+
         {/* Calendar Card */}
-        <div className="dashboard-card" style={{ padding: '28px', position: 'relative' }}>
-          
+        <div className="dashboard-card vendor-calendar-card" style={{ padding: '28px', position: 'relative' }}>
+
           {/* Header Row */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <div className="vendor-calendar-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <div>
               <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>
                 Availability Calendar
@@ -293,7 +293,7 @@ export const ProviderAvailabilityDashboard: React.FC<ProviderAvailabilityDashboa
               </p>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="vendor-calendar-month-controls" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <button
                 type="button"
                 onClick={prevMonth}
@@ -315,7 +315,7 @@ export const ProviderAvailabilityDashboard: React.FC<ProviderAvailabilityDashboa
           </div>
 
           {/* Calendar Day Header matching M T W T F S S */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '8px', textAlign: 'center', marginBottom: '10px' }}>
+          <div className="vendor-calendar-weekdays" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: '8px', textAlign: 'center', marginBottom: '10px' }}>
             {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, idx) => (
               <div key={idx} style={{ fontSize: '0.85rem', fontWeight: 800, color: '#475569', padding: '6px 0' }}>
                 {d}
@@ -324,10 +324,10 @@ export const ProviderAvailabilityDashboard: React.FC<ProviderAvailabilityDashboa
           </div>
 
           {/* Calendar Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '8px' }}>
+          <div className="vendor-calendar-days" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: '8px' }}>
             {/* Empty offset days */}
             {Array.from({ length: firstDayIndex }).map((_, i) => (
-              <div key={`empty-${i}`} style={{ height: '70px', background: '#fafafa', borderRadius: '10px', opacity: 0.3 }} />
+              <div className="vendor-calendar-empty-day" key={`empty-${i}`} style={{ height: '70px', background: '#fafafa', borderRadius: '10px', opacity: 0.3 }} />
             ))}
 
             {/* Month days */}
@@ -363,6 +363,7 @@ export const ProviderAvailabilityDashboard: React.FC<ProviderAvailabilityDashboa
 
               return (
                 <div
+                  className="vendor-calendar-day"
                   key={`day-${day}`}
                   onClick={() => setSelectedDayForEdit(day)}
                   style={{
@@ -500,59 +501,59 @@ export const ProviderAvailabilityDashboard: React.FC<ProviderAvailabilityDashboa
 
 
 
-        </div>
-
-        {isLoading && (
-          <p style={{ color: '#64748b', fontSize: '0.85rem' }}>
-            Loading your saved availability settings...
-          </p>
-        )}
-
-        {/* Capacity & Resources Card */}
-        <div className="dashboard-card" style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          
-          <div>
-            <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>
-              Capacity & Resources
-            </h3>
-            <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>
-              Configure your universal limits and buffers.
-            </p>
           </div>
 
-          {/* Stepper: Total Guest Capacity Limit */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+          {isLoading && (
+            <p style={{ color: '#64748b', fontSize: '0.85rem' }}>
+              Loading your saved availability settings...
+            </p>
+          )}
+
+          {/* Capacity & Resources Card */}
+          <div className="dashboard-card vendor-capacity-card" style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
             <div>
-              <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#1e293b' }}>Total Guest Capacity Limit</div>
-              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                Max total guests/attendees you can accommodate in a single day
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>
+                Capacity & Resources
+              </h3>
+              <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>
+                Configure your universal limits and buffers.
+              </p>
+            </div>
+
+            {/* Stepper: Total Guest Capacity Limit */}
+            <div className="vendor-capacity-stepper" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+              <div>
+                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#1e293b' }}>Total Guest Capacity Limit</div>
+                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                  Max total guests/attendees you can accommodate in a single day
+                </div>
+              </div>
+              <div className="vendor-capacity-stepper-controls" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setMaxGuests(prev => Math.max(0, prev - 25))}
+                  style={{ width: '32px', height: '32px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  title="Decrease guest capacity limit"
+                >
+                  <Minus size={14} />
+                </button>
+                <span style={{ fontWeight: 800, fontSize: '1rem', minWidth: '60px', textAlign: 'center', color: '#0d8a73' }}>
+                  {maxGuests > 0 ? `${maxGuests} Guests` : 'Not set'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setMaxGuests(prev => prev + 25)}
+                  style={{ width: '32px', height: '32px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  title="Increase guest capacity limit"
+                >
+                  <Plus size={14} />
+                </button>
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <button
-                type="button"
-                onClick={() => setMaxGuests(prev => Math.max(10, prev - 25))}
-                style={{ width: '32px', height: '32px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                title="Decrease guest capacity limit"
-              >
-                <Minus size={14} />
-              </button>
-              <span style={{ fontWeight: 800, fontSize: '1rem', minWidth: '60px', textAlign: 'center', color: '#0d8a73' }}>
-                {maxGuests} Guests
-              </span>
-              <button
-                type="button"
-                onClick={() => setMaxGuests(prev => prev + 25)}
-                style={{ width: '32px', height: '32px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                title="Increase guest capacity limit"
-              >
-                <Plus size={14} />
-              </button>
-            </div>
-          </div>
 
-          {/* Staff & Travel Buffer Row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
+            {/* Staff & Travel Buffer Row */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <button
@@ -575,7 +576,7 @@ export const ProviderAvailabilityDashboard: React.FC<ProviderAvailabilityDashboa
           </div>
 
           {/* Working Hours Input Row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          <div className="vendor-working-hours" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
               <span style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', marginBottom: '6px' }}>Opening Time</span>
               <input
@@ -602,9 +603,11 @@ export const ProviderAvailabilityDashboard: React.FC<ProviderAvailabilityDashboa
               Daily Guest Capacity Allocation
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+              <div className="vendor-capacity-summary-row" style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
                 <span>Daily Guest Capacity:</span>
-                <strong style={{ color: '#0d8a73', fontSize: '0.95rem' }}>{maxGuests} Attendees</strong>
+                <strong style={{ color: '#0d8a73', fontSize: '0.95rem' }}>
+                  {maxGuests > 0 ? `${maxGuests} Attendees` : 'Not set'}
+                </strong>
               </div>
               <div style={{ fontSize: '0.78rem', color: '#64748b', lineHeight: 1.4, background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                 <strong>How this works:</strong> This is your maximum total guest capacity for a single day. Booking validation uses this limit when checking whether you can accommodate a new booking.

@@ -211,15 +211,17 @@ class VerificationDocumentAndGatingTests(TestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertEqual(res.data['rejection_reason'], 'Permit stamp is unreadable. Please provide a clear scanned copy.')
 
-    def test_strict_verification_gating_public_listings_and_booking(self):
+    def test_verified_listing_is_public_and_bookable_with_owner_verification_pending(self):
         """
-        Critical Test:
-        1. Venue is APPROVED, but owner has PENDING/unapproved verification documents -> Hidden from public search & unbookable.
-        2. Customer tries to book via direct API request -> 400 Bad Request.
-        3. Once document is APPROVED by admin -> Venue becomes visible on public search and can be booked.
+        Owner-account verification is separate from listing approval.
+        Public visibility and booking follow the listing's own approval state.
         """
+        self.venue.location = 'Nyeri County, Kenya'
+        self.venue.is_verified = True
+        self.venue.save(update_fields=['location', 'is_verified'])
+
         # Create a pending verification document for the venue owner
-        doc = VerificationDocument.objects.create(
+        VerificationDocument.objects.create(
             user=self.owner_user,
             venue_owner=self.venue_owner,
             document_type='BUSINESS_REGISTRATION',
@@ -235,47 +237,43 @@ class VerificationDocumentAndGatingTests(TestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         results = res.data.get('results', res.data) if isinstance(res.data, dict) else res.data
         venue_ids = [v['id'] for v in results]
-        self.assertNotIn(self.venue.id, venue_ids)
+        self.assertIn(self.venue.id, venue_ids)
 
-        # Direct API booking attempt
+        # A verified, approved listing can be booked while owner verification is pending.
         future_date = datetime.date.today() + datetime.timedelta(days=14)
         public_client.force_authenticate(user=self.customer_user)
         book_res = public_client.post('/api/bookings/', {
             'venue': self.venue.id,
             'customer': self.customer_user.id,
-            'event_title': 'Attempt Unverified Booking',
+            'event_title': 'Verified Listing Booking',
             'event_type': 'Wedding',
             'event_date': future_date.strftime('%Y-%m-%d'),
             'guest_count': 50,
             'total_price': 90000.00
         })
-        self.assertEqual(book_res.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertTrue('verification' in str(book_res.data).lower() or 'verified' in str(book_res.data).lower())
+        self.assertEqual(book_res.status_code, status.HTTP_201_CREATED, book_res.data)
 
-        # Step 3: Admin Approves verification document
-        admin_client = APIClient()
-        admin_client.force_authenticate(user=self.admin_user)
-        approve_res = admin_client.post(f'/api/documents/{doc.id}/approve/')
-        self.assertEqual(approve_res.status_code, status.HTTP_200_OK)
+        # Pending listing approval still hides the listing and blocks booking.
+        self.venue.approval_status = 'PENDING'
+        self.venue.is_verified = False
+        self.venue.save(update_fields=['approval_status', 'is_verified'])
+        res_pending = public_client.get('/api/venues/')
+        self.assertEqual(res_pending.status_code, status.HTTP_200_OK)
+        results_pending = (
+            res_pending.data.get('results', res_pending.data)
+            if isinstance(res_pending.data, dict)
+            else res_pending.data
+        )
+        self.assertNotIn(self.venue.id, [v['id'] for v in results_pending])
 
-        self.venue.refresh_from_db()
-        self.assertTrue(self.venue.is_verified)
-        self.assertEqual(self.venue.approval_status, 'APPROVED')
-
-        # Now public search returns the venue!
-        res_after = public_client.get('/api/venues/')
-        self.assertEqual(res_after.status_code, status.HTTP_200_OK)
-        venue_ids_after = [v['id'] for v in (res_after.data if isinstance(res_after.data, list) else res_after.data.get('results', []))]
-        self.assertIn(self.venue.id, venue_ids_after)
-
-        # Booking now succeeds!
-        book_res_success = public_client.post('/api/bookings/', {
+        booking_pending_listing = public_client.post('/api/bookings/', {
             'venue': self.venue.id,
             'customer': self.customer_user.id,
-            'event_title': 'Legitimate Wedding Booking',
+            'event_title': 'Pending Listing Booking',
             'event_type': 'Wedding',
-            'event_date': future_date.strftime('%Y-%m-%d'),
-            'guest_count': 50,
+            'event_date': (future_date + datetime.timedelta(days=1)).strftime('%Y-%m-%d'),
+            'guest_count': 40,
             'total_price': 90000.00
         })
-        self.assertEqual(book_res_success.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(booking_pending_listing.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('pending administrator verification', str(booking_pending_listing.data))

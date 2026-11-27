@@ -14,6 +14,28 @@ class BookingCapacityValidator:
     """
 
     @staticmethod
+    def _validate_provider_verification(
+        profile,
+        documents,
+        today: datetime.date,
+        unverified_message: str,
+        invalid_document_message: str,
+    ):
+        has_valid_document = documents.filter(status='APPROVED').filter(
+            Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
+        ).exists()
+
+        if not (
+            profile.is_verified
+            or profile.verification_status == 'APPROVED'
+            or has_valid_document
+        ):
+            raise ValidationError(unverified_message)
+
+        if documents.exists() and not has_valid_document:
+            raise ValidationError(invalid_document_message)
+
+    @staticmethod
     def parse_time_from_notes(notes: Optional[str]) -> Tuple[Optional[datetime.time], Optional[datetime.time]]:
         """Extract start_time and end_time if provided in booking notes."""
         if not notes:
@@ -66,10 +88,15 @@ class BookingCapacityValidator:
         today = datetime.date.today()
 
         if venue:
+            listing_label = 'service listing' if venue.listing_type == 'SERVICE' else 'venue'
             if venue.approval_status != 'APPROVED' or not venue.is_verified:
-                raise ValidationError("This venue is currently pending administrator verification and cannot accept bookings.")
+                raise ValidationError(f"This {listing_label} is currently pending administrator verification and cannot accept bookings.")
             if not venue.is_available:
-                raise ValidationError("This venue is currently marked as unavailable or inactive.")
+                raise ValidationError(f"This {listing_label} is currently marked as unavailable or inactive.")
+            if venue.capacity is None or venue.capacity <= 0:
+                raise ValidationError(
+                    f"This {listing_label} has no maximum guest capacity set. Please ask the provider to update the listing."
+                )
 
             # Decimal-safe price validation
             if venue.price_per_day is None:
@@ -83,31 +110,14 @@ class BookingCapacityValidator:
             except (InvalidOperation, ValueError, TypeError):
                 raise ValidationError(f"The venue '{venue.title}' has an invalid non-numeric rental price ({venue.price_per_day}).")
 
-            # Check owner verification & documents
-            if venue.owner:
-                if venue.owner.verification_status != 'APPROVED' or not venue.owner.is_verified:
-                    raise ValidationError("The venue owner account is not verified.")
-                owner_docs = VerificationDocument.objects.filter(venue_owner=venue.owner)
-                if owner_docs.exists():
-                    has_valid_doc = owner_docs.filter(status='APPROVED').filter(
-                        Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
-                    ).exists()
-                    if not has_valid_doc:
-                        raise ValidationError("This venue's owner has expired or unapproved verification documents.")
-            elif venue.vendor:
-                if venue.vendor.verification_status != 'APPROVED' or not venue.vendor.is_verified:
-                    raise ValidationError("The service provider account is not verified.")
-                vendor_docs = VerificationDocument.objects.filter(vendor=venue.vendor)
-                if vendor_docs.exists():
-                    has_valid_doc = vendor_docs.filter(status='APPROVED').filter(
-                        Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
-                    ).exists()
-                    if not has_valid_doc:
-                        raise ValidationError("This venue's provider has expired or unapproved verification documents.")
-
         if vendor:
-            if vendor.verification_status != 'APPROVED' or not vendor.is_verified:
-                raise ValidationError("This service provider is currently pending administrator verification and cannot accept bookings.")
+            cls._validate_provider_verification(
+                vendor,
+                VerificationDocument.objects.filter(vendor=vendor),
+                today,
+                "This service provider is currently pending administrator verification and cannot accept bookings.",
+                "This service provider has expired or unapproved verification documents.",
+            )
 
             # Decimal-safe price validation
             if vendor.starting_price is None:
@@ -120,14 +130,6 @@ class BookingCapacityValidator:
                     raise ValidationError(f"The service provider '{vendor.business_name}' has an invalid or non-positive starting price ({vendor.starting_price}).")
             except (InvalidOperation, ValueError, TypeError):
                 raise ValidationError(f"The service provider '{vendor.business_name}' has an invalid non-numeric starting price ({vendor.starting_price}).")
-
-            vendor_docs = VerificationDocument.objects.filter(vendor=vendor)
-            if vendor_docs.exists():
-                has_valid_doc = vendor_docs.filter(status='APPROVED').filter(
-                    Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
-                ).exists()
-                if not has_valid_doc:
-                    raise ValidationError("This service provider has expired or unapproved verification documents.")
 
     @classmethod
     def validate_booking(
@@ -174,7 +176,7 @@ class BookingCapacityValidator:
         if venue and venue.capacity is not None and venue.capacity > 0:
             if guest_count > venue.capacity:
                 raise ValidationError(
-                    f"The venue '{venue.title}' has a maximum capacity of {venue.capacity} guests. "
+                    f"The listing '{venue.title}' has a maximum capacity of {venue.capacity} guests. "
                     f"You requested {guest_count} guests."
                 )
 
@@ -199,6 +201,12 @@ class BookingCapacityValidator:
                 avail_setting = ProviderAvailabilitySetting.objects.select_for_update().filter(user=provider_user).first()
             else:
                 avail_setting = ProviderAvailabilitySetting.objects.filter(user=provider_user).first()
+
+        if vendor and (not avail_setting or avail_setting.max_guests <= 0):
+            raise ValidationError(
+                "This service provider has no maximum daily guest capacity set. "
+                "Please ask them to update their availability settings."
+            )
 
         date_str = event_date.strftime('%Y-%m-%d')
         if avail_setting:
@@ -246,7 +254,7 @@ class BookingCapacityValidator:
             max_limit = venue.capacity
         else:
             existing_bookings_query = existing_bookings_query.filter(vendor=vendor)
-            max_limit = avail_setting.max_guests if avail_setting else 100
+            max_limit = avail_setting.max_guests
 
         # When locking is active, lock confirmed bookings
         if lock_provider:

@@ -151,8 +151,18 @@ export interface Venue {
   is_available: boolean;
   rating: number;
   review_count: number;
+  portfolio?: PortfolioImage[];
   created_at?: string;
   updated_at?: string;
+}
+
+export interface PortfolioImage {
+  id: number;
+  venue: number;
+  image_url: string;
+  caption?: string;
+  display_order: number;
+  created_at?: string;
 }
 
 export type BookingStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'COMPLETED';

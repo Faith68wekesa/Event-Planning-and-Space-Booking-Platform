@@ -237,7 +237,7 @@ export const VenueOwnerAnalyticsSection: React.FC<VenueOwnerAnalyticsSectionProp
       </div>
 
       {/* TRENDS OVER TIME */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))', gap: '24px' }}>
         <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '22px' }}>
           <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#1e293b', margin: '0 0 16px' }}>Venue Views & Clicks Over Time</h3>
           {data && (
@@ -266,7 +266,7 @@ export const VenueOwnerAnalyticsSection: React.FC<VenueOwnerAnalyticsSectionProp
       </div>
 
       {/* VENUE LEVEL PERFORMANCE & UTILIZATION */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))', gap: '24px' }}>
         <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '22px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <div>

@@ -97,7 +97,7 @@ class VendorProfile(models.Model):
 
 class ProviderAvailabilitySetting(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='availability_settings')
-    max_guests = models.IntegerField(default=100, help_text="Total guest / attendee capacity across events on a day")
+    max_guests = models.IntegerField(default=0, help_text="Total guest / attendee capacity across events on a day")
     working_hours_start = models.TimeField(default='08:00', help_text="Earliest booking start time")
     working_hours_end = models.TimeField(default='18:00', help_text="Latest booking end time")
     buffer_time_minutes = models.IntegerField(default=30, help_text="Buffer time between events in minutes")
@@ -231,6 +231,20 @@ class Venue(models.Model):
         return self.approval_status == 'APPROVED' and self.is_available
 
 
+class PortfolioImage(models.Model):
+    venue = models.ForeignKey(Venue, on_delete=models.CASCADE, related_name='portfolio')
+    image_url = models.URLField(max_length=500)
+    caption = models.CharField(max_length=240, blank=True, default='')
+    display_order = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['display_order', 'id']
+
+    def __str__(self):
+        return f"Portfolio image for {self.venue.title}"
+
+
 class Booking(models.Model):
     STATUS_CHOICES = [
         ('PENDING', 'Pending Approval'),
@@ -252,7 +266,7 @@ class Booking(models.Model):
     event_type = models.CharField(max_length=50)
     event_date = models.DateField()
     end_date = models.DateField(null=True, blank=True)
-    guest_count = models.IntegerField(default=50)
+    guest_count = models.IntegerField()
     total_price = models.DecimalField(max_digits=10, decimal_places=2)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     notes = models.TextField(blank=True, null=True)

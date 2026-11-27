@@ -10,7 +10,7 @@ export interface LineSeries {
 }
 
 interface TrendLineChartProps {
-  data: Array<{ label: string; [key: string]: any }>;
+  data: Array<{ label: string;[key: string]: any }>;
   series: LineSeries[];
   height?: number;
 }
@@ -278,13 +278,14 @@ export const ConversionFunnelChart: React.FC<{ stages: FunnelStageItem[] }> = ({
         const relativePct = Math.max(12, Math.round((st.count / Math.max(1, baseCount)) * 100));
 
         return (
-          <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{ width: '160px', fontSize: '0.8rem', fontWeight: 600, color: '#475569', textAlign: 'right', flexShrink: 0 }}>
+          <div key={idx} className="conversion-funnel-row" style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div className="conversion-funnel-label" style={{ width: '160px', fontSize: '0.8rem', fontWeight: 600, color: '#475569', textAlign: 'right', flexShrink: 0 }}>
               {st.stage}
             </div>
 
-            <div style={{ flex: 1, position: 'relative', height: '34px', display: 'flex', alignItems: 'center' }}>
+            <div className="conversion-funnel-track" style={{ flex: 1, position: 'relative', height: '34px', display: 'flex', alignItems: 'center' }}>
               <div
+                className="conversion-funnel-bar"
                 style={{
                   width: `${relativePct}%`,
                   height: '100%',
@@ -304,7 +305,7 @@ export const ConversionFunnelChart: React.FC<{ stages: FunnelStageItem[] }> = ({
               </div>
             </div>
 
-            <div style={{ width: '55px', fontSize: '0.78rem', fontWeight: 700, color: '#0d8a73', flexShrink: 0 }}>
+            <div className="conversion-funnel-percent" style={{ width: '55px', fontSize: '0.78rem', fontWeight: 700, color: '#0d8a73', flexShrink: 0 }}>
               {st.percentage}%
             </div>
           </div>

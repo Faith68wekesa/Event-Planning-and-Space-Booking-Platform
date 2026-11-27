@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  ArrowRight, 
-  MapPin, 
-  Briefcase, 
-  Calendar, 
-  Search, 
-  CheckCircle, 
-  DollarSign, 
-  Users, 
-  Sparkles, 
+import {
+  ArrowRight,
+  MapPin,
+  Briefcase,
+  Calendar,
+  Search,
+  CheckCircle,
+  DollarSign,
+  Users,
+  Sparkles,
   Star,
   Camera,
   Utensils,
@@ -134,21 +134,21 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           maxWidth: '1200px'
         }}>
           {onExploreVenues && (
-            <button 
-              onClick={onExploreVenues} 
-              style={{ 
-                padding: '10px 22px', 
-                borderRadius: '999px', 
-                background: '#ffffff', 
-                color: '#0F8F7A', 
-                border: '1px solid #0F8F7A', 
-                fontWeight: 700, 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '8px', 
-                cursor: 'pointer', 
-                transition: 'all 0.2s', 
-                boxShadow: '0 2px 4px rgba(15,143,122,0.1)' 
+            <button
+              onClick={onExploreVenues}
+              style={{
+                padding: '10px 22px',
+                borderRadius: '999px',
+                background: '#ffffff',
+                color: '#0F8F7A',
+                border: '1px solid #0F8F7A',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                boxShadow: '0 2px 4px rgba(15,143,122,0.1)'
               }}
               onMouseEnter={(e) => { e.currentTarget.style.background = '#0F8F7A'; e.currentTarget.style.color = '#ffffff'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.color = '#0F8F7A'; }}
@@ -157,21 +157,21 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </button>
           )}
           {onExploreServices && (
-            <button 
-              onClick={onExploreServices} 
-              style={{ 
-                padding: '10px 22px', 
-                borderRadius: '999px', 
-                background: '#ffffff', 
-                color: '#0F8F7A', 
-                border: '1px solid #0F8F7A', 
-                fontWeight: 700, 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '8px', 
-                cursor: 'pointer', 
-                transition: 'all 0.2s', 
-                boxShadow: '0 2px 4px rgba(15,143,122,0.1)' 
+            <button
+              onClick={onExploreServices}
+              style={{
+                padding: '10px 22px',
+                borderRadius: '999px',
+                background: '#ffffff',
+                color: '#0F8F7A',
+                border: '1px solid #0F8F7A',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                boxShadow: '0 2px 4px rgba(15,143,122,0.1)'
               }}
               onMouseEnter={(e) => { e.currentTarget.style.background = '#0F8F7A'; e.currentTarget.style.color = '#ffffff'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.color = '#0F8F7A'; }}
@@ -180,21 +180,21 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </button>
           )}
           {onOpenAdmin && !isNonAdminUser && (
-            <button 
-              onClick={onOpenAdmin} 
-              style={{ 
-                padding: '10px 22px', 
-                borderRadius: '999px', 
-                background: '#ffffff', 
-                color: '#0d8a73', 
-                border: '1px solid #0d8a73', 
-                fontWeight: 700, 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '8px', 
-                cursor: 'pointer', 
-                transition: 'all 0.2s', 
-                boxShadow: '0 2px 4px rgba(13,138,115,0.1)' 
+            <button
+              onClick={onOpenAdmin}
+              style={{
+                padding: '10px 22px',
+                borderRadius: '999px',
+                background: '#ffffff',
+                color: '#0d8a73',
+                border: '1px solid #0d8a73',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                boxShadow: '0 2px 4px rgba(13,138,115,0.1)'
               }}
               onMouseEnter={(e) => { e.currentTarget.style.background = '#0d8a73'; e.currentTarget.style.color = '#ffffff'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.color = '#0d8a73'; }}
@@ -275,17 +275,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <p style={{ color: '#64748b', fontSize: '1.05rem', margin: 0 }}>Explore verified event halls, gardens, and conference centers.</p>
             </div>
             {onExploreVenues && (
-              <button 
-                onClick={onExploreVenues} 
-                style={{ 
-                  background: 'none', 
-                  border: 'none', 
-                  color: '#0F8F7A', 
-                  fontWeight: 700, 
-                  fontSize: '1rem', 
-                  cursor: 'pointer', 
-                  display: 'flex', 
-                  alignItems: 'center', 
+              <button
+                onClick={onExploreVenues}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#0F8F7A',
+                  fontWeight: 700,
+                  fontSize: '1rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
                   gap: '6px',
                   padding: '8px 12px',
                   borderRadius: '8px'
@@ -301,16 +301,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>Loading verified venues...</div>
             </div>
           ) : spaces.length > 0 ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '28px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))', gap: '28px' }}>
               {spaces.map((venue) => (
-                <div 
-                  key={venue.id} 
+                <div
+                  key={venue.id}
                   onClick={() => onSelectVenue && onSelectVenue(venue)}
-                  style={{ 
-                    background: '#ffffff', 
-                    borderRadius: '16px', 
-                    overflow: 'hidden', 
-                    border: '1px solid #e2e8f0', 
+                  style={{
+                    background: '#ffffff',
+                    borderRadius: '16px',
+                    overflow: 'hidden',
+                    border: '1px solid #e2e8f0',
                     boxShadow: '0 4px 16px rgba(0,0,0,0.04)',
                     display: 'flex',
                     flexDirection: 'column',
@@ -372,7 +372,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                     <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0', lineHeight: 1.3 }}>
                       {venue.title}
                     </h3>
-                    
+
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '0.88rem', marginBottom: '14px' }}>
                       <MapPin size={15} color="#0F8F7A" /> {venue.location}
                     </div>
@@ -383,13 +383,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                         <Users size={16} color="#0F8F7A" /> Capacity: {venue.capacity} guests
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: (venue.review_count || 0) > 0 ? '#d97706' : '#64748b', fontWeight: 700 }}>
-                        {(venue.review_count || 0) > 0 ? (
-                          <>
-                            <Star size={14} fill="#fbbf24" stroke="#d97706" /> {Number(venue.rating).toFixed(1)} ({venue.review_count} {venue.review_count === 1 ? 'review' : 'reviews'})
-                          </>
-                        ) : (
-                          <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>No reviews yet</span>
-                        )}
+                        <Star size={14} fill="#fbbf24" stroke="#d97706" /> {Number(venue.rating || 0).toFixed(1)} ({Number(venue.review_count || 0)} {Number(venue.review_count || 0) === 1 ? 'review' : 'reviews'})
                       </div>
                     </div>
 
@@ -400,7 +394,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                           KES {Number(venue.price_per_day).toLocaleString()}
                         </span>
                       </div>
-                      
+
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <button
                           onClick={(e) => {
@@ -422,6 +416,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                         </button>
                         {onBookVenue && (
                           <button
+                            disabled={Number(venue.capacity) <= 0}
                             onClick={(e) => {
                               e.stopPropagation();
                               onBookVenue(venue);
@@ -434,10 +429,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                               color: '#fff',
                               fontSize: '0.82rem',
                               fontWeight: 700,
-                              cursor: 'pointer'
+                              cursor: Number(venue.capacity) > 0 ? 'pointer' : 'not-allowed',
+                              opacity: Number(venue.capacity) > 0 ? 1 : 0.6
                             }}
+                            title={Number(venue.capacity) > 0 ? 'Book this venue' : 'Provider must set a guest limit before this listing can be booked'}
                           >
-                            Book Space
+                            {Number(venue.capacity) > 0 ? 'Book Space' : 'Capacity Needed'}
                           </button>
                         )}
                       </div>
@@ -466,17 +463,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <p style={{ color: '#64748b', fontSize: '1.05rem', margin: 0 }}>Hire verified photographers, caterers, decorators, and planners.</p>
             </div>
             {onExploreServices && (
-              <button 
-                onClick={onExploreServices} 
-                style={{ 
-                  background: 'none', 
-                  border: 'none', 
-                  color: '#0F8F7A', 
-                  fontWeight: 700, 
-                  fontSize: '1rem', 
-                  cursor: 'pointer', 
-                  display: 'flex', 
-                  alignItems: 'center', 
+              <button
+                onClick={onExploreServices}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#0F8F7A',
+                  fontWeight: 700,
+                  fontSize: '1rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
                   gap: '6px',
                   padding: '8px 12px',
                   borderRadius: '8px'
@@ -492,7 +489,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>Loading verified services...</div>
             </div>
           ) : services.length > 0 ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '28px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))', gap: '28px' }}>
               {services.map((service) => {
                 const coverImg = cleanImageUrl(service.image_url);
 
@@ -573,20 +570,19 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                         <MapPin size={15} color="#0F8F7A" /> Location: {service.location}
                       </div>
 
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: Number(service.capacity) > 0 ? '#047857' : '#b45309', fontSize: '0.85rem', fontWeight: 700, marginBottom: '12px' }}>
+                        <Users size={15} color={Number(service.capacity) > 0 ? '#0F8F7A' : '#b45309'} />
+                        {Number(service.capacity) > 0 ? `Maximum guests: ${service.capacity}` : 'Guest limit not provided'}
+                      </div>
+
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', borderRadius: '10px', marginBottom: '16px', fontSize: '0.85rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#334155', fontWeight: 600 }}>
                           <Briefcase size={15} color="#0F8F7A" /> {service.category_display || service.category}
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: (service.review_count || 0) > 0 ? '#d97706' : '#64748b', fontWeight: 700 }}>
-                          {(service.review_count || 0) > 0 ? (
-                            <>
-                              <Star size={14} fill="#fbbf24" stroke="#d97706" />
-                              {Number(service.rating).toFixed(1)} ({service.review_count} {service.review_count === 1 ? 'review' : 'reviews'})
-                            </>
-                          ) : (
-                            <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>No reviews yet</span>
-                          )}
+                          <Star size={14} fill="#fbbf24" stroke="#d97706" />
+                          {Number(service.rating || 0).toFixed(1)} ({Number(service.review_count || 0)} {Number(service.review_count || 0) === 1 ? 'review' : 'reviews'})
                         </div>
                       </div>
 
@@ -633,6 +629,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
                           {onBookVenue && (
                             <button
+                              disabled={Number(service.capacity) <= 0}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onBookVenue(service);
@@ -645,10 +642,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                                 color: '#fff',
                                 fontSize: '0.82rem',
                                 fontWeight: 700,
-                                cursor: 'pointer'
+                                cursor: Number(service.capacity) > 0 ? 'pointer' : 'not-allowed',
+                                opacity: Number(service.capacity) > 0 ? 1 : 0.6
                               }}
+                              title={Number(service.capacity) > 0 ? 'Book this service' : 'Provider must set a guest limit before this listing can be booked'}
                             >
-                              Book Service
+                              {Number(service.capacity) > 0 ? 'Book Service' : 'Capacity Needed'}
                             </button>
                           )}
                         </div>

@@ -16,6 +16,7 @@ import {
   ChevronDown,
   PanelLeftClose,
   PanelLeftOpen,
+  Menu,
   MapPin,
   Star,
   Building2,
@@ -28,6 +29,8 @@ import {
   CalendarDays,
   AlertTriangle,
   ImageOff,
+  Pencil,
+  Trash2,
   Smartphone // <-- Added for M-Pesa
 } from 'lucide-react';
 import { ApiService } from '../services/api';
@@ -70,6 +73,11 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
     'dashboard' | 'events' | 'services' | 'venues' | 'bookings' | 'reviews' | 'messages' | 'favorites' | 'profile' | 'settings'
   >(initialTab);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    setIsMobileSidebarOpen(false);
+  }, [activeTab]);
 
   useEffect(() => {
     if (initialTab) {
@@ -395,17 +403,24 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
 
   // Customer Reviews State
   const [reviewModalBooking, setReviewModalBooking] = useState<Booking | null>(null);
+  const [editingReview, setEditingReview] = useState<Review | null>(null);
   const [ratingScore, setRatingScore] = useState<number>(0);
   const [hoverRating, setHoverRating] = useState<number>(0);
   const [reviewComment, setReviewComment] = useState<string>('');
   const [submittingReview, setSubmittingReview] = useState<boolean>(false);
+  const [deletingReviewId, setDeletingReviewId] = useState<number | null>(null);
   const [myReviews, setMyReviews] = useState<Review[]>([]);
   const [loadingMyReviews, setLoadingMyReviews] = useState<boolean>(false);
 
   const fetchMyReviews = async () => {
+    if (!currentUser?.id) {
+      setMyReviews([]);
+      return;
+    }
+
     try {
       setLoadingMyReviews(true);
-      const data = await ApiService.getReviews();
+      const data = await ApiService.getReviews({ user: currentUser.id });
       setMyReviews(data);
     } catch (e) {
       console.error('Error fetching my reviews:', e);
@@ -418,38 +433,74 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
     if (activeTab === 'reviews') {
       fetchMyReviews();
     }
-  }, [activeTab]);
+  }, [activeTab, currentUser?.id]);
+
+  const closeReviewModal = () => {
+    setReviewModalBooking(null);
+    setEditingReview(null);
+    setRatingScore(0);
+    setHoverRating(0);
+    setReviewComment('');
+  };
 
   const handleSubmitReview = async () => {
     if (ratingScore < 1 || ratingScore > 5) {
       toast.error('Please select a star rating between 1 and 5.');
       return;
     }
-    if (!reviewModalBooking) return;
+    if (!editingReview && !reviewModalBooking) return;
 
     try {
       setSubmittingReview(true);
-      await ApiService.submitReview({
-        booking: reviewModalBooking.id,
-        venue: reviewModalBooking.venue,
-        vendor: reviewModalBooking.vendor,
-        rating: ratingScore,
-        comment: reviewComment.trim(),
-      });
+      if (editingReview) {
+        const result = await ApiService.updateReview(editingReview.id, {
+          rating: ratingScore,
+          comment: reviewComment.trim(),
+        });
+        if (!result.success) throw new Error(result.error || 'Failed to update review.');
+        toast.success('Your review has been updated.');
+      } else if (reviewModalBooking) {
+        const result = await ApiService.submitReview({
+          booking: reviewModalBooking.id,
+          venue: reviewModalBooking.venue,
+          vendor: reviewModalBooking.vendor,
+          rating: ratingScore,
+          comment: reviewComment.trim(),
+        });
+        if (!result.success) throw new Error(result.error || 'Failed to submit review.');
+        toast.success('Thank you! Your verified review has been submitted.');
+        reviewModalBooking.has_reviewed = true;
+        syncBookings();
+      }
 
-      toast.success('Thank you! Your verified review has been submitted.');
-      reviewModalBooking.has_reviewed = true;
-      setReviewModalBooking(null);
-      setRatingScore(0);
-      setHoverRating(0);
-      setReviewComment('');
-      fetchMyReviews();
-      syncBookings();
+      closeReviewModal();
+      await fetchMyReviews();
     } catch (err: any) {
-      const errDetail = err.response?.data?.error || err.response?.data?.detail || 'Failed to submit review.';
+      const errDetail = err.response?.data?.error || err.response?.data?.detail || err.message || 'Failed to save review.';
       toast.error(errDetail);
     } finally {
       setSubmittingReview(false);
+    }
+  };
+
+  const handleDeleteReview = async (review: Review) => {
+    if (!window.confirm('Delete this review? This will remove your rating and comment.')) return;
+
+    try {
+      setDeletingReviewId(review.id);
+      const deleted = await ApiService.deleteReview(review.id);
+      if (!deleted) throw new Error('Failed to delete review.');
+
+      setMyReviews(previous => previous.filter(item => item.id !== review.id));
+      setLocalBookings(previous => previous.map(booking => (
+        booking.id === review.booking ? { ...booking, has_reviewed: false } : booking
+      )));
+      await syncBookings();
+      toast.success('Your review has been deleted.');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete review.');
+    } finally {
+      setDeletingReviewId(null);
     }
   };
 
@@ -663,7 +714,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
     id: v.id,
     name: v.title,
     location: v.location || 'Nyeri County, Kenya',
-    rating: v.rating || 5.0,
+    rating: Number(v.rating || 0).toFixed(1),
     reviews: v.review_count || 0,
     image: v.image_url || '',
   }));
@@ -671,7 +722,14 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
   return (
     <div className={`customer-dashboard-layout ${isSidebarCollapsed ? 'customer-sidebar-collapsed' : ''}`}>
       {/* 1. LEFT SIDEBAR (Dark Teal #08332d) */}
-      <aside className="customer-sidebar">
+      {isMobileSidebarOpen && (
+        <div
+          className="customer-sidebar-backdrop"
+          onClick={() => setIsMobileSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+      <aside className={`customer-sidebar ${isMobileSidebarOpen ? 'open' : ''}`}>
         <div className="customer-sidebar-header">
           <button
             type="button"
@@ -697,11 +755,24 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
           >
             {isSidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
           </button>
+          <button
+            type="button"
+            className="customer-sidebar-close-btn"
+            onClick={() => setIsMobileSidebarOpen(false)}
+            aria-label="Close navigation"
+          >
+            <X size={20} />
+          </button>
         </div>
 
 
         {/* Sidebar Nav Items */}
-        <nav className="customer-sidebar-nav">
+        <nav
+          className="customer-sidebar-nav"
+          onClick={(event) => {
+            if ((event.target as HTMLElement).closest('button')) setIsMobileSidebarOpen(false);
+          }}
+        >
           <button
             className={`customer-nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
             onClick={() => setActiveTab('dashboard')}
@@ -856,6 +927,17 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
       <main className="customer-main-area">
         {/* Top Header */}
         <header className="customer-topbar">
+          <button
+            type="button"
+            className="customer-mobile-menu-btn"
+            onClick={() => {
+              setIsSidebarCollapsed(false);
+              setIsMobileSidebarOpen(true);
+            }}
+            aria-label="Open navigation"
+          >
+            <Menu size={20} />
+          </button>
           <div className="customer-search-box">
             <Search size={18} color="#64748b" />
             <input
@@ -889,6 +971,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                   {/* Notification Popover */}
                   {showNotifications && (
                     <div
+                      className="customer-notifications-popover"
                       style={{
                         position: 'absolute',
                         top: '52px',
@@ -2407,6 +2490,29 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                       ) : (
                         <span style={{ fontSize: '0.82rem', color: '#94a3b8' }}>No written comment provided.</span>
                       )}
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '14px' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReviewModalBooking(null);
+                            setEditingReview(rev);
+                            setRatingScore(rev.rating);
+                            setHoverRating(0);
+                            setReviewComment(rev.comment || '');
+                          }}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 10px', border: '1px solid #cbd5e1', borderRadius: '7px', background: '#fff', color: '#334155', fontWeight: 600, cursor: 'pointer' }}
+                        >
+                          <Pencil size={14} /> Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteReview(rev)}
+                          disabled={deletingReviewId === rev.id}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 10px', border: '1px solid #fecaca', borderRadius: '7px', background: '#fff', color: '#b91c1c', fontWeight: 600, cursor: deletingReviewId === rev.id ? 'wait' : 'pointer', opacity: deletingReviewId === rev.id ? 0.65 : 1 }}
+                        >
+                          <Trash2 size={14} /> {deletingReviewId === rev.id ? 'Deleting…' : 'Delete'}
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -2482,7 +2588,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                 </div>
               ) : (
                 <div
-                  className="customer-card-box"
+                  className="customer-card-box customer-message-layout"
                   style={{
                     padding: 0,
                     display: 'grid',
@@ -3270,19 +3376,19 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
       )}
 
       {/* Review Modal */}
-      {reviewModalBooking && (
-        <div className="customer-modal-backdrop" onClick={() => setReviewModalBooking(null)}>
+      {(reviewModalBooking || editingReview) && (
+        <div className="customer-modal-backdrop" onClick={closeReviewModal}>
           <div className="customer-modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '450px', padding: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                Leave a Review
+                {editingReview ? 'Edit Your Review' : 'Leave a Review'}
               </h3>
-              <button onClick={() => setReviewModalBooking(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+              <button onClick={closeReviewModal} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
                 <X size={20} />
               </button>
             </div>
             <p style={{ fontSize: '0.88rem', color: '#64748b', marginBottom: '16px' }}>
-              How was your experience with <strong>{reviewModalBooking.venue_details?.title || reviewModalBooking.vendor_details?.business_name}</strong>?
+              How was your experience with <strong>{editingReview?.target_name || reviewModalBooking?.venue_details?.title || reviewModalBooking?.vendor_details?.business_name || 'this provider'}</strong>?
             </p>
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginBottom: '20px' }}>
               {[1, 2, 3, 4, 5].map((star) => (
@@ -3309,7 +3415,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
             />
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
               <button
-                onClick={() => setReviewModalBooking(null)}
+                onClick={closeReviewModal}
                 style={{ padding: '8px 16px', borderRadius: '8px', background: '#f1f5f9', color: '#334155', border: 'none', fontWeight: 600, cursor: 'pointer' }}
               >
                 Cancel
@@ -3319,7 +3425,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                 disabled={submittingReview || ratingScore === 0}
                 style={{ padding: '8px 16px', borderRadius: '8px', background: '#0d8a73', color: '#fff', border: 'none', fontWeight: 600, cursor: (submittingReview || ratingScore === 0) ? 'not-allowed' : 'pointer', opacity: (submittingReview || ratingScore === 0) ? 0.7 : 1 }}
               >
-                {submittingReview ? 'Submitting...' : 'Submit Review'}
+                {submittingReview ? (editingReview ? 'Saving...' : 'Submitting...') : (editingReview ? 'Save Changes' : 'Submit Review')}
               </button>
             </div>
           </div>

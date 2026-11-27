@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { Venue, Vendor, VenueOwner, VerificationStatus, User, Booking, Review, PlatformStats, BookingStatus, VerificationDocument, AdminAnalyticsData } from '../types';
-import { 
-  ShieldCheck, Building2, UserCheck, 
+import {
+  ShieldCheck, Building2, UserCheck,
   X, Eye, Clock, MapPin, ExternalLink,
-  Users, Calendar, Star, Trash2, Edit3, RefreshCw,
+  Users, Star, Trash2, Edit3, RefreshCw,
   Search, CheckCircle2, ArrowUpRight, DollarSign,
   UserX, Shield, AlertCircle, ShieldAlert, Lock, ArrowLeft, FileText, AlertTriangle, Menu,
-  Download, BarChart3, ImageOff
+  Download, BarChart3, ImageOff, ChevronDown, LogOut, User as UserIcon
 } from 'lucide-react';
 import { ApiService } from '../services/api';
 import { toast } from 'react-hot-toast';
@@ -24,6 +24,9 @@ interface AdminDashboardProps {
   onRefreshVendors?: () => void;
   currentUser?: User | null;
   onNavigateHome?: () => void;
+  homeRequest?: number;
+  searchQuery?: string;
+  onSearchChange?: (search: string) => void;
   onLoginClick?: () => void;
   onLogout?: () => void;
   onDataChange?: () => void;
@@ -48,7 +51,7 @@ interface UnifiedAccount {
   rawItem: Vendor | VenueOwner;
 }
 
-type AdminTab = 'overview' | 'users' | 'bookings' | 'venues' | 'verifications' | 'reviews' | 'analytics' | 'settings';
+type AdminTab = 'overview' | 'users' | 'bookings' | 'venues' | 'verifications' | 'reviews' | 'analytics' | 'settings' | 'profile';
 
 const LEGACY_SERVICE_CATEGORIES = new Set([
   'PHOTOGRAPHY',
@@ -79,19 +82,48 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onToggleVerifyVendor,
   currentUser,
   onNavigateHome,
+  homeRequest,
+  searchQuery = '',
+  onSearchChange,
   onLoginClick,
   onLogout,
   onDataChange,
 }) => {
   const isAdmin = Boolean(currentUser && (
-    currentUser.role === 'ADMIN' || 
-    currentUser.is_staff || 
+    currentUser.role === 'ADMIN' ||
+    currentUser.is_staff ||
     currentUser.is_superuser
   ));
 
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [showAccountMenu, setShowAccountMenu] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
+  const currentHour = new Date().getHours();
+  const greeting = currentHour < 12 ? 'Good morning' : currentHour < 18 ? 'Good afternoon' : 'Good evening';
+  const adminFirstName = currentUser?.first_name || currentUser?.username?.split('@')[0]?.split(/[._-]/)[0] || 'Admin';
+  const adminFullName = [currentUser?.first_name, currentUser?.last_name].filter(Boolean).join(' ') || currentUser?.username?.split('@')[0] || 'Administrator';
+
+  useEffect(() => {
+    if (homeRequest) setActiveTab('overview');
+  }, [homeRequest]);
+
+  useEffect(() => {
+    const closeAccountMenu = (event: MouseEvent) => {
+      if (!accountMenuRef.current?.contains(event.target as Node)) setShowAccountMenu(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowAccountMenu(false);
+    };
+    document.addEventListener('mousedown', closeAccountMenu);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeAccountMenu);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, []);
+
   const [loading, setLoading] = useState(false);
   const [refreshingRatings, setRefreshingRatings] = useState(false);
 
@@ -107,6 +139,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Filter & Search states
   const [userSearch, setUserSearch] = useState('');
   const [userRoleFilter, setUserRoleFilter] = useState<string>('ALL');
+  const [userProviderTypeFilter, setUserProviderTypeFilter] = useState<'ALL' | 'VENUE' | 'VENDOR'>('ALL');
 
   const [bookingSearch, setBookingSearch] = useState('');
   const [bookingStatusFilter, setBookingStatusFilter] = useState<string>('ALL');
@@ -429,7 +462,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const vOwnerId = typeof v.owner === 'object' ? (v.owner as any)?.id : v.owner;
         const vVendorId = typeof v.vendor === 'object' ? (v.vendor as any)?.id : v.vendor;
         if ((account.account_type === 'Vendor' && vVendorId === account.id) ||
-            (account.account_type === 'Venue Owner' && vOwnerId === account.id)) {
+          (account.account_type === 'Venue Owner' && vOwnerId === account.id)) {
           return { ...v, is_verified: true, approval_status: 'APPROVED' };
         }
         return v;
@@ -475,7 +508,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const vOwnerId = typeof v.owner === 'object' ? (v.owner as any)?.id : v.owner;
         const vVendorId = typeof v.vendor === 'object' ? (v.vendor as any)?.id : v.vendor;
         if ((account.account_type === 'Vendor' && vVendorId === account.id) ||
-            (account.account_type === 'Venue Owner' && vOwnerId === account.id)) {
+          (account.account_type === 'Venue Owner' && vOwnerId === account.id)) {
           return { ...v, is_verified: false };
         }
         return v;
@@ -543,8 +576,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const pendingVerificationCount = unifiedAccounts.filter(a => a.verification_status === 'PENDING').length;
 
   // Filtered lists
+  const listingTypesByUserId = new Map<number, { venue: boolean; service: boolean }>();
+  venues.forEach(listing => {
+    if (listing.owner_user_id == null) return;
+
+    const userId = Number(listing.owner_user_id);
+    const listingTypes = listingTypesByUserId.get(userId) || { venue: false, service: false };
+    if (isServiceListing(listing)) {
+      listingTypes.service = true;
+    } else {
+      listingTypes.venue = true;
+    }
+    listingTypesByUserId.set(userId, listingTypes);
+  });
+
+  const hasVenueOwnerProfile = (user: User) =>
+    venueOwners.some(owner => Number(owner.user) === user.id);
+  const hasVendorProfile = (user: User) =>
+    vendors.some(vendor => Number(vendor.user) === user.id);
+
+  const isVenueOwnerUser = (user: User) => Boolean(
+    listingTypesByUserId.has(user.id)
+      ? listingTypesByUserId.get(user.id)?.venue
+      : user.role === 'VENUE_OWNER' ||
+        (user.is_venue_owner && !user.is_vendor) ||
+        (hasVenueOwnerProfile(user) && !hasVendorProfile(user))
+  );
+  const isVendorUser = (user: User) => Boolean(
+    listingTypesByUserId.has(user.id)
+      ? listingTypesByUserId.get(user.id)?.service
+      : user.role === 'VENDOR' ||
+        (user.is_vendor && !user.is_venue_owner) ||
+        (hasVendorProfile(user) && !hasVenueOwnerProfile(user))
+  );
+
   const filteredUsers = users.filter(u => {
     if (userRoleFilter !== 'ALL' && u.role !== userRoleFilter) return false;
+    if (userProviderTypeFilter === 'VENUE' && !isVenueOwnerUser(u)) return false;
+    if (userProviderTypeFilter === 'VENDOR' && !isVendorUser(u)) return false;
     if (userSearch) {
       const q = userSearch.toLowerCase();
       const matchName = (u.first_name || '').toLowerCase().includes(q) || (u.last_name || '').toLowerCase().includes(q);
@@ -725,8 +794,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <AdminSidebar
         activeItem={activeTab as AdminMenuItemId}
         onSelectItem={(item) => setActiveTab(item as AdminTab)}
-        currentUser={currentUser}
-        onNavigateHome={onNavigateHome}
         onLogout={onLogout}
         isMobileOpen={isMobileSidebarOpen}
         onToggleMobile={() => setIsMobileSidebarOpen(prev => !prev)}
@@ -734,1054 +801,1557 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         onToggleCollapsed={() => setIsSidebarCollapsed(prev => !prev)}
         badgeCounts={{
           users: users.length,
-          bookings: bookings.length,
           venues: venues.length,
           verifications: pendingVerificationCount,
-          reviews: reviews.length,
         }}
       />
 
       {/* 2. Main Viewport (Scrolls independently) */}
-      <div className="admin-main-viewport">
-        {/* Mobile Header Bar with Hamburger */}
-        <header className="admin-mobile-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <button
-              className="admin-mobile-toggle-btn"
-              onClick={() => {
-                setIsSidebarCollapsed(false);
-                setIsMobileSidebarOpen(true);
-              }}
-              aria-label="Open sidebar menu"
-            >
-              <Menu size={20} />
-            </button>
-            <span className="admin-mobile-title">Admin Console</span>
+      <div
+        className="admin-main-viewport"
+        onClick={() => {
+          if (isMobileSidebarOpen) setIsMobileSidebarOpen(false);
+        }}
+      >
+        <header className="admin-topbar">
+          <button
+            className="admin-mobile-toggle-btn"
+            onClick={() => {
+              setIsSidebarCollapsed(false);
+              setIsMobileSidebarOpen(true);
+            }}
+            aria-label="Open sidebar menu"
+          >
+            <Menu size={20} />
+          </button>
+          <div className="admin-topbar-search">
+            <Search size={18} />
+            <input
+              type="search"
+              placeholder="Search your venues, services, or listings..."
+              value={searchQuery}
+              onChange={(event) => onSearchChange?.(event.target.value)}
+            />
           </div>
-          <span style={{ fontSize: '0.78rem', color: '#5eead4', fontWeight: 700, textTransform: 'uppercase' }}>
-            {activeTab}
-          </span>
+          <div className="admin-topbar-actions">
+            <div className="admin-account-menu-wrap" ref={accountMenuRef}>
+              <button
+                type="button"
+                className="admin-profile-btn"
+                onClick={() => setShowAccountMenu((showing) => !showing)}
+                aria-label="Open account menu"
+                aria-expanded={showAccountMenu}
+                title="Account menu"
+              >
+                <span className="admin-profile-avatar">
+                  {currentUser?.avatar_url ? <img src={currentUser.avatar_url} alt="" /> : <UserIcon size={17} />}
+                </span>
+                <ChevronDown size={15} />
+              </button>
+              {showAccountMenu && (
+                <div className="admin-account-menu">
+                  <div className="admin-account-menu-heading">
+                    <strong>{currentUser?.first_name || currentUser?.username || 'Administrator'}</strong>
+                    <span>{currentUser?.email || 'admin@locyfy.com'}</span>
+                  </div>
+                  <button type="button" className="admin-account-logout" onClick={onLogout}>
+                    <LogOut size={16} /> Log out
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </header>
 
         <div className="admin-dashboard-container">
-      {loading && (
-        <div style={{ textAlign: 'center', padding: '12px 20px', background: '#f0fdfa', border: '1px solid #ccfbf1', borderRadius: '10px', color: '#0d8a73', fontWeight: 600, fontSize: '0.88rem', marginBottom: '20px' }}>
-          Refreshing platform data and user accounts...
-        </div>
-      )}
-
-      {/* TAB 1: OVERVIEW & ANALYTICS */}
-      {activeTab === 'overview' && (
-        <div>
-          {/* Metrics Grid */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: '18px',
-            marginBottom: '32px',
-          }}>
-            {/* Total Revenue */}
-            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '22px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Gross Revenue</span>
-                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <DollarSign size={20} />
-                </div>
-              </div>
-              <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#1e293b', marginTop: '12px' }}>
-                KES {(stats?.total_revenue || 0).toLocaleString()}
-              </div>
-              <p style={{ margin: '6px 0 0', fontSize: '0.78rem', color: '#059669', fontWeight: 600 }}>
-                From confirmed & completed bookings
-              </p>
+          {loading && (
+            <div style={{ textAlign: 'center', padding: '12px 20px', background: '#f0fdfa', border: '1px solid #ccfbf1', borderRadius: '10px', color: '#0d8a73', fontWeight: 600, fontSize: '0.88rem', marginBottom: '20px' }}>
+              Refreshing platform data and user accounts...
             </div>
+          )}
 
-            {/* Total Bookings */}
-            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '22px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Total Bookings</span>
-                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Calendar size={20} />
+          {/* TAB 1: OVERVIEW & ANALYTICS */}
+          {activeTab === 'overview' && (
+            <div>
+              <div className="admin-dashboard-welcome">
+                <div className="admin-dashboard-welcome-content">
+                  <h1>{greeting}, {adminFirstName}</h1>
+                  <p>Here’s what’s happening across your platform today.</p>
                 </div>
-              </div>
-              <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#1e293b', marginTop: '12px' }}>
-                {stats?.total_bookings ?? bookings.length}
-              </div>
-              <div style={{ display: 'flex', gap: '8px', marginTop: '6px', fontSize: '0.75rem', color: '#64748b' }}>
-                <span><strong>{stats?.approved_bookings ?? bookings.filter(b => b.status === 'APPROVED').length}</strong> Approved</span> •
-                <span><strong>{stats?.pending_bookings ?? bookings.filter(b => b.status === 'PENDING').length}</strong> Pending</span>
-              </div>
-            </div>
-
-            {/* Total Users */}
-            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '22px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Total Users</span>
-                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#f5f3ff', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Users size={20} />
-                </div>
-              </div>
-              <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#1e293b', marginTop: '12px' }}>
-                {stats?.total_users ?? users.length}
-              </div>
-              <div style={{ display: 'flex', gap: '8px', marginTop: '6px', fontSize: '0.75rem', color: '#64748b' }}>
-                <span><strong>{stats?.total_customers ?? users.filter(u => u.role === 'CUSTOMER' && !u.is_staff).length}</strong> Clients</span> •
-                <span><strong>{stats?.total_providers ?? users.filter(u => (u.role === 'PROVIDER' || u.is_vendor || u.is_venue_owner) && !u.is_staff).length}</strong> Providers</span>
-              </div>
-            </div>
-
-            {/* Pending Verifications */}
-            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '22px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Pending Review</span>
-                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#fef3c7', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Clock size={20} />
-                </div>
-              </div>
-              <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#d97706', marginTop: '12px' }}>
-                {pendingVerificationCount}
-              </div>
-              <button
-                onClick={() => setActiveTab('verifications')}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  padding: 0,
-                  marginTop: '6px',
-                  fontSize: '0.78rem',
-                  fontWeight: 700,
-                  color: '#0d8a73',
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                }}
-              >
-                Review Applications <ArrowUpRight size={14} />
-              </button>
-            </div>
-
-            {/* Platform Average Rating */}
-            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '22px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Platform Rating</span>
-                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#fffbeb', color: '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Star size={20} fill="#f59e0b" />
-                </div>
-              </div>
-              <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#1e293b', marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                {(stats?.total_reviews || reviews.length > 0) ? (stats?.avg_rating || 0).toFixed(1) : '—'} <span style={{ fontSize: '1rem', color: '#94a3b8', fontWeight: 600 }}>{(stats?.total_reviews || reviews.length > 0) ? '/ 5.0' : 'No ratings yet'}</span>
-              </div>
-              <p style={{ margin: '6px 0 0', fontSize: '0.78rem', color: '#64748b' }}>
-                Across <strong>{stats?.total_reviews ?? reviews.length}</strong> verified reviews
-              </p>
-            </div>
-          </div>
-
-          {/* Recent Bookings & Pending Verifications Split */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '24px' }}>
-            {/* Recent Bookings Box */}
-            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>Recent Event Bookings</h3>
-                <button
-                  onClick={() => setActiveTab('bookings')}
-                  style={{ background: 'none', border: 'none', color: '#0d8a73', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}
-                >
-                  View All ({bookings.length}) →
-                </button>
+                <div className="admin-dashboard-welcome-image" aria-hidden="true" />
               </div>
 
-              {bookings.length === 0 ? (
-                <p style={{ color: '#94a3b8', fontSize: '0.9rem', textAlign: 'center', padding: '24px 0' }}>No bookings registered yet.</p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {bookings.slice(0, 5).map(b => (
-                    <div
-                      key={b.id}
-                      onClick={() => setSelectedBooking(b)}
-                      style={{
-                        padding: '12px 14px',
-                        borderRadius: '12px',
-                        border: '1px solid #f1f5f9',
-                        background: '#f8fafc',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        cursor: 'pointer',
-                        transition: 'background 0.15s',
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.9rem' }}>
-                          {b.event_title}
-                        </div>
-                        <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
-                          By {b.customer_name} • {b.event_date} • KES {Number(b.total_price).toLocaleString()}
-                        </div>
-                      </div>
-                      <span style={{
-                        padding: '4px 10px',
-                        borderRadius: '999px',
-                        fontSize: '0.72rem',
-                        fontWeight: 700,
-                        background: b.status === 'APPROVED' ? '#ecfdf5' : b.status === 'PENDING' ? '#fef3c7' : b.status === 'COMPLETED' ? '#eff6ff' : '#fee2e2',
-                        color: b.status === 'APPROVED' ? '#059669' : b.status === 'PENDING' ? '#b45309' : b.status === 'COMPLETED' ? '#2563eb' : '#dc2626',
-                      }}>
-                        {b.status}
-                      </span>
+              {/* Metrics Grid */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: '18px',
+                marginBottom: '32px',
+              }}>
+                {/* Total Revenue */}
+                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '22px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Gross Revenue</span>
+                    <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <DollarSign size={20} />
                     </div>
-                  ))}
+                  </div>
+                  <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#1e293b', marginTop: '12px' }}>
+                    KES {(stats?.total_revenue || 0).toLocaleString()}
+                  </div>
+                  <p style={{ margin: '6px 0 0', fontSize: '0.78rem', color: '#059669', fontWeight: 600 }}>
+                    From confirmed & completed bookings
+                  </p>
                 </div>
-              )}
-            </div>
 
-            {/* Pending Provider Verifications Box */}
-            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>Businesses Awaiting Review</h3>
-                <button
-                  onClick={() => setActiveTab('verifications')}
-                  style={{ background: 'none', border: 'none', color: '#0d8a73', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}
-                >
-                  Go to Queue ({pendingVerificationCount}) →
-                </button>
+                {/* Total Users */}
+                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '22px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Total Users</span>
+                    <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#f5f3ff', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Users size={20} />
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#1e293b', marginTop: '12px' }}>
+                    {stats?.total_users ?? users.length}
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '6px', fontSize: '0.75rem', color: '#64748b' }}>
+                    <span><strong>{stats?.total_customers ?? users.filter(u => u.role === 'CUSTOMER' && !u.is_staff).length}</strong> Clients</span> •
+                    <span><strong>{stats?.total_providers ?? users.filter(u => (u.role === 'PROVIDER' || u.is_vendor || u.is_venue_owner) && !u.is_staff).length}</strong> Providers</span>
+                  </div>
+                </div>
+
+                {/* Pending Verifications */}
+                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '22px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Pending Review</span>
+                    <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#fef3c7', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Clock size={20} />
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#d97706', marginTop: '12px' }}>
+                    {pendingVerificationCount}
+                  </div>
+                  <button
+                    onClick={() => setActiveTab('verifications')}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      marginTop: '6px',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      color: '#0d8a73',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    Review Applications <ArrowUpRight size={14} />
+                  </button>
+                </div>
+
               </div>
 
-              {pendingVerificationCount === 0 ? (
-                <div style={{ textAlign: 'center', padding: '36px 0', color: '#059669' }}>
-                  <CheckCircle2 size={36} style={{ margin: '0 auto 8px' }} />
-                  <p style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem' }}>All Caught Up!</p>
-                  <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.82rem' }}>No pending businesses awaiting approval.</p>
+              {/* Pending Provider Verifications */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '24px' }}>
+                {/* Pending Provider Verifications Box */}
+                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+                    <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>Businesses Awaiting Review</h3>
+                    <button
+                      onClick={() => setActiveTab('verifications')}
+                      style={{ background: 'none', border: 'none', color: '#0d8a73', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}
+                    >
+                      Go to Queue ({pendingVerificationCount}) →
+                    </button>
+                  </div>
+
+                  {pendingVerificationCount === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '36px 0', color: '#059669' }}>
+                      <CheckCircle2 size={36} style={{ margin: '0 auto 8px' }} />
+                      <p style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem' }}>All Caught Up!</p>
+                      <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.82rem' }}>No pending businesses awaiting approval.</p>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {unifiedAccounts.filter(a => a.verification_status === 'PENDING').slice(0, 5).map(acc => (
+                        <div
+                          key={`${acc.account_type}-${acc.id}`}
+                          style={{
+                            padding: '12px 14px',
+                            borderRadius: '12px',
+                            border: '1px solid #fef3c7',
+                            background: '#fffbeb',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.9rem' }}>
+                              {acc.business_name}
+                            </div>
+                            <div style={{ fontSize: '0.78rem', color: '#78350f', marginTop: '2px' }}>
+                              {acc.account_type} • {acc.category_or_type} • {acc.location}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <button
+                              onClick={() => setSelectedAccount(acc)}
+                              style={{
+                                padding: '6px 12px',
+                                borderRadius: '8px',
+                                background: '#0d8a73',
+                                color: '#ffffff',
+                                border: 'none',
+                                fontSize: '0.78rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Inspect
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {unifiedAccounts.filter(a => a.verification_status === 'PENDING').slice(0, 5).map(acc => (
-                    <div
-                      key={`${acc.account_type}-${acc.id}`}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: USERS MANAGEMENT */}
+          {activeTab === 'users' && (
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+              {/* Header & Filters */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
+                <div>
+                  <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>Registered User Accounts</h2>
+                  <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>View, activate, deactivate, or modify access levels for platform accounts.</p>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  {/* Type Filter Buttons */}
+                  <div style={{ display: 'flex', background: '#f1f5f9', padding: '3px', borderRadius: '8px', gap: '2px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setUserProviderTypeFilter('ALL')}
                       style={{
-                        padding: '12px 14px',
-                        borderRadius: '12px',
-                        border: '1px solid #fef3c7',
-                        background: '#fffbeb',
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        border: 'none',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        background: userProviderTypeFilter === 'ALL' ? '#0d9488' : 'transparent',
+                        color: userProviderTypeFilter === 'ALL' ? '#ffffff' : '#64748b',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      All ({users.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setUserProviderTypeFilter('VENUE')}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        border: 'none',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        background: userProviderTypeFilter === 'VENUE' ? '#0d9488' : 'transparent',
+                        color: userProviderTypeFilter === 'VENUE' ? '#ffffff' : '#64748b',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      Venues & Spaces ({users.filter(isVenueOwnerUser).length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setUserProviderTypeFilter('VENDOR')}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        border: 'none',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        background: userProviderTypeFilter === 'VENDOR' ? '#0d9488' : 'transparent',
+                        color: userProviderTypeFilter === 'VENDOR' ? '#ffffff' : '#64748b',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      Vendor Services ({users.filter(isVendorUser).length})
+                    </button>
+                  </div>
+
+                  <div style={{ position: 'relative' }}>
+                    <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+                    <input
+                      type="text"
+                      placeholder="Search user, email..."
+                      value={userSearch}
+                      onChange={(e) => setUserSearch(e.target.value)}
+                      style={{
+                        padding: '8px 14px 8px 36px',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.85rem',
+                        outline: 'none',
+                        width: '220px',
+                      }}
+                    />
+                  </div>
+
+                  <select
+                    value={userRoleFilter}
+                    onChange={(e) => setUserRoleFilter(e.target.value)}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.85rem',
+                      outline: 'none',
+                      background: '#fff',
+                      fontWeight: 600,
+                      color: '#334155',
+                    }}
+                  >
+                    <option value="ALL">All Roles</option>
+                    <option value="CUSTOMER">Customers</option>
+                    <option value="PROVIDER">Business Providers</option>
+                    <option value="ADMIN">Administrators</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Users Table */}
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#64748b' }}>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>User / Email</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Assigned Role</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Joined Date</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Status</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700, textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredUsers.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} style={{ padding: '36px', textAlign: 'center', color: '#94a3b8' }}>
+                          No users match your filter criteria.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredUsers.map(u => (
+                        <tr key={u.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '14px 16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#ccfbf1', color: '#0d8a73', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.9rem' }}>
+                                {u.username[0]?.toUpperCase() || 'U'}
+                              </div>
+                              <div>
+                                <div style={{ fontWeight: 700, color: '#1e293b' }}>
+                                  {u.first_name ? `${u.first_name} ${u.last_name || ''}` : u.username}
+                                </div>
+                                <div style={{ fontSize: '0.78rem', color: '#64748b' }}>{u.email || u.username}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td style={{ padding: '14px 16px' }}>
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '3px 10px',
+                              borderRadius: '999px',
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              background: u.role === 'ADMIN' ? '#f5f3ff' : u.role === 'PROVIDER' ? '#ecfdf5' : '#eff6ff',
+                              color: u.role === 'ADMIN' ? '#7c3aed' : u.role === 'PROVIDER' ? '#059669' : '#2563eb',
+                            }}>
+                              {u.role === 'ADMIN' && <Shield size={12} />}
+                              {u.role}
+                            </span>
+                          </td>
+                          <td style={{ padding: '14px 16px', color: '#64748b', fontSize: '0.82rem' }}>
+                            {u.date_joined ? new Date(u.date_joined).toLocaleDateString() : 'N/A'}
+                          </td>
+                          <td style={{ padding: '14px 16px' }}>
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              background: u.is_active !== false ? '#ecfdf5' : '#fee2e2',
+                              color: u.is_active !== false ? '#059669' : '#dc2626',
+                            }}>
+                              {u.is_active !== false ? 'Active' : 'Inactive'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '14px 16px', textAlign: 'right' }}>
+                            <div style={{ display: 'inline-flex', gap: '8px' }}>
+                              <button
+                                onClick={() => {
+                                  setEditingUser(u);
+                                  setNewRoleSelection(u.role || 'CUSTOMER');
+                                }}
+                                title="Edit Role"
+                                style={{
+                                  padding: '6px 10px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #cbd5e1',
+                                  background: '#fff',
+                                  color: '#334155',
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                <Edit3 size={13} /> Edit Role
+                              </button>
+
+                              <button
+                                onClick={() => handleToggleUserActive(u)}
+                                title={u.is_active !== false ? 'Deactivate Account' : 'Activate Account'}
+                                style={{
+                                  padding: '6px 10px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #cbd5e1',
+                                  background: u.is_active !== false ? '#fff1f2' : '#ecfdf5',
+                                  color: u.is_active !== false ? '#e11d48' : '#059669',
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {u.is_active !== false ? <UserX size={13} /> : <UserCheck size={13} />}
+                                {u.is_active !== false ? 'Deactivate' : 'Activate'}
+                              </button>
+
+                              <button
+                                onClick={() => setDeleteConfirm({ type: 'user', id: u.id, title: u.username })}
+                                title="Delete User"
+                                style={{
+                                  padding: '6px 8px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #fecdd3',
+                                  background: '#fff',
+                                  color: '#ef4444',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: BOOKINGS MANAGEMENT */}
+          {activeTab === 'bookings' && (
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
+                <div>
+                  <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>Platform Bookings Moderation</h2>
+                  <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>View client reservations, inspect financial totals, and override approval or cancellation states.</p>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ position: 'relative' }}>
+                    <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+                    <input
+                      type="text"
+                      placeholder="Search title, venue, client..."
+                      value={bookingSearch}
+                      onChange={(e) => setBookingSearch(e.target.value)}
+                      style={{
+                        padding: '8px 14px 8px 36px',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.85rem',
+                        outline: 'none',
+                        width: '230px',
+                      }}
+                    />
+                  </div>
+
+                  <select
+                    value={bookingStatusFilter}
+                    onChange={(e) => setBookingStatusFilter(e.target.value)}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.85rem',
+                      outline: 'none',
+                      background: '#fff',
+                      fontWeight: 600,
+                      color: '#334155',
+                    }}
+                  >
+                    <option value="ALL">All Statuses</option>
+                    <option value="PENDING">Pending Approval</option>
+                    <option value="APPROVED">Approved</option>
+                    <option value="COMPLETED">Completed</option>
+                    <option value="CANCELLED">Cancelled</option>
+                    <option value="REJECTED">Rejected</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#64748b' }}>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>ID & Event</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Reserved Listing</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Customer</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Date & Guests</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Total Price</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Status</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700, textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredBookings.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} style={{ padding: '36px', textAlign: 'center', color: '#94a3b8' }}>
+                          No bookings found for the selected filter.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredBookings.map(b => (
+                        <tr key={b.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '14px 16px' }}>
+                            <div style={{ fontWeight: 700, color: '#1e293b' }}>#{b.id} {b.event_title}</div>
+                            <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Type: {b.event_type}</div>
+                          </td>
+                          <td style={{ padding: '14px 16px', color: '#334155' }}>
+                            {b.venue_details?.title || b.vendor_details?.business_name || (b.venue ? `Venue #${b.venue}` : `Vendor #${b.vendor}`)}
+                          </td>
+                          <td style={{ padding: '14px 16px' }}>
+                            <div style={{ fontWeight: 600, color: '#1e293b' }}>{b.customer_name}</div>
+                            {b.customer_email && <div style={{ fontSize: '0.78rem', color: '#64748b' }}>{b.customer_email}</div>}
+                          </td>
+                          <td style={{ padding: '14px 16px', color: '#64748b' }}>
+                            <div>{b.event_date}</div>
+                            <div style={{ fontSize: '0.78rem' }}>{b.guest_count} attendees</div>
+                          </td>
+                          <td style={{ padding: '14px 16px', fontWeight: 700, color: '#0d8a73' }}>
+                            KES {Number(b.total_price).toLocaleString()}
+                          </td>
+                          <td style={{ padding: '14px 16px' }}>
+                            <span style={{
+                              padding: '3px 8px',
+                              borderRadius: '999px',
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              background: b.status === 'APPROVED' ? '#ecfdf5' : b.status === 'PENDING' ? '#fef3c7' : b.status === 'COMPLETED' ? '#eff6ff' : '#fee2e2',
+                              color: b.status === 'APPROVED' ? '#059669' : b.status === 'PENDING' ? '#b45309' : b.status === 'COMPLETED' ? '#2563eb' : '#dc2626',
+                            }}>
+                              {b.status}
+                            </span>
+                          </td>
+                          <td style={{ padding: '14px 16px', textAlign: 'right' }}>
+                            <div style={{ display: 'inline-flex', gap: '6px' }}>
+                              <button
+                                onClick={() => setSelectedBooking(b)}
+                                title="View Details"
+                                style={{
+                                  padding: '6px 10px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #cbd5e1',
+                                  background: '#fff',
+                                  color: '#334155',
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                <Eye size={13} /> View
+                              </button>
+
+                              {b.status === 'PENDING' && (
+                                <button
+                                  onClick={() => handleUpdateBookingStatus(b.id, 'APPROVED')}
+                                  title="Approve Booking"
+                                  style={{
+                                    padding: '6px 10px',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    background: '#059669',
+                                    color: '#fff',
+                                    cursor: 'pointer',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  Approve
+                                </button>
+                              )}
+
+                              {b.status === 'APPROVED' && (
+                                <button
+                                  onClick={() => handleUpdateBookingStatus(b.id, 'COMPLETED')}
+                                  title="Mark Completed"
+                                  style={{
+                                    padding: '6px 10px',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    background: '#2563eb',
+                                    color: '#fff',
+                                    cursor: 'pointer',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  Complete
+                                </button>
+                              )}
+
+                              {b.status !== 'CANCELLED' && (
+                                <button
+                                  onClick={() => handleUpdateBookingStatus(b.id, 'CANCELLED')}
+                                  title="Cancel Booking"
+                                  style={{
+                                    padding: '6px 8px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #cbd5e1',
+                                    background: '#fff',
+                                    color: '#dc2626',
+                                    cursor: 'pointer',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  Cancel
+                                </button>
+                              )}
+
+                              <button
+                                onClick={() => setDeleteConfirm({ type: 'booking', id: b.id, title: `Booking #${b.id} (${b.event_title})` })}
+                                title="Delete Booking"
+                                style={{
+                                  padding: '6px 8px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #fecdd3',
+                                  background: '#fff',
+                                  color: '#ef4444',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: VENUES & SPACES MODERATION */}
+          {activeTab === 'venues' && (
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
+                <div>
+                  <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>Provider Listings & Catalog</h2>
+                  <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Moderate all provider spaces and vendor service offerings, verify listings, and control live customer visibility.</p>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  {/* Type Filter Buttons */}
+                  <div style={{ display: 'flex', background: '#f1f5f9', padding: '3px', borderRadius: '8px', gap: '2px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setVenueTypeFilter('ALL')}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        border: 'none',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        background: venueTypeFilter === 'ALL' ? '#0d9488' : 'transparent',
+                        color: venueTypeFilter === 'ALL' ? '#ffffff' : '#64748b',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      All ({venues.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVenueTypeFilter('VENUE')}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        border: 'none',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        background: venueTypeFilter === 'VENUE' ? '#0d9488' : 'transparent',
+                        color: venueTypeFilter === 'VENUE' ? '#ffffff' : '#64748b',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      Venues & Spaces ({venues.filter(v => !isServiceListing(v)).length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVenueTypeFilter('VENDOR')}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        border: 'none',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        background: venueTypeFilter === 'VENDOR' ? '#0d9488' : 'transparent',
+                        color: venueTypeFilter === 'VENDOR' ? '#ffffff' : '#64748b',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      Vendor Services ({venues.filter(isServiceListing).length})
+                    </button>
+                  </div>
+                  <div style={{ position: 'relative' }}>
+                    <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+                    <input
+                      type="text"
+                      placeholder="Search venue name, location..."
+                      value={venueSearch}
+                      onChange={(e) => setVenueSearch(e.target.value)}
+                      style={{
+                        padding: '8px 14px 8px 36px',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.85rem',
+                        outline: 'none',
+                        width: '240px',
+                      }}
+                    />
+                  </div>
+
+                  <select
+                    value={venueCategoryFilter}
+                    onChange={(e) => setVenueCategoryFilter(e.target.value)}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.85rem',
+                      outline: 'none',
+                      background: '#fff',
+                      fontWeight: 600,
+                      color: '#334155',
+                    }}
+                  >
+                    <option value="ALL">All Categories</option>
+                    <option value="WEDDING">Wedding Gardens & Halls</option>
+                    <option value="CONFERENCE">Corporate & Conference</option>
+                    <option value="BIRTHDAY">Private Parties & Birthdays</option>
+                    <option value="OUTDOOR">Outdoor & Picnic</option>
+                  </select>
+
+                  <select
+                    value={venueApprovalFilter}
+                    onChange={(e) => setVenueApprovalFilter(e.target.value as any)}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.85rem',
+                      outline: 'none',
+                      background: '#fff',
+                      fontWeight: 600,
+                      color: '#334155',
+                    }}
+                  >
+                    <option value="ALL">All Approval Statuses</option>
+                    <option value="PENDING">Pending Approval</option>
+                    <option value="APPROVED">Approved & Live</option>
+                    <option value="REJECTED">Rejected Listings</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#64748b' }}>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Listing / Offering</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Category & Location</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Capacity & Rate</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Approval Status</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Live Visibility</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700, textAlign: 'right' }}>Admin Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredVenues.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} style={{ padding: '36px', textAlign: 'center', color: '#94a3b8' }}>
+                          No provider listings or services match your criteria.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredVenues.map(v => {
+                        const status = v.approval_status || (v.is_verified ? 'APPROVED' : 'PENDING');
+                        return (
+                          <tr key={v.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '14px 16px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <div
+                                  style={{
+                                    width: '48px',
+                                    height: '48px',
+                                    borderRadius: '10px',
+                                    overflow: 'hidden',
+                                    background: '#f1f5f9',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    flexShrink: 0
+                                  }}
+                                >
+                                  {cleanImageUrl(v.image_url) ? (
+                                    <>
+                                      <img
+                                        src={cleanImageUrl(v.image_url)}
+                                        alt={v.title}
+                                        onError={(e) => {
+                                          e.currentTarget.style.display = 'none';
+                                          const placeholder = e.currentTarget.nextElementSibling;
+                                          if (placeholder instanceof HTMLElement) placeholder.style.display = 'flex';
+                                        }}
+                                        style={{
+                                          width: '100%',
+                                          height: '100%',
+                                          objectFit: 'cover'
+                                        }}
+                                      />
+                                      <div style={{ display: 'none', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
+                                        <ImageOff size={20} color="#94a3b8" />
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <ImageOff size={20} color="#94a3b8" />
+                                  )}
+                                </div>
+                                <div>
+                                  <div style={{ fontWeight: 700, color: '#1e293b' }}>{v.title}</div>
+                                  <div style={{ fontSize: '0.78rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                                    <span>ID #{v.id}</span>
+                                    <span>•</span>
+                                    <span style={{
+                                      background: (v.vendor || v.vendor_name || v.capacity === 0 || ['PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'].includes(v.category)) ? '#f0fdf4' : '#eff6ff',
+                                      color: (v.vendor || v.vendor_name || v.capacity === 0 || ['PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'].includes(v.category)) ? '#166534' : '#1e40af',
+                                      padding: '1px 6px',
+                                      borderRadius: '4px',
+                                      fontWeight: 600,
+                                      fontSize: '0.72rem'
+                                    }}>
+                                      {(v.vendor || v.vendor_name || v.capacity === 0 || ['PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'].includes(v.category)) ? 'Vendor Service' : 'Venue Space'}
+                                    </span>
+                                    <span>•</span>
+                                    <span>{v.owner_name || v.vendor_name || (v.owner ? 'Venue Owner #' + v.owner : 'Vendor Provider')}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td style={{ padding: '14px 16px' }}>
+                              <div style={{ color: '#1e293b', fontWeight: 600 }}>{v.category_display || v.category}</div>
+                              <div style={{ fontSize: '0.78rem', color: '#64748b' }}>{v.location}</div>
+                            </td>
+                            <td style={{ padding: '14px 16px' }}>
+                              <div style={{ fontWeight: 700, color: '#0d8a73' }}>KES {Number(v.price_per_day).toLocaleString()}/day</div>
+                              <div style={{ fontSize: '0.78rem', color: '#64748b' }}>{v.capacity > 0 ? `Up to ${v.capacity} guests` : 'Service / Package'}</div>
+                            </td>
+                            <td style={{ padding: '14px 16px' }}>
+                              <span style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '4px 10px',
+                                borderRadius: '999px',
+                                fontSize: '0.75rem',
+                                fontWeight: 700,
+                                background: status === 'APPROVED' ? '#ecfdf5' : status === 'REJECTED' ? '#fee2e2' : '#fef3c7',
+                                color: status === 'APPROVED' ? '#059669' : status === 'REJECTED' ? '#dc2626' : '#b45309',
+                              }}>
+                                {status === 'APPROVED' ? <CheckCircle2 size={12} /> : status === 'REJECTED' ? <X size={12} /> : <Clock size={12} />}
+                                {status}
+                              </span>
+                              {status === 'REJECTED' && v.rejection_reason && (
+                                <div style={{ fontSize: '0.72rem', color: '#dc2626', marginTop: '2px', maxWidth: '200px' }}>
+                                  Reason: {v.rejection_reason}
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ padding: '14px 16px' }}>
+                              <button
+                                onClick={() => handleToggleVenueAvailability(v.id)}
+                                style={{
+                                  padding: '4px 10px',
+                                  borderRadius: '999px',
+                                  border: 'none',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  background: v.is_available !== false ? '#ecfdf5' : '#fee2e2',
+                                  color: v.is_available !== false ? '#059669' : '#dc2626',
+                                }}
+                              >
+                                {v.is_available !== false ? 'Active' : 'Inactive'}
+                              </button>
+                            </td>
+                            <td style={{ padding: '14px 16px', textAlign: 'right' }}>
+                              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                                <button
+                                  onClick={() => setInspectVenueModal(v)}
+                                  style={{
+                                    padding: '6px 10px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #cbd5e1',
+                                    background: '#fff',
+                                    color: '#475569',
+                                    fontSize: '0.78rem',
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Inspect
+                                </button>
+
+                                {status !== 'APPROVED' && (
+                                  <button
+                                    onClick={async () => {
+                                      const res = await ApiService.approveVenue(v.id);
+                                      if (res.success) {
+                                        setVenues(prev => prev.map(item => item.id === v.id ? { ...item, approval_status: 'APPROVED', is_verified: true, rejection_reason: undefined } : item));
+                                        toast.success(`Venue '${v.title}' has been approved and is now live.`);
+                                        onDataChange?.();
+                                      } else {
+                                        toast.error(res.error || 'Failed to approve listing.');
+                                      }
+                                    }}
+                                    style={{
+                                      padding: '6px 10px',
+                                      borderRadius: '6px',
+                                      border: 'none',
+                                      background: '#059669',
+                                      color: '#fff',
+                                      fontSize: '0.78rem',
+                                      fontWeight: 700,
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    Approve
+                                  </button>
+                                )}
+
+                                {status !== 'REJECTED' && (
+                                  <button
+                                    onClick={() => {
+                                      setRejectVenueModal(v);
+                                      setVenueRejectReason('');
+                                    }}
+                                    style={{
+                                      padding: '6px 10px',
+                                      borderRadius: '6px',
+                                      border: 'none',
+                                      background: '#ef4444',
+                                      color: '#fff',
+                                      fontSize: '0.78rem',
+                                      fontWeight: 700,
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    Reject
+                                  </button>
+                                )}
+
+                                <button
+                                  onClick={() => setDeleteConfirm({ type: 'venue', id: v.id, title: v.title })}
+                                  title="Delete Venue"
+                                  style={{
+                                    padding: '6px 8px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #fecdd3',
+                                    background: '#fff',
+                                    color: '#ef4444',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 5: PROVIDER VERIFICATION QUEUE */}
+          {activeTab === 'verifications' && (
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
+                <div>
+                  <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>Vendor & Venue Owner Verification Queue</h2>
+                  <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Review provider credentials, licenses, portfolios, and grant verified status badges.</p>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <select
+                    value={verificationTypeFilter}
+                    onChange={(e) => setVerificationTypeFilter(e.target.value as any)}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.85rem',
+                      outline: 'none',
+                      background: '#fff',
+                      fontWeight: 600,
+                      color: '#334155',
+                    }}
+                  >
+                    <option value="ALL">All Provider Types</option>
+                    <option value="VENDOR">Vendors & Planners</option>
+                    <option value="VENUE_OWNER">Venue Owners</option>
+                  </select>
+
+                  <select
+                    value={verificationStatusFilter}
+                    onChange={(e) => setVerificationStatusFilter(e.target.value as any)}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.85rem',
+                      outline: 'none',
+                      background: '#fff',
+                      fontWeight: 600,
+                      color: '#334155',
+                    }}
+                  >
+                    <option value="ALL">All Statuses</option>
+                    <option value="PENDING">Pending Review</option>
+                    <option value="APPROVED">Approved</option>
+                    <option value="REJECTED">Rejected</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 320px), 1fr))', gap: '16px' }}>
+                {filteredAccounts.length === 0 ? (
+                  <div style={{ gridColumn: '1 / -1', padding: '48px 0', textAlign: 'center', color: '#94a3b8' }}>
+                    No provider accounts found matching your selected filter.
+                  </div>
+                ) : (
+                  filteredAccounts.map(account => (
+                    <div
+                      key={`${account.account_type}-${account.id}`}
+                      style={{
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '14px',
+                        padding: '20px',
+                        background: '#ffffff',
                         display: 'flex',
+                        flexDirection: 'column',
                         justifyContent: 'space-between',
-                        alignItems: 'center',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
                       }}
                     >
                       <div>
-                        <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.9rem' }}>
-                          {acc.business_name}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            {account.logo_url ? (
+                              <img src={account.logo_url} alt="Logo" style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'cover' }} />
+                            ) : (
+                              <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
+                                <Building2 size={20} />
+                              </div>
+                            )}
+                            <div>
+                              <h4 style={{ margin: 0, fontWeight: 700, color: '#1e293b', fontSize: '1rem' }}>
+                                {account.business_name}
+                              </h4>
+                              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                                {account.account_type} • {account.category_or_type}
+                              </span>
+                            </div>
+                          </div>
+
+                          <span style={{
+                            padding: '3px 8px',
+                            borderRadius: '999px',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            background: account.verification_status === 'APPROVED' ? '#ecfdf5' : account.verification_status === 'REJECTED' ? '#fee2e2' : '#fef3c7',
+                            color: account.verification_status === 'APPROVED' ? '#059669' : account.verification_status === 'REJECTED' ? '#dc2626' : '#b45309',
+                          }}>
+                            {account.verification_status}
+                          </span>
                         </div>
-                        <div style={{ fontSize: '0.78rem', color: '#78350f', marginTop: '2px' }}>
-                          {acc.account_type} • {acc.category_or_type} • {acc.location}
+
+                        <div style={{ fontSize: '0.82rem', color: '#64748b', display: 'flex', flexDirection: 'column', gap: '4px', margin: '12px 0' }}>
+                          {account.location && <div><MapPin size={12} style={{ display: 'inline', marginRight: '4px' }} />{account.location}</div>}
+                          {account.email && <div>Email: {account.email}</div>}
+                          {account.years_in_business !== undefined && <div>Experience: {account.years_in_business} years</div>}
                         </div>
                       </div>
-                      <div style={{ display: 'flex', gap: '6px' }}>
+
+                      <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
                         <button
-                          onClick={() => setSelectedAccount(acc)}
+                          onClick={() => setSelectedAccount(account)}
                           style={{
-                            padding: '6px 12px',
+                            padding: '6px 14px',
                             borderRadius: '8px',
-                            background: '#0d8a73',
-                            color: '#ffffff',
-                            border: 'none',
-                            fontSize: '0.78rem',
-                            fontWeight: 700,
+                            border: '1px solid #cbd5e1',
+                            background: '#fff',
+                            color: '#475569',
+                            fontWeight: 600,
+                            fontSize: '0.8rem',
                             cursor: 'pointer',
                           }}
                         >
-                          Inspect
+                          Inspect Profile
                         </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* TAB 2: USERS MANAGEMENT */}
-      {activeTab === 'users' && (
-        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-          {/* Header & Filters */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
-            <div>
-              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>Registered User Accounts</h2>
-              <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>View, activate, deactivate, or modify access levels for platform accounts.</p>
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-              {/* Type Filter Buttons */}
-              <div style={{ display: 'flex', background: '#f1f5f9', padding: '3px', borderRadius: '8px', gap: '2px' }}>
-                <button
-                  type="button"
-                  onClick={() => setVenueTypeFilter('ALL')}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: '6px',
-                    border: 'none',
-                    fontSize: '0.8rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    background: venueTypeFilter === 'ALL' ? '#0d9488' : 'transparent',
-                    color: venueTypeFilter === 'ALL' ? '#ffffff' : '#64748b',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  All ({venues.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setVenueTypeFilter('VENUE')}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: '6px',
-                    border: 'none',
-                    fontSize: '0.8rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    background: venueTypeFilter === 'VENUE' ? '#0d9488' : 'transparent',
-                    color: venueTypeFilter === 'VENUE' ? '#ffffff' : '#64748b',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  Venues & Spaces ({venues.filter(v => !isServiceListing(v)).length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setVenueTypeFilter('VENDOR')}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: '6px',
-                    border: 'none',
-                    fontSize: '0.8rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    background: venueTypeFilter === 'VENDOR' ? '#0d9488' : 'transparent',
-                    color: venueTypeFilter === 'VENDOR' ? '#ffffff' : '#64748b',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  Vendor Services ({venues.filter(isServiceListing).length})
-                </button>
-              </div>
-
-              <div style={{ position: 'relative' }}>
-                <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-                <input
-                  type="text"
-                  placeholder="Search user, email..."
-                  value={userSearch}
-                  onChange={(e) => setUserSearch(e.target.value)}
-                  style={{
-                    padding: '8px 14px 8px 36px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '0.85rem',
-                    outline: 'none',
-                    width: '220px',
-                  }}
-                />
-              </div>
-
-              <select
-                value={userRoleFilter}
-                onChange={(e) => setUserRoleFilter(e.target.value)}
-                style={{
-                  padding: '8px 12px',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '0.85rem',
-                  outline: 'none',
-                  background: '#fff',
-                  fontWeight: 600,
-                  color: '#334155',
-                }}
-              >
-                <option value="ALL">All Roles</option>
-                <option value="CUSTOMER">Customers</option>
-                <option value="PROVIDER">Business Providers</option>
-                <option value="ADMIN">Administrators</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Users Table */}
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
-              <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#64748b' }}>
-                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>User / Email</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Assigned Role</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Joined Date</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Status</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 700, textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredUsers.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} style={{ padding: '36px', textAlign: 'center', color: '#94a3b8' }}>
-                      No users match your filter criteria.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredUsers.map(u => (
-                    <tr key={u.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '14px 16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#ccfbf1', color: '#0d8a73', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.9rem' }}>
-                            {u.username[0]?.toUpperCase() || 'U'}
-                          </div>
-                          <div>
-                            <div style={{ fontWeight: 700, color: '#1e293b' }}>
-                              {u.first_name ? `${u.first_name} ${u.last_name || ''}` : u.username}
-                            </div>
-                            <div style={{ fontSize: '0.78rem', color: '#64748b' }}>{u.email || u.username}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td style={{ padding: '14px 16px' }}>
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          padding: '3px 10px',
-                          borderRadius: '999px',
-                          fontSize: '0.75rem',
-                          fontWeight: 700,
-                          background: u.role === 'ADMIN' ? '#f5f3ff' : u.role === 'PROVIDER' ? '#ecfdf5' : '#eff6ff',
-                          color: u.role === 'ADMIN' ? '#7c3aed' : u.role === 'PROVIDER' ? '#059669' : '#2563eb',
-                        }}>
-                          {u.role === 'ADMIN' && <Shield size={12} />}
-                          {u.role}
-                        </span>
-                      </td>
-                      <td style={{ padding: '14px 16px', color: '#64748b', fontSize: '0.82rem' }}>
-                        {u.date_joined ? new Date(u.date_joined).toLocaleDateString() : 'N/A'}
-                      </td>
-                      <td style={{ padding: '14px 16px' }}>
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          padding: '3px 8px',
-                          borderRadius: '6px',
-                          fontSize: '0.75rem',
-                          fontWeight: 700,
-                          background: u.is_active !== false ? '#ecfdf5' : '#fee2e2',
-                          color: u.is_active !== false ? '#059669' : '#dc2626',
-                        }}>
-                          {u.is_active !== false ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '14px 16px', textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', gap: '8px' }}>
-                          <button
-                            onClick={() => {
-                              setEditingUser(u);
-                              setNewRoleSelection(u.role || 'CUSTOMER');
-                            }}
-                            title="Edit Role"
-                            style={{
-                              padding: '6px 10px',
-                              borderRadius: '6px',
-                              border: '1px solid #cbd5e1',
-                              background: '#fff',
-                              color: '#334155',
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              fontSize: '0.75rem',
-                              fontWeight: 600,
-                            }}
-                          >
-                            <Edit3 size={13} /> Edit Role
-                          </button>
-
-                          <button
-                            onClick={() => handleToggleUserActive(u)}
-                            title={u.is_active !== false ? 'Deactivate Account' : 'Activate Account'}
-                            style={{
-                              padding: '6px 10px',
-                              borderRadius: '6px',
-                              border: '1px solid #cbd5e1',
-                              background: u.is_active !== false ? '#fff1f2' : '#ecfdf5',
-                              color: u.is_active !== false ? '#e11d48' : '#059669',
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              fontSize: '0.75rem',
-                              fontWeight: 600,
-                            }}
-                          >
-                            {u.is_active !== false ? <UserX size={13} /> : <UserCheck size={13} />}
-                            {u.is_active !== false ? 'Deactivate' : 'Activate'}
-                          </button>
-
-                          <button
-                            onClick={() => setDeleteConfirm({ type: 'user', id: u.id, title: u.username })}
-                            title="Delete User"
-                            style={{
-                              padding: '6px 8px',
-                              borderRadius: '6px',
-                              border: '1px solid #fecdd3',
-                              background: '#fff',
-                              color: '#ef4444',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 3: BOOKINGS MANAGEMENT */}
-      {activeTab === 'bookings' && (
-        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
-            <div>
-              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>Platform Bookings Moderation</h2>
-              <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>View client reservations, inspect financial totals, and override approval or cancellation states.</p>
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <div style={{ position: 'relative' }}>
-                <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-                <input
-                  type="text"
-                  placeholder="Search title, venue, client..."
-                  value={bookingSearch}
-                  onChange={(e) => setBookingSearch(e.target.value)}
-                  style={{
-                    padding: '8px 14px 8px 36px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '0.85rem',
-                    outline: 'none',
-                    width: '230px',
-                  }}
-                />
-              </div>
-
-              <select
-                value={bookingStatusFilter}
-                onChange={(e) => setBookingStatusFilter(e.target.value)}
-                style={{
-                  padding: '8px 12px',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '0.85rem',
-                  outline: 'none',
-                  background: '#fff',
-                  fontWeight: 600,
-                  color: '#334155',
-                }}
-              >
-                <option value="ALL">All Statuses</option>
-                <option value="PENDING">Pending Approval</option>
-                <option value="APPROVED">Approved</option>
-                <option value="COMPLETED">Completed</option>
-                <option value="CANCELLED">Cancelled</option>
-                <option value="REJECTED">Rejected</option>
-              </select>
-            </div>
-          </div>
-
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
-              <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#64748b' }}>
-                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>ID & Event</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Reserved Listing</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Customer</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Date & Guests</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Total Price</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Status</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 700, textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredBookings.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} style={{ padding: '36px', textAlign: 'center', color: '#94a3b8' }}>
-                      No bookings found for the selected filter.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredBookings.map(b => (
-                    <tr key={b.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '14px 16px' }}>
-                        <div style={{ fontWeight: 700, color: '#1e293b' }}>#{b.id} {b.event_title}</div>
-                        <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Type: {b.event_type}</div>
-                      </td>
-                      <td style={{ padding: '14px 16px', color: '#334155' }}>
-                        {b.venue_details?.title || b.vendor_details?.business_name || (b.venue ? `Venue #${b.venue}` : `Vendor #${b.vendor}`)}
-                      </td>
-                      <td style={{ padding: '14px 16px' }}>
-                        <div style={{ fontWeight: 600, color: '#1e293b' }}>{b.customer_name}</div>
-                        {b.customer_email && <div style={{ fontSize: '0.78rem', color: '#64748b' }}>{b.customer_email}</div>}
-                      </td>
-                      <td style={{ padding: '14px 16px', color: '#64748b' }}>
-                        <div>{b.event_date}</div>
-                        <div style={{ fontSize: '0.78rem' }}>{b.guest_count} attendees</div>
-                      </td>
-                      <td style={{ padding: '14px 16px', fontWeight: 700, color: '#0d8a73' }}>
-                        KES {Number(b.total_price).toLocaleString()}
-                      </td>
-                      <td style={{ padding: '14px 16px' }}>
-                        <span style={{
-                          padding: '3px 8px',
-                          borderRadius: '999px',
-                          fontSize: '0.75rem',
-                          fontWeight: 700,
-                          background: b.status === 'APPROVED' ? '#ecfdf5' : b.status === 'PENDING' ? '#fef3c7' : b.status === 'COMPLETED' ? '#eff6ff' : '#fee2e2',
-                          color: b.status === 'APPROVED' ? '#059669' : b.status === 'PENDING' ? '#b45309' : b.status === 'COMPLETED' ? '#2563eb' : '#dc2626',
-                        }}>
-                          {b.status}
-                        </span>
-                      </td>
-                      <td style={{ padding: '14px 16px', textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', gap: '6px' }}>
-                          <button
-                            onClick={() => setSelectedBooking(b)}
-                            title="View Details"
-                            style={{
-                              padding: '6px 10px',
-                              borderRadius: '6px',
-                              border: '1px solid #cbd5e1',
-                              background: '#fff',
-                              color: '#334155',
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              fontSize: '0.75rem',
-                              fontWeight: 600,
-                            }}
-                          >
-                            <Eye size={13} /> View
-                          </button>
-
-                          {b.status === 'PENDING' && (
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          {account.verification_status !== 'APPROVED' && (
                             <button
-                              onClick={() => handleUpdateBookingStatus(b.id, 'APPROVED')}
-                              title="Approve Booking"
+                              onClick={() => handleApproveAccount(account)}
                               style={{
-                                padding: '6px 10px',
-                                borderRadius: '6px',
+                                padding: '6px 12px',
+                                borderRadius: '8px',
                                 border: 'none',
                                 background: '#059669',
                                 color: '#fff',
-                                cursor: 'pointer',
-                                fontSize: '0.75rem',
                                 fontWeight: 700,
+                                fontSize: '0.8rem',
+                                cursor: 'pointer',
                               }}
                             >
                               Approve
                             </button>
                           )}
 
-                          {b.status === 'APPROVED' && (
+                          {account.verification_status !== 'REJECTED' && (
                             <button
-                              onClick={() => handleUpdateBookingStatus(b.id, 'COMPLETED')}
-                              title="Mark Completed"
+                              onClick={() => handleRejectAccount(account)}
                               style={{
-                                padding: '6px 10px',
-                                borderRadius: '6px',
+                                padding: '6px 12px',
+                                borderRadius: '8px',
                                 border: 'none',
-                                background: '#2563eb',
+                                background: '#ef4444',
                                 color: '#fff',
-                                cursor: 'pointer',
-                                fontSize: '0.75rem',
                                 fontWeight: 700,
-                              }}
-                            >
-                              Complete
-                            </button>
-                          )}
-
-                          {b.status !== 'CANCELLED' && (
-                            <button
-                              onClick={() => handleUpdateBookingStatus(b.id, 'CANCELLED')}
-                              title="Cancel Booking"
-                              style={{
-                                padding: '6px 8px',
-                                borderRadius: '6px',
-                                border: '1px solid #cbd5e1',
-                                background: '#fff',
-                                color: '#dc2626',
+                                fontSize: '0.8rem',
                                 cursor: 'pointer',
-                                fontSize: '0.75rem',
-                                fontWeight: 600,
                               }}
                             >
-                              Cancel
+                              Reject
                             </button>
                           )}
-
-                          <button
-                            onClick={() => setDeleteConfirm({ type: 'booking', id: b.id, title: `Booking #${b.id} (${b.event_title})` })}
-                            title="Delete Booking"
-                            style={{
-                              padding: '6px 8px',
-                              borderRadius: '6px',
-                              border: '1px solid #fecdd3',
-                              background: '#fff',
-                              color: '#ef4444',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            <Trash2 size={13} />
-                          </button>
                         </div>
-                      </td>
-                    </tr>
+                      </div>
+                    </div>
                   ))
                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 4: VENUES & SPACES MODERATION */}
-      {activeTab === 'venues' && (
-        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
-            <div>
-              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>Provider Listings & Catalog</h2>
-              <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Moderate all provider spaces and vendor service offerings, verify listings, and control live customer visibility.</p>
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-              {/* Type Filter Buttons */}
-              <div style={{ display: 'flex', background: '#f1f5f9', padding: '3px', borderRadius: '8px', gap: '2px' }}>
-                <button
-                  type="button"
-                  onClick={() => setVenueTypeFilter('ALL')}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: '6px',
-                    border: 'none',
-                    fontSize: '0.8rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    background: venueTypeFilter === 'ALL' ? '#0d9488' : 'transparent',
-                    color: venueTypeFilter === 'ALL' ? '#ffffff' : '#64748b',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  All ({venues.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setVenueTypeFilter('VENUE')}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: '6px',
-                    border: 'none',
-                    fontSize: '0.8rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    background: venueTypeFilter === 'VENUE' ? '#0d9488' : 'transparent',
-                    color: venueTypeFilter === 'VENUE' ? '#ffffff' : '#64748b',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  Venues & Spaces ({venues.filter(v => !isServiceListing(v)).length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setVenueTypeFilter('VENDOR')}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: '6px',
-                    border: 'none',
-                    fontSize: '0.8rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    background: venueTypeFilter === 'VENDOR' ? '#0d9488' : 'transparent',
-                    color: venueTypeFilter === 'VENDOR' ? '#ffffff' : '#64748b',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  Vendor Services ({venues.filter(isServiceListing).length})
-                </button>
-              </div>
-              <div style={{ position: 'relative' }}>
-                <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-                <input
-                  type="text"
-                  placeholder="Search venue name, location..."
-                  value={venueSearch}
-                  onChange={(e) => setVenueSearch(e.target.value)}
-                  style={{
-                    padding: '8px 14px 8px 36px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '0.85rem',
-                    outline: 'none',
-                    width: '240px',
-                  }}
-                />
               </div>
 
-              <select
-                value={venueCategoryFilter}
-                onChange={(e) => setVenueCategoryFilter(e.target.value)}
-                style={{
-                  padding: '8px 12px',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '0.85rem',
-                  outline: 'none',
-                  background: '#fff',
-                  fontWeight: 600,
-                  color: '#334155',
-                }}
-              >
-                <option value="ALL">All Categories</option>
-                <option value="WEDDING">Wedding Gardens & Halls</option>
-                <option value="CONFERENCE">Corporate & Conference</option>
-                <option value="BIRTHDAY">Private Parties & Birthdays</option>
-                <option value="OUTDOOR">Outdoor & Picnic</option>
-              </select>
+              {/* VERIFICATION DOCUMENTS REVIEW SUB-SECTION */}
+              <div style={{ marginTop: '40px', paddingTop: '28px', borderTop: '2px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <FileText size={22} color="#0d8a73" />
+                      <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>
+                        Submitted Verification Documents & Permits ({verificationDocuments.length})
+                      </h3>
+                    </div>
+                    <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '0.85rem' }}>
+                      Inspect official compliance documents, county permits, and business licenses. Approving verified documents qualifies listings for public visibility.
+                    </p>
+                  </div>
 
-              <select
-                value={venueApprovalFilter}
-                onChange={(e) => setVenueApprovalFilter(e.target.value as any)}
-                style={{
-                  padding: '8px 12px',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '0.85rem',
-                  outline: 'none',
-                  background: '#fff',
-                  fontWeight: 600,
-                  color: '#334155',
-                }}
-              >
-                <option value="ALL">All Approval Statuses</option>
-                <option value="PENDING">Pending Approval</option>
-                <option value="APPROVED">Approved & Live</option>
-                <option value="REJECTED">Rejected Listings</option>
-              </select>
-            </div>
-          </div>
+                  {/* Document Filters */}
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ position: 'relative' }}>
+                      <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                      <input
+                        type="text"
+                        placeholder="Search provider, document..."
+                        value={docSearch}
+                        onChange={(e) => setDocSearch(e.target.value)}
+                        style={{
+                          padding: '7px 12px 7px 32px',
+                          borderRadius: '8px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '0.83rem',
+                          outline: 'none',
+                        }}
+                      />
+                    </div>
 
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
-              <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#64748b' }}>
-                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Listing / Offering</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Category & Location</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Capacity & Rate</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Approval Status</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Live Visibility</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 700, textAlign: 'right' }}>Admin Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredVenues.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} style={{ padding: '36px', textAlign: 'center', color: '#94a3b8' }}>
-                      No provider listings or services match your criteria.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredVenues.map(v => {
-                    const status = v.approval_status || (v.is_verified ? 'APPROVED' : 'PENDING');
-                    return (
-                      <tr key={v.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '14px 16px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <div
-                              style={{
-                                width: '48px',
-                                height: '48px',
-                                borderRadius: '10px',
-                                overflow: 'hidden',
-                                background: '#f1f5f9',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                flexShrink: 0
-                              }}
-                            >
-                              {cleanImageUrl(v.image_url) ? (
-                                <>
-                                  <img
-                                    src={cleanImageUrl(v.image_url)}
-                                    alt={v.title}
-                                    onError={(e) => {
-                                      e.currentTarget.style.display = 'none';
-                                      const placeholder = e.currentTarget.nextElementSibling;
-                                      if (placeholder instanceof HTMLElement) placeholder.style.display = 'flex';
-                                    }}
-                                    style={{
-                                      width: '100%',
-                                      height: '100%',
-                                      objectFit: 'cover'
-                                    }}
-                                  />
-                                  <div style={{ display: 'none', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
-                                    <ImageOff size={20} color="#94a3b8" />
-                                  </div>
-                                </>
-                              ) : (
-                                <ImageOff size={20} color="#94a3b8" />
-                              )}
-                            </div>
-                            <div>
-                              <div style={{ fontWeight: 700, color: '#1e293b' }}>{v.title}</div>
-                              <div style={{ fontSize: '0.78rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
-                                <span>ID #{v.id}</span>
-                                <span>•</span>
+                    <select
+                      value={docTypeFilter}
+                      onChange={(e) => setDocTypeFilter(e.target.value)}
+                      style={{
+                        padding: '7px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.83rem',
+                        outline: 'none',
+                        background: '#fff',
+                        fontWeight: 600,
+                        color: '#334155',
+                      }}
+                    >
+                      <option value="ALL">All Document Types</option>
+                      <option value="BUSINESS_REGISTRATION">Business Registration</option>
+                      <option value="OPERATING_LICENSE">Operating License / Permit</option>
+                      <option value="IDENTITY_DOCUMENT">National ID / Passport</option>
+                      <option value="TAX_COMPLIANCE">Tax Compliance</option>
+                      <option value="HEALTH_SAFETY">Health & Safety</option>
+                      <option value="INSURANCE">Insurance</option>
+                      <option value="OTHER">Other Documents</option>
+                    </select>
+
+                    <select
+                      value={docStatusFilter}
+                      onChange={(e) => setDocStatusFilter(e.target.value)}
+                      style={{
+                        padding: '7px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.83rem',
+                        outline: 'none',
+                        background: '#fff',
+                        fontWeight: 600,
+                        color: '#334155',
+                      }}
+                    >
+                      <option value="ALL">All Review Statuses</option>
+                      <option value="PENDING">Pending Review</option>
+                      <option value="APPROVED">Approved & Valid</option>
+                      <option value="REJECTED">Rejected</option>
+                      <option value="EXPIRED">Expired</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Documents Table */}
+                <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.86rem' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                        <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 700 }}>Provider / Business</th>
+                        <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 700 }}>Document Type & Title</th>
+                        <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 700 }}>File Details</th>
+                        <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 700 }}>Submitted Date</th>
+                        <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 700 }}>Expiry Date</th>
+                        <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 700 }}>Status</th>
+                        <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 700, textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {verificationDocuments
+                        .filter(doc => {
+                          if (docStatusFilter !== 'ALL' && doc.status !== docStatusFilter) return false;
+                          if (docTypeFilter !== 'ALL' && doc.document_type !== docTypeFilter) return false;
+                          if (docSearch) {
+                            const q = docSearch.toLowerCase();
+                            const mUser = (doc.user_name || '').toLowerCase().includes(q);
+                            const mBiz = (doc.business_name || '').toLowerCase().includes(q);
+                            const mTitle = (doc.title || '').toLowerCase().includes(q);
+                            const mType = (doc.document_type_display || '').toLowerCase().includes(q);
+                            if (!mUser && !mBiz && !mTitle && !mType) return false;
+                          }
+                          return true;
+                        })
+                        .map(doc => {
+                          const isPending = doc.status === 'PENDING';
+                          const isApproved = doc.status === 'APPROVED' && doc.is_currently_valid;
+                          const isExpired = doc.status === 'EXPIRED' || (doc.status === 'APPROVED' && !doc.is_currently_valid);
+                          const isRejected = doc.status === 'REJECTED';
+
+                          return (
+                            <tr key={doc.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                              <td style={{ padding: '12px 16px' }}>
+                                <div style={{ fontWeight: 700, color: '#1e293b' }}>
+                                  {doc.business_name || doc.user_name || `User #${doc.user}`}
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                                  {doc.venue_owner ? 'Venue Owner' : doc.vendor ? 'Vendor' : 'Provider'}
+                                </div>
+                              </td>
+                              <td style={{ padding: '12px 16px' }}>
+                                <div style={{ fontWeight: 600, color: '#0f172a' }}>{doc.title || doc.document_type_display}</div>
+                                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{doc.document_type_display}</div>
+                              </td>
+                              <td style={{ padding: '12px 16px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <span style={{ textTransform: 'uppercase', fontSize: '0.72rem', background: '#e2e8f0', color: '#334155', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                                    {doc.file_extension || 'FILE'}
+                                  </span>
+                                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                                    {doc.file_size ? `${(doc.file_size / (1024 * 1024)).toFixed(1)} MB` : ''}
+                                  </span>
+                                </div>
+                              </td>
+                              <td style={{ padding: '12px 16px', color: '#64748b', fontSize: '0.82rem' }}>
+                                {new Date(doc.created_at).toLocaleDateString()}
+                              </td>
+                              <td style={{ padding: '12px 16px', fontSize: '0.82rem' }}>
+                                {doc.expiry_date ? (
+                                  <span style={{ color: isExpired ? '#dc2626' : '#64748b', fontWeight: isExpired ? 700 : 500 }}>
+                                    {new Date(doc.expiry_date).toLocaleDateString()} {isExpired && '(Expired)'}
+                                  </span>
+                                ) : (
+                                  <span style={{ color: '#94a3b8' }}>None</span>
+                                )}
+                              </td>
+                              <td style={{ padding: '12px 16px' }}>
                                 <span style={{
-                                  background: (v.vendor || v.vendor_name || v.capacity === 0 || ['PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'].includes(v.category)) ? '#f0fdf4' : '#eff6ff',
-                                  color: (v.vendor || v.vendor_name || v.capacity === 0 || ['PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'].includes(v.category)) ? '#166534' : '#1e40af',
-                                  padding: '1px 6px',
-                                  borderRadius: '4px',
-                                  fontWeight: 600,
-                                  fontSize: '0.72rem'
+                                  padding: '3px 8px',
+                                  borderRadius: '999px',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 700,
+                                  background: isApproved ? '#ecfdf5' : isPending ? '#fef3c7' : '#fee2e2',
+                                  color: isApproved ? '#059669' : isPending ? '#b45309' : '#dc2626',
                                 }}>
-                                  {(v.vendor || v.vendor_name || v.capacity === 0 || ['PHOTOGRAPHY', 'CATERING', 'DECORATION', 'ENTERTAINMENT', 'PLANNING', 'SOUND'].includes(v.category)) ? 'Vendor Service' : 'Venue Space'}
+                                  {isExpired ? 'Expired' : doc.status_display}
                                 </span>
-                                <span>•</span>
-                                <span>{v.owner_name || v.vendor_name || (v.owner ? 'Venue Owner #' + v.owner : 'Vendor Provider')}</span>
-                              </div>
+                                {isRejected && doc.rejection_reason && (
+                                  <div style={{ fontSize: '0.72rem', color: '#dc2626', marginTop: '3px', maxWidth: '200px' }}>
+                                    Reason: {doc.rejection_reason}
+                                  </div>
+                                )}
+                              </td>
+                              <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                                  <a
+                                    href={ApiService.getDocumentDownloadUrl(doc.id, currentUser?.id)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{
+                                      padding: '6px 10px',
+                                      borderRadius: '6px',
+                                      border: '1px solid #cbd5e1',
+                                      background: '#fff',
+                                      color: '#334155',
+                                      fontWeight: 600,
+                                      fontSize: '0.76rem',
+                                      textDecoration: 'none',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                    }}
+                                  >
+                                    <ExternalLink size={12} /> Preview
+                                  </a>
+
+                                  {doc.status !== 'APPROVED' && (
+                                    <button
+                                      onClick={async () => {
+                                        const res = await ApiService.approveVerificationDocument(doc.id, 'Approved by Administrator', currentUser?.id);
+                                        if (res.success) {
+                                          setVerificationDocuments(prev => prev.map(d => d.id === doc.id ? res.data || { ...d, status: 'APPROVED', is_currently_valid: true } : d));
+                                          toast.success(`Document '${doc.title || doc.document_type_display}' approved.`);
+                                          loadAdminData();
+                                          onDataChange?.();
+                                        } else {
+                                          toast.error(res.error || 'Failed to approve document.');
+                                        }
+                                      }}
+                                      style={{
+                                        padding: '6px 10px',
+                                        borderRadius: '6px',
+                                        border: 'none',
+                                        background: '#059669',
+                                        color: '#fff',
+                                        fontWeight: 700,
+                                        fontSize: '0.76rem',
+                                        cursor: 'pointer',
+                                      }}
+                                    >
+                                      Approve
+                                    </button>
+                                  )}
+
+                                  {doc.status !== 'REJECTED' && (
+                                    <button
+                                      onClick={() => {
+                                        setRejectingDocModal(doc);
+                                        setDocRejectionReason('');
+                                        setDocAdminNotes('');
+                                      }}
+                                      style={{
+                                        padding: '6px 10px',
+                                        borderRadius: '6px',
+                                        border: 'none',
+                                        background: '#ef4444',
+                                        color: '#fff',
+                                        fontWeight: 700,
+                                        fontSize: '0.76rem',
+                                        cursor: 'pointer',
+                                      }}
+                                    >
+                                      Reject
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 6: REVIEWS & RATINGS MODERATION */}
+          {activeTab === 'reviews' && (
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
+                <div>
+                  <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>Customer Reviews Moderation</h2>
+                  <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Review submitted customer ratings and remove inappropriate, fraudulent, or abusive comments.</p>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ position: 'relative' }}>
+                    <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+                    <input
+                      type="text"
+                      placeholder="Search reviewer, comment..."
+                      value={reviewSearch}
+                      onChange={(e) => setReviewSearch(e.target.value)}
+                      style={{
+                        padding: '8px 14px 8px 36px',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.85rem',
+                        outline: 'none',
+                        width: '240px',
+                      }}
+                    />
+                  </div>
+
+                  <select
+                    value={reviewRatingFilter}
+                    onChange={(e) => setReviewRatingFilter(e.target.value)}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.85rem',
+                      outline: 'none',
+                      background: '#fff',
+                      fontWeight: 600,
+                      color: '#334155',
+                    }}
+                  >
+                    <option value="ALL">All Stars</option>
+                    <option value="5">5 Stars</option>
+                    <option value="4">4 Stars</option>
+                    <option value="3">3 Stars</option>
+                    <option value="2">2 Stars</option>
+                    <option value="1">1 Star</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#64748b' }}>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Reviewer</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Target Service / Space</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Rating</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Comment</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Date</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700, textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredReviews.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} style={{ padding: '36px', textAlign: 'center', color: '#94a3b8' }}>
+                          No reviews found matching the search criteria.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredReviews.map(r => (
+                        <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '14px 16px', fontWeight: 700, color: '#1e293b' }}>
+                            {r.user_name}
+                          </td>
+                          <td style={{ padding: '14px 16px', color: '#0d8a73', fontWeight: 600 }}>
+                            {r.target_name || (r.venue ? `Venue #${r.venue}` : `Vendor #${r.vendor}`)}
+                          </td>
+                          <td style={{ padding: '14px 16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '2px', color: '#f59e0b' }}>
+                              {[...Array(5)].map((_, i) => (
+                                <Star
+                                  key={i}
+                                  size={14}
+                                  fill={i < r.rating ? '#f59e0b' : 'none'}
+                                  color={i < r.rating ? '#f59e0b' : '#cbd5e1'}
+                                />
+                              ))}
                             </div>
-                          </div>
-                        </td>
-                        <td style={{ padding: '14px 16px' }}>
-                          <div style={{ color: '#1e293b', fontWeight: 600 }}>{v.category_display || v.category}</div>
-                          <div style={{ fontSize: '0.78rem', color: '#64748b' }}>{v.location}</div>
-                        </td>
-                        <td style={{ padding: '14px 16px' }}>
-                          <div style={{ fontWeight: 700, color: '#0d8a73' }}>KES {Number(v.price_per_day).toLocaleString()}/day</div>
-                          <div style={{ fontSize: '0.78rem', color: '#64748b' }}>{v.capacity > 0 ? `Up to ${v.capacity} guests` : 'Service / Package'}</div>
-                        </td>
-                        <td style={{ padding: '14px 16px' }}>
-                          <span style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            padding: '4px 10px',
-                            borderRadius: '999px',
-                            fontSize: '0.75rem',
-                            fontWeight: 700,
-                            background: status === 'APPROVED' ? '#ecfdf5' : status === 'REJECTED' ? '#fee2e2' : '#fef3c7',
-                            color: status === 'APPROVED' ? '#059669' : status === 'REJECTED' ? '#dc2626' : '#b45309',
-                          }}>
-                            {status === 'APPROVED' ? <CheckCircle2 size={12} /> : status === 'REJECTED' ? <X size={12} /> : <Clock size={12} />}
-                            {status}
-                          </span>
-                          {status === 'REJECTED' && v.rejection_reason && (
-                            <div style={{ fontSize: '0.72rem', color: '#dc2626', marginTop: '2px', maxWidth: '200px' }}>
-                              Reason: {v.rejection_reason}
-                            </div>
-                          )}
-                        </td>
-                        <td style={{ padding: '14px 16px' }}>
-                          <button
-                            onClick={() => handleToggleVenueAvailability(v.id)}
-                            style={{
-                              padding: '4px 10px',
-                              borderRadius: '999px',
-                              border: 'none',
-                              fontSize: '0.75rem',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                              background: v.is_available !== false ? '#ecfdf5' : '#fee2e2',
-                              color: v.is_available !== false ? '#059669' : '#dc2626',
-                            }}
-                          >
-                            {v.is_available !== false ? 'Active' : 'Inactive'}
-                          </button>
-                        </td>
-                        <td style={{ padding: '14px 16px', textAlign: 'right' }}>
-                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                          </td>
+                          <td style={{ padding: '14px 16px', color: '#334155', maxWidth: '350px' }}>
+                            <p style={{ margin: 0, lineHeight: 1.4, fontSize: '0.84rem' }}>
+                              {r.comment || <em style={{ color: '#94a3b8' }}>No comment provided</em>}
+                            </p>
+                          </td>
+                          <td style={{ padding: '14px 16px', color: '#64748b', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                            {r.created_at ? new Date(r.created_at).toLocaleDateString() : 'N/A'}
+                          </td>
+                          <td style={{ padding: '14px 16px', textAlign: 'right' }}>
                             <button
-                              onClick={() => setInspectVenueModal(v)}
-                              style={{
-                                padding: '6px 10px',
-                                borderRadius: '6px',
-                                border: '1px solid #cbd5e1',
-                                background: '#fff',
-                                color: '#475569',
-                                fontSize: '0.78rem',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                              }}
-                            >
-                              Inspect
-                            </button>
-
-                            {status !== 'APPROVED' && (
-                              <button
-                                onClick={async () => {
-                                  const res = await ApiService.approveVenue(v.id);
-                                  if (res.success) {
-                                    setVenues(prev => prev.map(item => item.id === v.id ? { ...item, approval_status: 'APPROVED', is_verified: true, rejection_reason: undefined } : item));
-                                    toast.success(`Venue '${v.title}' has been approved and is now live.`);
-                                    onDataChange?.();
-                                  } else {
-                                    toast.error(res.error || 'Failed to approve listing.');
-                                  }
-                                }}
-                                style={{
-                                  padding: '6px 10px',
-                                  borderRadius: '6px',
-                                  border: 'none',
-                                  background: '#059669',
-                                  color: '#fff',
-                                  fontSize: '0.78rem',
-                                  fontWeight: 700,
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                Approve
-                              </button>
-                            )}
-
-                            {status !== 'REJECTED' && (
-                              <button
-                                onClick={() => {
-                                  setRejectVenueModal(v);
-                                  setVenueRejectReason('');
-                                }}
-                                style={{
-                                  padding: '6px 10px',
-                                  borderRadius: '6px',
-                                  border: 'none',
-                                  background: '#ef4444',
-                                  color: '#fff',
-                                  fontSize: '0.78rem',
-                                  fontWeight: 700,
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                Reject
-                              </button>
-                            )}
-
-                            <button
-                              onClick={() => setDeleteConfirm({ type: 'venue', id: v.id, title: v.title })}
-                              title="Delete Venue"
+                              onClick={() => setDeleteConfirm({ type: 'review', id: r.id, title: `Review by ${r.user_name}` })}
+                              title="Delete Inappropriate Review"
                               style={{
                                 padding: '6px 8px',
                                 borderRadius: '6px',
@@ -1793,1708 +2363,1210 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             >
                               <Trash2 size={13} />
                             </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 5: PROVIDER VERIFICATION QUEUE */}
-      {activeTab === 'verifications' && (
-        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
-            <div>
-              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>Vendor & Venue Owner Verification Queue</h2>
-              <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Review provider credentials, licenses, portfolios, and grant verified status badges.</p>
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <select
-                value={verificationTypeFilter}
-                onChange={(e) => setVerificationTypeFilter(e.target.value as any)}
-                style={{
-                  padding: '8px 12px',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '0.85rem',
-                  outline: 'none',
-                  background: '#fff',
-                  fontWeight: 600,
-                  color: '#334155',
-                }}
-              >
-                <option value="ALL">All Provider Types</option>
-                <option value="VENDOR">Vendors & Planners</option>
-                <option value="VENUE_OWNER">Venue Owners</option>
-              </select>
-
-              <select
-                value={verificationStatusFilter}
-                onChange={(e) => setVerificationStatusFilter(e.target.value as any)}
-                style={{
-                  padding: '8px 12px',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '0.85rem',
-                  outline: 'none',
-                  background: '#fff',
-                  fontWeight: 600,
-                  color: '#334155',
-                }}
-              >
-                <option value="ALL">All Statuses</option>
-                <option value="PENDING">Pending Review</option>
-                <option value="APPROVED">Approved</option>
-                <option value="REJECTED">Rejected</option>
-              </select>
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '16px' }}>
-            {filteredAccounts.length === 0 ? (
-              <div style={{ gridColumn: '1 / -1', padding: '48px 0', textAlign: 'center', color: '#94a3b8' }}>
-                No provider accounts found matching your selected filter.
-              </div>
-            ) : (
-              filteredAccounts.map(account => (
-                <div
-                  key={`${account.account_type}-${account.id}`}
-                  style={{
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '14px',
-                    padding: '20px',
-                    background: '#ffffff',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
-                  }}
-                >
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        {account.logo_url ? (
-                          <img src={account.logo_url} alt="Logo" style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'cover' }} />
-                        ) : (
-                          <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
-                            <Building2 size={20} />
-                          </div>
-                        )}
-                        <div>
-                          <h4 style={{ margin: 0, fontWeight: 700, color: '#1e293b', fontSize: '1rem' }}>
-                            {account.business_name}
-                          </h4>
-                          <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                            {account.account_type} • {account.category_or_type}
-                          </span>
-                        </div>
-                      </div>
-
-                      <span style={{
-                        padding: '3px 8px',
-                        borderRadius: '999px',
-                        fontSize: '0.72rem',
-                        fontWeight: 700,
-                        background: account.verification_status === 'APPROVED' ? '#ecfdf5' : account.verification_status === 'REJECTED' ? '#fee2e2' : '#fef3c7',
-                        color: account.verification_status === 'APPROVED' ? '#059669' : account.verification_status === 'REJECTED' ? '#dc2626' : '#b45309',
-                      }}>
-                        {account.verification_status}
-                      </span>
-                    </div>
-
-                    <div style={{ fontSize: '0.82rem', color: '#64748b', display: 'flex', flexDirection: 'column', gap: '4px', margin: '12px 0' }}>
-                      {account.location && <div><MapPin size={12} style={{ display: 'inline', marginRight: '4px' }} />{account.location}</div>}
-                      {account.email && <div>Email: {account.email}</div>}
-                      {account.years_in_business !== undefined && <div>Experience: {account.years_in_business} years</div>}
-                    </div>
-                  </div>
-
-                  <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                    <button
-                      onClick={() => setSelectedAccount(account)}
-                      style={{
-                        padding: '6px 14px',
-                        borderRadius: '8px',
-                        border: '1px solid #cbd5e1',
-                        background: '#fff',
-                        color: '#475569',
-                        fontWeight: 600,
-                        fontSize: '0.8rem',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Inspect Profile
-                    </button>
-
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      {account.verification_status !== 'APPROVED' && (
-                        <button
-                          onClick={() => handleApproveAccount(account)}
-                          style={{
-                            padding: '6px 12px',
-                            borderRadius: '8px',
-                            border: 'none',
-                            background: '#059669',
-                            color: '#fff',
-                            fontWeight: 700,
-                            fontSize: '0.8rem',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          Approve
-                        </button>
-                      )}
-
-                      {account.verification_status !== 'REJECTED' && (
-                        <button
-                          onClick={() => handleRejectAccount(account)}
-                          style={{
-                            padding: '6px 12px',
-                            borderRadius: '8px',
-                            border: 'none',
-                            background: '#ef4444',
-                            color: '#fff',
-                            fontWeight: 700,
-                            fontSize: '0.8rem',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          Reject
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          {/* VERIFICATION DOCUMENTS REVIEW SUB-SECTION */}
-          <div style={{ marginTop: '40px', paddingTop: '28px', borderTop: '2px solid #e2e8f0' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <FileText size={22} color="#0d8a73" />
-                  <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>
-                    Submitted Verification Documents & Permits ({verificationDocuments.length})
-                  </h3>
-                </div>
-                <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '0.85rem' }}>
-                  Inspect official compliance documents, county permits, and business licenses. Approving verified documents qualifies listings for public visibility.
-                </p>
-              </div>
-
-              {/* Document Filters */}
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-                <div style={{ position: 'relative' }}>
-                  <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-                  <input
-                    type="text"
-                    placeholder="Search provider, document..."
-                    value={docSearch}
-                    onChange={(e) => setDocSearch(e.target.value)}
-                    style={{
-                      padding: '7px 12px 7px 32px',
-                      borderRadius: '8px',
-                      border: '1px solid #cbd5e1',
-                      fontSize: '0.83rem',
-                      outline: 'none',
-                    }}
-                  />
-                </div>
-
-                <select
-                  value={docTypeFilter}
-                  onChange={(e) => setDocTypeFilter(e.target.value)}
-                  style={{
-                    padding: '7px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '0.83rem',
-                    outline: 'none',
-                    background: '#fff',
-                    fontWeight: 600,
-                    color: '#334155',
-                  }}
-                >
-                  <option value="ALL">All Document Types</option>
-                  <option value="BUSINESS_REGISTRATION">Business Registration</option>
-                  <option value="OPERATING_LICENSE">Operating License / Permit</option>
-                  <option value="IDENTITY_DOCUMENT">National ID / Passport</option>
-                  <option value="TAX_COMPLIANCE">Tax Compliance</option>
-                  <option value="HEALTH_SAFETY">Health & Safety</option>
-                  <option value="INSURANCE">Insurance</option>
-                  <option value="OTHER">Other Documents</option>
-                </select>
-
-                <select
-                  value={docStatusFilter}
-                  onChange={(e) => setDocStatusFilter(e.target.value)}
-                  style={{
-                    padding: '7px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '0.83rem',
-                    outline: 'none',
-                    background: '#fff',
-                    fontWeight: 600,
-                    color: '#334155',
-                  }}
-                >
-                  <option value="ALL">All Review Statuses</option>
-                  <option value="PENDING">Pending Review</option>
-                  <option value="APPROVED">Approved & Valid</option>
-                  <option value="REJECTED">Rejected</option>
-                  <option value="EXPIRED">Expired</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Documents Table */}
-            <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.86rem' }}>
-                <thead>
-                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                    <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 700 }}>Provider / Business</th>
-                    <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 700 }}>Document Type & Title</th>
-                    <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 700 }}>File Details</th>
-                    <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 700 }}>Submitted Date</th>
-                    <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 700 }}>Expiry Date</th>
-                    <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 700 }}>Status</th>
-                    <th style={{ padding: '12px 16px', color: '#64748b', fontWeight: 700, textAlign: 'right' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {verificationDocuments
-                    .filter(doc => {
-                      if (docStatusFilter !== 'ALL' && doc.status !== docStatusFilter) return false;
-                      if (docTypeFilter !== 'ALL' && doc.document_type !== docTypeFilter) return false;
-                      if (docSearch) {
-                        const q = docSearch.toLowerCase();
-                        const mUser = (doc.user_name || '').toLowerCase().includes(q);
-                        const mBiz = (doc.business_name || '').toLowerCase().includes(q);
-                        const mTitle = (doc.title || '').toLowerCase().includes(q);
-                        const mType = (doc.document_type_display || '').toLowerCase().includes(q);
-                        if (!mUser && !mBiz && !mTitle && !mType) return false;
-                      }
-                      return true;
-                    })
-                    .map(doc => {
-                      const isPending = doc.status === 'PENDING';
-                      const isApproved = doc.status === 'APPROVED' && doc.is_currently_valid;
-                      const isExpired = doc.status === 'EXPIRED' || (doc.status === 'APPROVED' && !doc.is_currently_valid);
-                      const isRejected = doc.status === 'REJECTED';
-
-                      return (
-                        <tr key={doc.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                          <td style={{ padding: '12px 16px' }}>
-                            <div style={{ fontWeight: 700, color: '#1e293b' }}>
-                              {doc.business_name || doc.user_name || `User #${doc.user}`}
-                            </div>
-                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                              {doc.venue_owner ? 'Venue Owner' : doc.vendor ? 'Vendor' : 'Provider'}
-                            </div>
-                          </td>
-                          <td style={{ padding: '12px 16px' }}>
-                            <div style={{ fontWeight: 600, color: '#0f172a' }}>{doc.title || doc.document_type_display}</div>
-                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{doc.document_type_display}</div>
-                          </td>
-                          <td style={{ padding: '12px 16px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span style={{ textTransform: 'uppercase', fontSize: '0.72rem', background: '#e2e8f0', color: '#334155', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                                {doc.file_extension || 'FILE'}
-                              </span>
-                              <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                                {doc.file_size ? `${(doc.file_size / (1024 * 1024)).toFixed(1)} MB` : ''}
-                              </span>
-                            </div>
-                          </td>
-                          <td style={{ padding: '12px 16px', color: '#64748b', fontSize: '0.82rem' }}>
-                            {new Date(doc.created_at).toLocaleDateString()}
-                          </td>
-                          <td style={{ padding: '12px 16px', fontSize: '0.82rem' }}>
-                            {doc.expiry_date ? (
-                              <span style={{ color: isExpired ? '#dc2626' : '#64748b', fontWeight: isExpired ? 700 : 500 }}>
-                                {new Date(doc.expiry_date).toLocaleDateString()} {isExpired && '(Expired)'}
-                              </span>
-                            ) : (
-                              <span style={{ color: '#94a3b8' }}>None</span>
-                            )}
-                          </td>
-                          <td style={{ padding: '12px 16px' }}>
-                            <span style={{
-                              padding: '3px 8px',
-                              borderRadius: '999px',
-                              fontSize: '0.75rem',
-                              fontWeight: 700,
-                              background: isApproved ? '#ecfdf5' : isPending ? '#fef3c7' : '#fee2e2',
-                              color: isApproved ? '#059669' : isPending ? '#b45309' : '#dc2626',
-                            }}>
-                              {isExpired ? 'Expired' : doc.status_display}
-                            </span>
-                            {isRejected && doc.rejection_reason && (
-                              <div style={{ fontSize: '0.72rem', color: '#dc2626', marginTop: '3px', maxWidth: '200px' }}>
-                                Reason: {doc.rejection_reason}
-                              </div>
-                            )}
-                          </td>
-                          <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
-                              <a
-                                href={ApiService.getDocumentDownloadUrl(doc.id, currentUser?.id)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{
-                                  padding: '6px 10px',
-                                  borderRadius: '6px',
-                                  border: '1px solid #cbd5e1',
-                                  background: '#fff',
-                                  color: '#334155',
-                                  fontWeight: 600,
-                                  fontSize: '0.76rem',
-                                  textDecoration: 'none',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                }}
-                              >
-                                <ExternalLink size={12} /> Preview
-                              </a>
-
-                              {doc.status !== 'APPROVED' && (
-                                <button
-                                  onClick={async () => {
-                                    const res = await ApiService.approveVerificationDocument(doc.id, 'Approved by Administrator', currentUser?.id);
-                                    if (res.success) {
-                                      setVerificationDocuments(prev => prev.map(d => d.id === doc.id ? res.data || { ...d, status: 'APPROVED', is_currently_valid: true } : d));
-                                      toast.success(`Document '${doc.title || doc.document_type_display}' approved.`);
-                                      loadAdminData();
-                                      onDataChange?.();
-                                    } else {
-                                      toast.error(res.error || 'Failed to approve document.');
-                                    }
-                                  }}
-                                  style={{
-                                    padding: '6px 10px',
-                                    borderRadius: '6px',
-                                    border: 'none',
-                                    background: '#059669',
-                                    color: '#fff',
-                                    fontWeight: 700,
-                                    fontSize: '0.76rem',
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  Approve
-                                </button>
-                              )}
-
-                              {doc.status !== 'REJECTED' && (
-                                <button
-                                  onClick={() => {
-                                    setRejectingDocModal(doc);
-                                    setDocRejectionReason('');
-                                    setDocAdminNotes('');
-                                  }}
-                                  style={{
-                                    padding: '6px 10px',
-                                    borderRadius: '6px',
-                                    border: 'none',
-                                    background: '#ef4444',
-                                    color: '#fff',
-                                    fontWeight: 700,
-                                    fontSize: '0.76rem',
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  Reject
-                                </button>
-                              )}
-                            </div>
                           </td>
                         </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 6: REVIEWS & RATINGS MODERATION */}
-      {activeTab === 'reviews' && (
-        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
-            <div>
-              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>Customer Reviews Moderation</h2>
-              <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Review submitted customer ratings and remove inappropriate, fraudulent, or abusive comments.</p>
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <div style={{ position: 'relative' }}>
-                <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-                <input
-                  type="text"
-                  placeholder="Search reviewer, comment..."
-                  value={reviewSearch}
-                  onChange={(e) => setReviewSearch(e.target.value)}
-                  style={{
-                    padding: '8px 14px 8px 36px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '0.85rem',
-                    outline: 'none',
-                    width: '240px',
-                  }}
-                />
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
-
-              <select
-                value={reviewRatingFilter}
-                onChange={(e) => setReviewRatingFilter(e.target.value)}
-                style={{
-                  padding: '8px 12px',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '0.85rem',
-                  outline: 'none',
-                  background: '#fff',
-                  fontWeight: 600,
-                  color: '#334155',
-                }}
-              >
-                <option value="ALL">All Stars</option>
-                <option value="5">5 Stars</option>
-                <option value="4">4 Stars</option>
-                <option value="3">3 Stars</option>
-                <option value="2">2 Stars</option>
-                <option value="1">1 Star</option>
-              </select>
-            </div>
-          </div>
-
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
-              <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#64748b' }}>
-                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Reviewer</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Target Service / Space</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Rating</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Comment</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Date</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 700, textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredReviews.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} style={{ padding: '36px', textAlign: 'center', color: '#94a3b8' }}>
-                      No reviews found matching the search criteria.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredReviews.map(r => (
-                    <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '14px 16px', fontWeight: 700, color: '#1e293b' }}>
-                        {r.user_name}
-                      </td>
-                      <td style={{ padding: '14px 16px', color: '#0d8a73', fontWeight: 600 }}>
-                        {r.target_name || (r.venue ? `Venue #${r.venue}` : `Vendor #${r.vendor}`)}
-                      </td>
-                      <td style={{ padding: '14px 16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px', color: '#f59e0b' }}>
-                          {[...Array(5)].map((_, i) => (
-                            <Star
-                              key={i}
-                              size={14}
-                              fill={i < r.rating ? '#f59e0b' : 'none'}
-                              color={i < r.rating ? '#f59e0b' : '#cbd5e1'}
-                            />
-                          ))}
-                        </div>
-                      </td>
-                      <td style={{ padding: '14px 16px', color: '#334155', maxWidth: '350px' }}>
-                        <p style={{ margin: 0, lineHeight: 1.4, fontSize: '0.84rem' }}>
-                          {r.comment || <em style={{ color: '#94a3b8' }}>No comment provided</em>}
-                        </p>
-                      </td>
-                      <td style={{ padding: '14px 16px', color: '#64748b', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
-                        {r.created_at ? new Date(r.created_at).toLocaleDateString() : 'N/A'}
-                      </td>
-                      <td style={{ padding: '14px 16px', textAlign: 'right' }}>
-                        <button
-                          onClick={() => setDeleteConfirm({ type: 'review', id: r.id, title: `Review by ${r.user_name}` })}
-                          title="Delete Inappropriate Review"
-                          style={{
-                            padding: '6px 8px',
-                            borderRadius: '6px',
-                            border: '1px solid #fecdd3',
-                            background: '#fff',
-                            color: '#ef4444',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 7: PLATFORM ANALYTICS & REPORTS */}
-      {activeTab === 'analytics' && (
-        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-          {/* Header & Controls */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '24px', borderBottom: '1px solid #f1f5f9', paddingBottom: '20px' }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{ padding: '8px', borderRadius: '10px', background: '#ecfdf5', color: '#0d8a73' }}>
-                  <BarChart3 size={22} />
-                </div>
-                <div>
-                  <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>Platform Analytics & Interaction Intelligence</h2>
-                  <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.85rem' }}>
-                    Audited event metrics, viewer tracking, conversion funnel, and demand trends computed from recorded customer interactions.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              {/* Date Preset Selector */}
-              <div style={{ display: 'flex', background: '#f8fafc', padding: '3px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                {[
-                  { id: '7d', label: '7D' },
-                  { id: '30d', label: '30D' },
-                  { id: '90d', label: '90D' },
-                  { id: 'all', label: 'All' },
-                ].map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => {
-                      setAnalyticsPreset(p.id);
-                      setCustomStartDate('');
-                      setCustomEndDate('');
-                      fetchAnalyticsData(p.id, '', '');
-                    }}
-                    style={{
-                      padding: '6px 14px',
-                      fontSize: '0.8rem',
-                      fontWeight: 700,
-                      borderRadius: '8px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      background: analyticsPreset === p.id && !customStartDate ? '#0d8a73' : 'transparent',
-                      color: analyticsPreset === p.id && !customStartDate ? '#ffffff' : '#64748b',
-                      transition: 'all 0.2s',
-                    }}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Custom Date Range Picker */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <input
-                  type="date"
-                  value={customStartDate}
-                  onChange={(e) => setCustomStartDate(e.target.value)}
-                  style={{
-                    padding: '6px 10px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '0.8rem',
-                    color: '#334155',
-                    outline: 'none',
-                  }}
-                  title="Start Date"
-                />
-                <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>to</span>
-                <input
-                  type="date"
-                  value={customEndDate}
-                  onChange={(e) => setCustomEndDate(e.target.value)}
-                  style={{
-                    padding: '6px 10px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '0.8rem',
-                    color: '#334155',
-                    outline: 'none',
-                  }}
-                  title="End Date"
-                />
-                <button
-                  onClick={() => {
-                    if (customStartDate && customEndDate) {
-                      setAnalyticsPreset('custom');
-                      fetchAnalyticsData('custom', customStartDate, customEndDate);
-                    } else {
-                      toast.error('Please select both start and end dates.');
-                    }
-                  }}
-                  style={{
-                    padding: '7px 12px',
-                    borderRadius: '8px',
-                    border: 'none',
-                    background: '#334155',
-                    color: '#ffffff',
-                    fontSize: '0.8rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Apply
-                </button>
-              </div>
-
-              {/* CSV Export Button */}
-              <a
-                href={ApiService.getAdminAnalyticsExportUrl({
-                  preset: analyticsPreset,
-                  start_date: customStartDate || undefined,
-                  end_date: customEndDate || undefined,
-                })}
-                download
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  background: '#f8fafc',
-                  color: '#0d8a73',
-                  border: '1px solid #cbd5e1',
-                  padding: '7px 14px',
-                  borderRadius: '10px',
-                  fontWeight: 700,
-                  fontSize: '0.82rem',
-                  textDecoration: 'none',
-                  cursor: 'pointer',
-                }}
-              >
-                <Download size={15} /> Export CSV
-              </a>
-
-              <button
-                onClick={() => fetchAnalyticsData(analyticsPreset, customStartDate, customEndDate)}
-                disabled={analyticsLoading}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  background: '#0d8a73',
-                  color: '#ffffff',
-                  border: 'none',
-                  padding: '8px 14px',
-                  borderRadius: '10px',
-                  fontWeight: 700,
-                  fontSize: '0.82rem',
-                  cursor: analyticsLoading ? 'not-allowed' : 'pointer',
-                }}
-              >
-                <RefreshCw size={14} className={analyticsLoading ? 'spin' : ''} />
-                Refresh
-              </button>
-            </div>
-          </div>
-
-          {/* Active Period Badge */}
-          {analyticsData && (
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '6px 12px', fontSize: '0.78rem', color: '#166534', fontWeight: 600, marginBottom: '20px' }}>
-              <Clock size={14} /> Showing verified analytics for: <strong>{analyticsData.date_range.label} ({analyticsData.date_range.start} to {analyticsData.date_range.end})</strong>
             </div>
           )}
 
-          {/* SUMMARY METRIC CARDS */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '28px' }}>
-            <div style={{ padding: '18px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px' }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Total Searches</div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f172a', marginTop: '6px' }}>
-                {analyticsData?.summary.total_searches?.toLocaleString() || 0}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>Customer query events</div>
-            </div>
-
-            <div style={{ padding: '18px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px' }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Listing Views</div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0d8a73', marginTop: '6px' }}>
-                {analyticsData?.summary.total_listing_views?.toLocaleString() || 0}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>Space & service profile views</div>
-            </div>
-
-            <div style={{ padding: '18px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px' }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Unique Viewers</div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#2563eb', marginTop: '6px' }}>
-                {analyticsData?.summary.unique_viewers?.toLocaleString() || 0}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>Users & distinct visitor sessions</div>
-            </div>
-
-            <div style={{ padding: '18px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px' }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Booking Requests</div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#7c3aed', marginTop: '6px' }}>
-                {analyticsData?.summary.booking_requests?.toLocaleString() || 0}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>Reservations created in period</div>
-            </div>
-
-            <div style={{ padding: '18px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px' }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Confirmed Bookings</div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#059669', marginTop: '6px' }}>
-                {analyticsData?.summary.confirmed_bookings?.toLocaleString() || 0}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>Approved or completed</div>
-            </div>
-
-            <div style={{ padding: '18px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px' }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Search-to-Booking Rate</div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#ea580c', marginTop: '6px' }}>
-                {analyticsData?.summary.search_to_booking_rate || 0}%
-              </div>
-              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>Conversion across search cohort</div>
-            </div>
-          </div>
-
-          {/* CHARTS ROW 1: TRENDS OVER TIME */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(460px, 1fr))', gap: '24px', marginBottom: '28px' }}>
-            <div style={{ padding: '22px', border: '1px solid #e2e8f0', borderRadius: '14px', background: '#ffffff' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>Searches & Listing Views Over Time</h3>
-              </div>
-              {analyticsData && (
-                <TrendLineChart
-                  data={analyticsData.trends}
-                  series={[
-                    { key: 'views', label: 'Listing Views', color: '#0d8a73' },
-                    { key: 'searches', label: 'Searches', color: '#2563eb' },
-                  ]}
-                />
-              )}
-            </div>
-
-            <div style={{ padding: '22px', border: '1px solid #e2e8f0', borderRadius: '14px', background: '#ffffff' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>Booking Requests & Confirmations Over Time</h3>
-              </div>
-              {analyticsData && (
-                <TrendLineChart
-                  data={analyticsData.trends}
-                  series={[
-                    { key: 'booking_requests', label: 'Requests Received', color: '#7c3aed' },
-                    { key: 'confirmed_bookings', label: 'Confirmed', color: '#059669' },
-                  ]}
-                />
-              )}
-            </div>
-          </div>
-
-          {/* CHARTS ROW 2: FUNNEL & STATUS DISTRIBUTION */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '24px', marginBottom: '28px' }}>
-            <div style={{ padding: '22px', border: '1px solid #e2e8f0', borderRadius: '14px', background: '#ffffff' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          {/* TAB 7: PLATFORM ANALYTICS & REPORTS */}
+          {activeTab === 'analytics' && (
+            <div className="admin-analytics-panel" style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+              {/* Header & Controls */}
+              <div className="admin-analytics-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '24px', borderBottom: '1px solid #f1f5f9', paddingBottom: '20px' }}>
                 <div>
-                  <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>Booking Conversion Funnel</h3>
-                  <p style={{ margin: '2px 0 0', fontSize: '0.76rem', color: '#64748b' }}>Customer drop-off across search, discovery, and submission</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ padding: '8px', borderRadius: '10px', background: '#ecfdf5', color: '#0d8a73' }}>
+                      <BarChart3 size={22} />
+                    </div>
+                    <div>
+                      <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>Platform Analytics & Interaction Intelligence</h2>
+                      <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.85rem' }}>
+                        Audited event metrics, viewer tracking, conversion funnel, and demand trends computed from recorded customer interactions.
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              {analyticsData && <ConversionFunnelChart stages={analyticsData.funnel} />}
-            </div>
 
-            <div style={{ padding: '22px', border: '1px solid #e2e8f0', borderRadius: '14px', background: '#ffffff' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <div>
-                  <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>Booking Status Distribution</h3>
-                  <p style={{ margin: '2px 0 0', fontSize: '0.76rem', color: '#64748b' }}>Cancellation rate: {analyticsData?.summary.cancellation_rate || 0}%</p>
-                </div>
-              </div>
-              {analyticsData && <StatusDistributionChart items={analyticsData.status_distribution} />}
+                <div className="admin-analytics-controls" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  {/* Date Preset Selector */}
+                  <div style={{ display: 'flex', background: '#f8fafc', padding: '3px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                    {[
+                      { id: '7d', label: '7D' },
+                      { id: '30d', label: '30D' },
+                      { id: '90d', label: '90D' },
+                      { id: 'all', label: 'All' },
+                    ].map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => {
+                          setAnalyticsPreset(p.id);
+                          setCustomStartDate('');
+                          setCustomEndDate('');
+                          fetchAnalyticsData(p.id, '', '');
+                        }}
+                        style={{
+                          padding: '6px 14px',
+                          fontSize: '0.8rem',
+                          fontWeight: 700,
+                          borderRadius: '8px',
+                          border: 'none',
+                          cursor: 'pointer',
+                          background: analyticsPreset === p.id && !customStartDate ? '#0d8a73' : 'transparent',
+                          color: analyticsPreset === p.id && !customStartDate ? '#ffffff' : '#64748b',
+                          transition: 'all 0.2s',
+                        }}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
 
-              {/* Peak Days Bar */}
-              <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #f1f5f9' }}>
-                <h4 style={{ fontSize: '0.88rem', fontWeight: 700, color: '#334155', margin: '0 0 4px' }}>Peak Booking Request Days</h4>
-                <p style={{ margin: '0 0 10px', fontSize: '0.75rem', color: '#64748b' }}>Distribution of booking creation by day of the week</p>
-                {analyticsData && <PeakDaysBarChart peakDays={analyticsData.peak_days} />}
-              </div>
-            </div>
-          </div>
+                  {/* Custom Date Range Picker */}
+                  <div className="admin-analytics-date-range" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.8rem',
+                        color: '#334155',
+                        outline: 'none',
+                      }}
+                      title="Start Date"
+                    />
+                    <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>to</span>
+                    <input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.8rem',
+                        color: '#334155',
+                        outline: 'none',
+                      }}
+                      title="End Date"
+                    />
+                    <button
+                      onClick={() => {
+                        if (customStartDate && customEndDate) {
+                          setAnalyticsPreset('custom');
+                          fetchAnalyticsData('custom', customStartDate, customEndDate);
+                        } else {
+                          toast.error('Please select both start and end dates.');
+                        }
+                      }}
+                      style={{
+                        padding: '7px 12px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: '#334155',
+                        color: '#ffffff',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Apply
+                    </button>
+                  </div>
 
-          {/* CHARTS ROW 3: POPULAR CATEGORIES & POPULAR LISTINGS TABLES */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '24px' }}>
-            <div style={{ padding: '22px', border: '1px solid #e2e8f0', borderRadius: '14px', background: '#ffffff' }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#1e293b', margin: '0 0 16px' }}>Most Popular Event Categories</h3>
-              {analyticsData && (
-                <HorizontalBarChart
-                  items={analyticsData.popular_categories.map((c) => ({
-                    label: c.category,
-                    value: c.views,
-                    secondaryLabel: 'views',
-                  }))}
-                  color="#0d8a73"
-                  emptyMessage="No category engagement recorded yet."
-                />
-              )}
-            </div>
-
-            <div style={{ padding: '22px', border: '1px solid #e2e8f0', borderRadius: '14px', background: '#ffffff' }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#1e293b', margin: '0 0 16px' }}>Most Viewed Listings</h3>
-              {analyticsData && analyticsData.popular_listings.length > 0 ? (
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                    <thead>
-                      <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#64748b' }}>
-                        <th style={{ padding: '8px 10px' }}>Listing</th>
-                        <th style={{ padding: '8px 10px' }}>Type</th>
-                        <th style={{ padding: '8px 10px' }}>Views</th>
-                        <th style={{ padding: '8px 10px' }}>Requests</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {analyticsData.popular_listings.map((l) => (
-                        <tr key={`${l.type}-${l.id}`} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                          <td style={{ padding: '8px 10px', fontWeight: 700, color: '#1e293b' }}>{l.title}</td>
-                          <td style={{ padding: '8px 10px', color: '#64748b' }}>{l.type}</td>
-                          <td style={{ padding: '8px 10px', fontWeight: 700, color: '#0d8a73' }}>{l.views.toLocaleString()}</td>
-                          <td style={{ padding: '8px 10px', fontWeight: 700, color: '#7c3aed' }}>{l.booking_requests}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div style={{ color: '#94a3b8', fontSize: '0.88rem' }}>Analytics will appear as customers interact with your listings.</div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 8: PLATFORM SETTINGS */}
-      {activeTab === 'settings' && (
-        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-          <div style={{ marginBottom: '24px' }}>
-            <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>Platform Settings & Configuration</h2>
-            <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Manage security settings, operational defaults, and administrative controls.</p>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div style={{ padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: '#f8fafc' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-                <div>
-                  <h4 style={{ margin: '0 0 4px', fontSize: '1rem', fontWeight: 700, color: '#1e293b' }}>Administrator Account Session</h4>
-                  <p style={{ margin: 0, color: '#64748b', fontSize: '0.84rem' }}>
-                    Signed in as <strong>{currentUser?.email || 'admin@locyfy.com'}</strong> with platform {currentUser?.role || 'ADMIN'} privileges.
-                  </p>
-                </div>
-                {onLogout && (
-                  <button
-                    onClick={onLogout}
+                  {/* CSV Export Button */}
+                  <a
+                    href={ApiService.getAdminAnalyticsExportUrl({
+                      preset: analyticsPreset,
+                      start_date: customStartDate || undefined,
+                      end_date: customEndDate || undefined,
+                    })}
+                    download
                     style={{
-                      padding: '8px 16px',
-                      borderRadius: '8px',
-                      background: '#fee2e2',
-                      color: '#dc2626',
-                      border: '1px solid #fecaca',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      background: '#f8fafc',
+                      color: '#0d8a73',
+                      border: '1px solid #cbd5e1',
+                      padding: '7px 14px',
+                      borderRadius: '10px',
                       fontWeight: 700,
                       fontSize: '0.82rem',
+                      textDecoration: 'none',
                       cursor: 'pointer',
                     }}
                   >
-                    End Session
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div style={{ padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: '#ffffff' }}>
-              <h4 style={{ margin: '0 0 12px', fontSize: '1rem', fontWeight: 700, color: '#1e293b' }}>System Operations & Data Caching</h4>
-              <p style={{ margin: '0 0 16px', color: '#64748b', fontSize: '0.84rem' }}>
-                Trigger background sync, recalculate composite provider ratings, or refresh booking inventory counts.
-              </p>
-              <button
-                onClick={async () => {
-                  await handleRefreshRatings();
-                  loadAdminData();
-                  onDataChange?.();
-                }}
-                disabled={loading || refreshingRatings}
-                style={{
-                  padding: '10px 20px',
-                  borderRadius: '10px',
-                  background: '#0d8a73',
-                  color: '#ffffff',
-                  border: 'none',
-                  fontWeight: 700,
-                  fontSize: '0.88rem',
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}
-              >
-                <RefreshCw size={16} className={refreshingRatings ? 'spin' : ''} />
-                Force System Refresh
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 1: Account Verification Review Modal */}
-      {selectedAccount && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(15, 23, 42, 0.7)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1100,
-          padding: '20px',
-        }}>
-          <div style={{
-            background: '#fff',
-            borderRadius: '16px',
-            maxWidth: '560px',
-            width: '100%',
-            maxHeight: '90vh',
-            overflowY: 'auto',
-            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
-            display: 'flex',
-            flexDirection: 'column',
-          }}>
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
-              <div>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: '#0d8a73' }}>
-                  {selectedAccount.account_type} Verification Details
-                </span>
-                <h3 style={{ margin: '2px 0 0', fontSize: '1.25rem', fontWeight: 800, color: '#1e293b' }}>
-                  {selectedAccount.business_name}
-                </h3>
-              </div>
-              <button
-                onClick={() => setSelectedAccount(null)}
-                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px' }}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '0.9rem' }}>
-              {selectedAccount.logo_url && (
-                <div style={{ textAlign: 'center', marginBottom: '8px' }}>
-                  <img
-                    src={selectedAccount.logo_url}
-                    alt="Logo"
-                    style={{ maxHeight: '80px', maxWidth: '200px', borderRadius: '8px', objectFit: 'contain' }}
-                  />
-                </div>
-              )}
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Type / Category</span>
-                  <strong style={{ color: '#1e293b' }}>{selectedAccount.category_or_type}</strong>
-                </div>
-                <div>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Location</span>
-                  <strong style={{ color: '#1e293b' }}>{selectedAccount.location}</strong>
-                </div>
-              </div>
-
-              {selectedAccount.address && (
-                <div>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Physical Address</span>
-                  <span style={{ color: '#334155' }}>{selectedAccount.address}</span>
-                </div>
-              )}
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                {selectedAccount.email && (
-                  <div>
-                    <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Email Address</span>
-                    <a href={`mailto:${selectedAccount.email}`} style={{ color: '#0d8a73', textDecoration: 'none', fontWeight: 600 }}>
-                      {selectedAccount.email}
-                    </a>
-                  </div>
-                )}
-                {selectedAccount.phone && (
-                  <div>
-                    <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Phone Number</span>
-                    <a href={`tel:${selectedAccount.phone}`} style={{ color: '#0d8a73', textDecoration: 'none', fontWeight: 600 }}>
-                      {selectedAccount.phone}
-                    </a>
-                  </div>
-                )}
-              </div>
-
-              {selectedAccount.years_in_business !== undefined && (
-                <div>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Experience</span>
-                  <span style={{ color: '#334155', fontWeight: 600 }}>{selectedAccount.years_in_business} years in business</span>
-                </div>
-              )}
-
-              {selectedAccount.website_url && (
-                <div>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Website / Portfolio</span>
-                  <a
-                    href={selectedAccount.website_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ color: '#2563eb', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}
-                  >
-                    {selectedAccount.website_url} <ExternalLink size={13} />
+                    <Download size={15} /> Export CSV
                   </a>
-                </div>
-              )}
 
-              {selectedAccount.description && (
-                <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>Business Description</span>
-                  <p style={{ margin: 0, color: '#334155', lineHeight: 1.5, fontSize: '0.85rem' }}>
-                    {selectedAccount.description}
-                  </p>
-                </div>
-              )}
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', borderRadius: '8px', background: selectedAccount.verification_status === 'APPROVED' ? '#ecfdf5' : selectedAccount.verification_status === 'REJECTED' ? '#fef2f2' : '#fef3c7' }}>
-                <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>Current Status:</span>
-                <span style={{ fontWeight: 800, fontSize: '0.85rem', color: selectedAccount.verification_status === 'APPROVED' ? '#059669' : selectedAccount.verification_status === 'REJECTED' ? '#dc2626' : '#b45309' }}>
-                  {selectedAccount.verification_status}
-                </span>
-              </div>
-            </div>
-
-            <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px', background: '#f8fafc', borderBottomLeftRadius: '16px', borderBottomRightRadius: '16px' }}>
-              <button
-                onClick={() => setSelectedAccount(null)}
-                style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
-              >
-                Close
-              </button>
-              <button
-                onClick={() => handleRejectAccount(selectedAccount)}
-                style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#ef4444', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
-              >
-                Reject Application
-              </button>
-              <button
-                onClick={() => handleApproveAccount(selectedAccount)}
-                style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#059669', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
-              >
-                Approve & Verify
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 2: Booking Details Modal */}
-      {selectedBooking && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(15, 23, 42, 0.7)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1100,
-          padding: '20px',
-        }}>
-          <div style={{
-            background: '#fff',
-            borderRadius: '16px',
-            maxWidth: '560px',
-            width: '100%',
-            maxHeight: '90vh',
-            overflowY: 'auto',
-            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
-          }}>
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
-              <div>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: '#0d8a73' }}>
-                  Booking #{selectedBooking.id} Information
-                </span>
-                <h3 style={{ margin: '2px 0 0', fontSize: '1.25rem', fontWeight: 800, color: '#1e293b' }}>
-                  {selectedBooking.event_title}
-                </h3>
-              </div>
-              <button onClick={() => setSelectedBooking(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px' }}>
-                <X size={20} />
-              </button>
-            </div>
-
-            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '0.9rem' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Customer</span>
-                  <strong style={{ color: '#1e293b' }}>{selectedBooking.customer_name}</strong>
-                  {selectedBooking.customer_email && <div style={{ fontSize: '0.78rem', color: '#64748b' }}>{selectedBooking.customer_email}</div>}
-                </div>
-                <div>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Reserved Item</span>
-                  <strong style={{ color: '#1e293b' }}>
-                    {selectedBooking.venue_details?.title || selectedBooking.vendor_details?.business_name || 'Service Item'}
-                  </strong>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Event Date</span>
-                  <strong style={{ color: '#1e293b' }}>{selectedBooking.event_date}</strong>
-                </div>
-                <div>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Guest Count</span>
-                  <strong style={{ color: '#1e293b' }}>{selectedBooking.guest_count} Attendees</strong>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Total Price</span>
-                  <strong style={{ color: '#0d8a73', fontSize: '1.1rem' }}>KES {Number(selectedBooking.total_price).toLocaleString()}</strong>
-                </div>
-                <div>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Current Status</span>
-                  <span style={{
-                    display: 'inline-block',
-                    padding: '3px 8px',
-                    borderRadius: '999px',
-                    fontSize: '0.75rem',
-                    fontWeight: 700,
-                    background: selectedBooking.status === 'APPROVED' ? '#ecfdf5' : selectedBooking.status === 'PENDING' ? '#fef3c7' : selectedBooking.status === 'COMPLETED' ? '#eff6ff' : '#fee2e2',
-                    color: selectedBooking.status === 'APPROVED' ? '#059669' : selectedBooking.status === 'PENDING' ? '#b45309' : selectedBooking.status === 'COMPLETED' ? '#2563eb' : '#dc2626',
-                  }}>
-                    {selectedBooking.status}
-                  </span>
-                </div>
-              </div>
-
-              {selectedBooking.notes && (
-                <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>Client Notes</span>
-                  <p style={{ margin: 0, color: '#334155', lineHeight: 1.5, fontSize: '0.85rem' }}>
-                    {selectedBooking.notes}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '8px', background: '#f8fafc', borderBottomLeftRadius: '16px', borderBottomRightRadius: '16px' }}>
-              <button
-                onClick={() => setSelectedBooking(null)}
-                style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
-              >
-                Close
-              </button>
-              {selectedBooking.status === 'PENDING' && (
-                <button
-                  onClick={() => handleUpdateBookingStatus(selectedBooking.id, 'APPROVED')}
-                  style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#059669', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
-                >
-                  Approve Booking
-                </button>
-              )}
-              {selectedBooking.status === 'APPROVED' && (
-                <button
-                  onClick={() => handleUpdateBookingStatus(selectedBooking.id, 'COMPLETED')}
-                  style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
-                >
-                  Mark Completed
-                </button>
-              )}
-              {selectedBooking.status !== 'CANCELLED' && (
-                <button
-                  onClick={() => handleUpdateBookingStatus(selectedBooking.id, 'CANCELLED')}
-                  style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#dc2626', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
-                >
-                  Cancel Booking
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 3: Edit User Role Modal */}
-      {editingUser && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(15, 23, 42, 0.7)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1100,
-          padding: '20px',
-        }}>
-          <div style={{ background: '#fff', borderRadius: '16px', maxWidth: '440px', width: '100%', padding: '24px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
-            <h3 style={{ margin: '0 0 8px', fontSize: '1.2rem', fontWeight: 800, color: '#1e293b' }}>
-              Modify User Role
-            </h3>
-            <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: '#64748b' }}>
-              Change the permission tier for <strong>{editingUser.username}</strong>.
-            </p>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>
-                Select Role
-              </label>
-              <select
-                value={newRoleSelection}
-                onChange={(e) => setNewRoleSelection(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '0.9rem',
-                  fontWeight: 600,
-                  outline: 'none',
-                }}
-              >
-                <option value="CUSTOMER">Customer (Book spaces & services)</option>
-                <option value="PROVIDER">Business Provider (List venues & services)</option>
-                <option value="ADMIN">Administrator (Full platform moderation)</option>
-              </select>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button
-                onClick={() => setEditingUser(null)}
-                style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveUserRole}
-                style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#0d8a73', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
-              >
-                Save Role
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 4: Delete Confirmation Dialog */}
-      {deleteConfirm && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(15, 23, 42, 0.7)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1200,
-          padding: '20px',
-        }}>
-          <div style={{ background: '#fff', borderRadius: '16px', maxWidth: '420px', width: '100%', padding: '24px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
-            <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: '#fee2e2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
-              <AlertCircle size={24} />
-            </div>
-            <h3 style={{ margin: '0 0 8px', fontSize: '1.2rem', fontWeight: 800, color: '#1e293b' }}>
-              Confirm Deletion
-            </h3>
-            <p style={{ margin: '0 0 20px', fontSize: '0.85rem', color: '#64748b', lineHeight: 1.5 }}>
-              Are you sure you want to permanently delete <strong>{deleteConfirm.title}</strong>? This action cannot be undone.
-            </p>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button
-                onClick={() => setDeleteConfirm(null)}
-                style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  if (deleteConfirm.type === 'user') handleDeleteUser(deleteConfirm.id);
-                  else if (deleteConfirm.type === 'booking') handleDeleteBooking(deleteConfirm.id);
-                  else if (deleteConfirm.type === 'venue') handleDeleteVenue(deleteConfirm.id);
-                  else if (deleteConfirm.type === 'review') handleDeleteReview(deleteConfirm.id);
-                }}
-                style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#ef4444', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
-              >
-                Delete Permanently
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* MODAL 5: Inspect Venue Listing Modal */}
-      {inspectVenueModal && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(15, 23, 42, 0.7)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1100,
-          padding: '20px',
-        }}>
-          <div style={{
-            background: '#fff',
-            borderRadius: '16px',
-            maxWidth: '580px',
-            width: '100%',
-            maxHeight: '90vh',
-            overflowY: 'auto',
-            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
-            display: 'flex',
-            flexDirection: 'column',
-          }}>
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
-              <div>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: '#0d8a73' }}>
-                  Listing Inspection #{inspectVenueModal.id}
-                </span>
-                <h3 style={{ margin: '2px 0 0', fontSize: '1.25rem', fontWeight: 800, color: '#1e293b' }}>
-                  {inspectVenueModal.title}
-                </h3>
-              </div>
-              <button onClick={() => setInspectVenueModal(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px' }}>
-                <X size={20} />
-              </button>
-            </div>
-
-            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '0.9rem' }}>
-              <div
-                style={{
-                  height: '200px',
-                  width: '100%',
-                  borderRadius: '10px',
-                  overflow: 'hidden',
-                  background: '#f1f5f9',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginBottom: '8px'
-                }}
-              >
-                {cleanImageUrl(inspectVenueModal.image_url) ? (
-                  <img
-                    src={cleanImageUrl(inspectVenueModal.image_url)}
-                    alt={inspectVenueModal.title}
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                      const placeholder = e.currentTarget.nextElementSibling;
-                      if (placeholder instanceof HTMLElement) placeholder.style.display = 'flex';
+                  <button
+                    onClick={() => fetchAnalyticsData(analyticsPreset, customStartDate, customEndDate)}
+                    disabled={analyticsLoading}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      background: '#0d8a73',
+                      color: '#ffffff',
+                      border: 'none',
+                      padding: '8px 14px',
+                      borderRadius: '10px',
+                      fontWeight: 700,
+                      fontSize: '0.82rem',
+                      cursor: analyticsLoading ? 'not-allowed' : 'pointer',
                     }}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
-                ) : null}
-                <div
-                  style={{
-                    display: cleanImageUrl(inspectVenueModal.image_url) ? 'none' : 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: '8px',
-                    color: '#94a3b8'
-                  }}
-                >
-                  <ImageOff size={32} />
-                  <span style={{ fontSize: '0.8rem' }}>No image available</span>
+                  >
+                    <RefreshCw size={14} className={analyticsLoading ? 'spin' : ''} />
+                    Refresh
+                  </button>
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Category</span>
-                  <strong style={{ color: '#1e293b' }}>{inspectVenueModal.category_display || inspectVenueModal.category}</strong>
-                </div>
-                <div>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Location</span>
-                  <strong style={{ color: '#1e293b' }}>{inspectVenueModal.location}</strong>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Daily Rental Rate</span>
-                  <strong style={{ color: '#0d8a73', fontSize: '1.05rem' }}>KES {Number(inspectVenueModal.price_per_day).toLocaleString()}</strong>
-                </div>
-                <div>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Guest Capacity</span>
-                  <strong style={{ color: '#1e293b' }}>{inspectVenueModal.capacity} Attendees</strong>
-                </div>
-              </div>
-
-              {inspectVenueModal.cancellation_policy && (
-                <div>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Cancellation Policy</span>
-                  <strong style={{ color: '#334155' }}>{inspectVenueModal.cancellation_policy}</strong>
+              {/* Active Period Badge */}
+              {analyticsData && (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '6px 12px', fontSize: '0.78rem', color: '#166534', fontWeight: 600, marginBottom: '20px' }}>
+                  <Clock size={14} /> Showing verified analytics for: <strong>{analyticsData.date_range.label} ({analyticsData.date_range.start} to {analyticsData.date_range.end})</strong>
                 </div>
               )}
 
-              {inspectVenueModal.description && (
-                <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>Listing Description</span>
-                  <p style={{ margin: 0, color: '#334155', lineHeight: 1.5, fontSize: '0.85rem' }}>
-                    {inspectVenueModal.description}
+              {/* SUMMARY METRIC CARDS */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '28px' }}>
+                <div style={{ padding: '18px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Total Searches</div>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f172a', marginTop: '6px' }}>
+                    {analyticsData?.summary.total_searches?.toLocaleString() || 0}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>Customer query events</div>
+                </div>
+
+                <div style={{ padding: '18px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Listing Views</div>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0d8a73', marginTop: '6px' }}>
+                    {analyticsData?.summary.total_listing_views?.toLocaleString() || 0}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>Space & service profile views</div>
+                </div>
+
+                <div style={{ padding: '18px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Unique Viewers</div>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#2563eb', marginTop: '6px' }}>
+                    {analyticsData?.summary.unique_viewers?.toLocaleString() || 0}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>Users & distinct visitor sessions</div>
+                </div>
+
+                <div style={{ padding: '18px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Booking Requests</div>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#7c3aed', marginTop: '6px' }}>
+                    {analyticsData?.summary.booking_requests?.toLocaleString() || 0}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>Reservations created in period</div>
+                </div>
+
+                <div style={{ padding: '18px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Confirmed Bookings</div>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#059669', marginTop: '6px' }}>
+                    {analyticsData?.summary.confirmed_bookings?.toLocaleString() || 0}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>Approved or completed</div>
+                </div>
+
+                <div style={{ padding: '18px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Search-to-Booking Rate</div>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#ea580c', marginTop: '6px' }}>
+                    {analyticsData?.summary.search_to_booking_rate || 0}%
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>Conversion across search cohort</div>
+                </div>
+              </div>
+
+              {/* CHARTS ROW 1: TRENDS OVER TIME */}
+              <div className="admin-analytics-chart-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 460px), 1fr))', gap: '24px', marginBottom: '28px' }}>
+                <div style={{ padding: '22px', border: '1px solid #e2e8f0', borderRadius: '14px', background: '#ffffff' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>Searches & Listing Views Over Time</h3>
+                  </div>
+                  {analyticsData && (
+                    <TrendLineChart
+                      data={analyticsData.trends}
+                      series={[
+                        { key: 'views', label: 'Listing Views', color: '#0d8a73' },
+                        { key: 'searches', label: 'Searches', color: '#2563eb' },
+                      ]}
+                    />
+                  )}
+                </div>
+
+                <div style={{ padding: '22px', border: '1px solid #e2e8f0', borderRadius: '14px', background: '#ffffff' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>Booking Requests & Confirmations Over Time</h3>
+                  </div>
+                  {analyticsData && (
+                    <TrendLineChart
+                      data={analyticsData.trends}
+                      series={[
+                        { key: 'booking_requests', label: 'Requests Received', color: '#7c3aed' },
+                        { key: 'confirmed_bookings', label: 'Confirmed', color: '#059669' },
+                      ]}
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* CHARTS ROW 2: FUNNEL & STATUS DISTRIBUTION */}
+              <div className="admin-analytics-chart-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))', gap: '24px', marginBottom: '28px' }}>
+                <div style={{ padding: '22px', border: '1px solid #e2e8f0', borderRadius: '14px', background: '#ffffff' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <div>
+                      <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>Booking Conversion Funnel</h3>
+                      <p style={{ margin: '2px 0 0', fontSize: '0.76rem', color: '#64748b' }}>Customer drop-off across search, discovery, and submission</p>
+                    </div>
+                  </div>
+                  {analyticsData && <ConversionFunnelChart stages={analyticsData.funnel} />}
+                </div>
+
+                <div style={{ padding: '22px', border: '1px solid #e2e8f0', borderRadius: '14px', background: '#ffffff' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <div>
+                      <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>Booking Status Distribution</h3>
+                      <p style={{ margin: '2px 0 0', fontSize: '0.76rem', color: '#64748b' }}>Cancellation rate: {analyticsData?.summary.cancellation_rate || 0}%</p>
+                    </div>
+                  </div>
+                  {analyticsData && <StatusDistributionChart items={analyticsData.status_distribution} />}
+
+                  {/* Peak Days Bar */}
+                  <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #f1f5f9' }}>
+                    <h4 style={{ fontSize: '0.88rem', fontWeight: 700, color: '#334155', margin: '0 0 4px' }}>Peak Booking Request Days</h4>
+                    <p style={{ margin: '0 0 10px', fontSize: '0.75rem', color: '#64748b' }}>Distribution of booking creation by day of the week</p>
+                    {analyticsData && <PeakDaysBarChart peakDays={analyticsData.peak_days} />}
+                  </div>
+                </div>
+              </div>
+
+              {/* CHARTS ROW 3: POPULAR CATEGORIES & POPULAR LISTINGS TABLES */}
+              <div className="admin-analytics-chart-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))', gap: '24px' }}>
+                <div style={{ padding: '22px', border: '1px solid #e2e8f0', borderRadius: '14px', background: '#ffffff' }}>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#1e293b', margin: '0 0 16px' }}>Most Popular Event Categories</h3>
+                  {analyticsData && (
+                    <HorizontalBarChart
+                      items={analyticsData.popular_categories.map((c) => ({
+                        label: c.category,
+                        value: c.views,
+                        secondaryLabel: 'views',
+                      }))}
+                      color="#0d8a73"
+                      emptyMessage="No category engagement recorded yet."
+                    />
+                  )}
+                </div>
+
+                <div style={{ padding: '22px', border: '1px solid #e2e8f0', borderRadius: '14px', background: '#ffffff' }}>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#1e293b', margin: '0 0 16px' }}>Most Viewed Listings</h3>
+                  {analyticsData && analyticsData.popular_listings.length > 0 ? (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                        <thead>
+                          <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#64748b' }}>
+                            <th style={{ padding: '8px 10px' }}>Listing</th>
+                            <th style={{ padding: '8px 10px' }}>Type</th>
+                            <th style={{ padding: '8px 10px' }}>Views</th>
+                            <th style={{ padding: '8px 10px' }}>Requests</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {analyticsData.popular_listings.map((l) => (
+                            <tr key={`${l.type}-${l.id}`} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                              <td style={{ padding: '8px 10px', fontWeight: 700, color: '#1e293b' }}>{l.title}</td>
+                              <td style={{ padding: '8px 10px', color: '#64748b' }}>{l.type}</td>
+                              <td style={{ padding: '8px 10px', fontWeight: 700, color: '#0d8a73' }}>{l.views.toLocaleString()}</td>
+                              <td style={{ padding: '8px 10px', fontWeight: 700, color: '#7c3aed' }}>{l.booking_requests}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div style={{ color: '#94a3b8', fontSize: '0.88rem' }}>Analytics will appear as customers interact with your listings.</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 8: PLATFORM SETTINGS */}
+          {activeTab === 'settings' && (
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+              <div style={{ marginBottom: '24px' }}>
+                <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>Platform Settings & Configuration</h2>
+                <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Manage security settings, operational defaults, and administrative controls.</p>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div style={{ padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                    <div>
+                      <h4 style={{ margin: '0 0 4px', fontSize: '1rem', fontWeight: 700, color: '#1e293b' }}>Administrator Account Session</h4>
+                      <p style={{ margin: 0, color: '#64748b', fontSize: '0.84rem' }}>
+                        Signed in as <strong>{currentUser?.email || 'admin@locyfy.com'}</strong> with platform {currentUser?.role || 'ADMIN'} privileges.
+                      </p>
+                    </div>
+                    {onLogout && (
+                      <button
+                        onClick={onLogout}
+                        style={{
+                          padding: '8px 16px',
+                          borderRadius: '8px',
+                          background: '#fee2e2',
+                          color: '#dc2626',
+                          border: '1px solid #fecaca',
+                          fontWeight: 700,
+                          fontSize: '0.82rem',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        End Session
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: '#ffffff' }}>
+                  <h4 style={{ margin: '0 0 12px', fontSize: '1rem', fontWeight: 700, color: '#1e293b' }}>System Operations & Data Caching</h4>
+                  <p style={{ margin: '0 0 16px', color: '#64748b', fontSize: '0.84rem' }}>
+                    Trigger background sync, recalculate composite provider ratings, or refresh booking inventory counts.
                   </p>
-                </div>
-              )}
-
-              {inspectVenueModal.rejection_reason && (
-                <div style={{ background: '#fee2e2', padding: '12px 14px', borderRadius: '8px', border: '1px solid #fecaca' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#991b1b', fontWeight: 700, display: 'block', marginBottom: '4px' }}>Previous Rejection Reason</span>
-                  <p style={{ margin: 0, color: '#b91c1c', fontSize: '0.85rem' }}>
-                    {inspectVenueModal.rejection_reason}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px', background: '#f8fafc', borderBottomLeftRadius: '16px', borderBottomRightRadius: '16px' }}>
-              <button
-                onClick={() => setInspectVenueModal(null)}
-                style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
-              >
-                Close
-              </button>
-              {inspectVenueModal.approval_status !== 'APPROVED' && (
-                <button
-                  onClick={async () => {
-                    const res = await ApiService.approveVenue(inspectVenueModal.id);
-                    if (res.success) {
-                      setVenues(prev => prev.map(item => item.id === inspectVenueModal.id ? { ...item, approval_status: 'APPROVED', is_verified: true, rejection_reason: undefined } : item));
-                      toast.success(`Venue '${inspectVenueModal.title}' approved!`);
-                      setInspectVenueModal(null);
-                      onDataChange?.();
-                    } else {
-                      toast.error(res.error || 'Failed to approve listing.');
-                    }
-                  }}
-                  style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#059669', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
-                >
-                  Approve Listing
-                </button>
-              )}
-              {inspectVenueModal.approval_status !== 'REJECTED' && (
-                <button
-                  onClick={() => {
-                    const target = inspectVenueModal;
-                    setInspectVenueModal(null);
-                    setRejectVenueModal(target);
-                    setVenueRejectReason('');
-                  }}
-                  style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#ef4444', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
-                >
-                  Reject Listing
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 6: Reject Venue with Reason Modal */}
-      {rejectVenueModal && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(15, 23, 42, 0.7)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1200,
-          padding: '20px',
-        }}>
-          <div style={{ background: '#fff', borderRadius: '16px', maxWidth: '480px', width: '100%', padding: '24px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
-            <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: '#fee2e2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
-              <AlertCircle size={24} />
-            </div>
-            <h3 style={{ margin: '0 0 8px', fontSize: '1.2rem', fontWeight: 800, color: '#1e293b' }}>
-              Reject Listing: {rejectVenueModal.title}
-            </h3>
-            <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: '#64748b' }}>
-              Please provide a specific reason explaining what requirements were not met so the host can address them.
-            </p>
-
-            <textarea
-              rows={4}
-              placeholder="e.g. Inadequate pricing clarity, incorrect location details, or poor image quality..."
-              value={venueRejectReason}
-              onChange={(e) => setVenueRejectReason(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '12px',
-                borderRadius: '8px',
-                border: '1.5px solid #cbd5e1',
-                fontSize: '0.88rem',
-                outline: 'none',
-                boxSizing: 'border-box',
-                fontFamily: 'inherit',
-                marginBottom: '20px',
-                resize: 'vertical',
-              }}
-            />
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button
-                onClick={() => setRejectVenueModal(null)}
-                style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={async () => {
-                  const res = await ApiService.rejectVenue(rejectVenueModal.id, venueRejectReason.trim() || 'Listing does not satisfy verification standards.');
-                  if (res.success) {
-                    setVenues(prev => prev.map(item => item.id === rejectVenueModal.id ? { ...item, approval_status: 'REJECTED', is_verified: false, rejection_reason: venueRejectReason.trim() } : item));
-                    toast.success(`Listing '${rejectVenueModal.title}' has been rejected.`);
-                    setRejectVenueModal(null);
-                    onDataChange?.();
-                  } else {
-                    toast.error(res.error || 'Failed to reject listing.');
-                  }
-                }}
-                style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#ef4444', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
-              >
-                Confirm Rejection
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: REJECT VERIFICATION DOCUMENT */}
-      {rejectingDocModal && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(15, 23, 42, 0.7)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1200,
-          padding: '20px',
-        }}>
-          <div style={{ background: '#fff', borderRadius: '16px', maxWidth: '500px', width: '100%', padding: '24px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
-            <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: '#fee2e2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
-              <AlertTriangle size={24} />
-            </div>
-            <h3 style={{ margin: '0 0 8px', fontSize: '1.2rem', fontWeight: 800, color: '#1e293b' }}>
-              Reject Document: {rejectingDocModal.title || rejectingDocModal.document_type_display}
-            </h3>
-            <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: '#64748b' }}>
-              Provide a clear reason for the document rejection. The provider will see this explanation and will be allowed to resubmit a valid replacement.
-            </p>
-
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-                Rejection Reason (Visible to Provider) *
-              </label>
-              <textarea
-                rows={3}
-                placeholder="e.g., The permit has expired, official seal is unreadable, or company registration name doesn't match..."
-                value={docRejectionReason}
-                onChange={(e) => setDocRejectionReason(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: '8px',
-                  border: '1.5px solid #cbd5e1',
-                  fontSize: '0.88rem',
-                  outline: 'none',
-                  boxSizing: 'border-box',
-                  fontFamily: 'inherit',
-                  resize: 'vertical',
-                }}
-              />
-            </div>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-                Internal Admin Notes (Optional)
-              </label>
-              <input
-                type="text"
-                placeholder="Internal audit notes..."
-                value={docAdminNotes}
-                onChange={(e) => setDocAdminNotes(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '9px 12px',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '0.85rem',
-                  outline: 'none',
-                  boxSizing: 'border-box',
-                }}
-              />
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button
-                onClick={() => setRejectingDocModal(null)}
-                disabled={submittingDocReview}
-                style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
-              >
-                Cancel
-              </button>
-              <button
-                disabled={submittingDocReview}
-                onClick={async () => {
-                  const reason = docRejectionReason.trim() || 'Document does not satisfy LOCYFY verification requirements.';
-                  setSubmittingDocReview(true);
-                  try {
-                    const res = await ApiService.rejectVerificationDocument(rejectingDocModal.id, reason, docAdminNotes, currentUser?.id);
-                    if (res.success) {
-                      setVerificationDocuments(prev => prev.map(d => d.id === rejectingDocModal.id ? res.data || { ...d, status: 'REJECTED', rejection_reason: reason } : d));
-                      toast.success(`Document marked as rejected.`);
-                      setRejectingDocModal(null);
+                  <button
+                    onClick={async () => {
+                      await handleRefreshRatings();
                       loadAdminData();
                       onDataChange?.();
-                    } else {
-                      toast.error(res.error || 'Failed to reject document.');
-                    }
-                  } catch (e: any) {
-                    toast.error(e?.message || 'Error rejecting document.');
-                  } finally {
-                    setSubmittingDocReview(false);
-                  }
-                }}
-                style={{
-                  padding: '8px 16px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  background: '#ef4444',
-                  color: '#fff',
-                  fontWeight: 700,
-                  cursor: submittingDocReview ? 'not-allowed' : 'pointer',
-                  opacity: submittingDocReview ? 0.7 : 1,
-                }}
-              >
-                {submittingDocReview ? 'Submitting...' : 'Confirm Rejection'}
-              </button>
+                    }}
+                    disabled={loading || refreshingRatings}
+                    style={{
+                      padding: '10px 20px',
+                      borderRadius: '10px',
+                      background: '#0d8a73',
+                      color: '#ffffff',
+                      border: 'none',
+                      fontWeight: 700,
+                      fontSize: '0.88rem',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                  >
+                    <RefreshCw size={16} className={refreshingRatings ? 'spin' : ''} />
+                    Force System Refresh
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          )}
+
+          {activeTab === 'profile' && (
+            <section className="admin-profile-screen">
+              <header className="admin-profile-page-header">
+                <div>
+                  <h2>My Profile</h2>
+                  <p>Administrator account details and contact information.</p>
+                </div>
+              </header>
+
+              <div className="admin-profile-page-content">
+                <div className="admin-profile-identity">
+                  <div className="admin-profile-page-avatar">
+                    {currentUser?.avatar_url ? (
+                      <img src={currentUser.avatar_url} alt={adminFullName} />
+                    ) : (
+                      <UserIcon size={34} />
+                    )}
+                  </div>
+                  <div className="admin-profile-identity-copy">
+                    <span className="admin-profile-role-chip"><ShieldCheck size={14} /> Platform Administrator</span>
+                    <h3>{adminFullName}</h3>
+                    <p>{currentUser?.email || 'Email not provided'}</p>
+                  </div>
+                </div>
+
+                <section className="admin-profile-information">
+                  <h3>Account Information</h3>
+                  <dl>
+                    <div><dt>User ID</dt><dd>{currentUser?.id ?? 'Not available'}</dd></div>
+                    <div><dt>First name</dt><dd>{currentUser?.first_name || 'Not provided'}</dd></div>
+                    <div><dt>Last name</dt><dd>{currentUser?.last_name || 'Not provided'}</dd></div>
+                    <div><dt>Username</dt><dd>{currentUser?.username || 'Not provided'}</dd></div>
+                    <div><dt>Email address</dt><dd>{currentUser?.email || 'Not provided'}</dd></div>
+                    <div><dt>Phone number</dt><dd>{currentUser?.phone_number || 'Not provided'}</dd></div>
+                    <div><dt>Account role</dt><dd>{currentUser?.role || 'ADMIN'}</dd></div>
+                    <div><dt>Account status</dt><dd>{currentUser?.is_active === undefined ? 'Not available' : currentUser.is_active ? 'Active' : 'Inactive'}</dd></div>
+                    <div><dt>Staff access</dt><dd>{currentUser?.is_staff ? 'Enabled' : 'Not enabled'}</dd></div>
+                    <div><dt>Superuser access</dt><dd>{currentUser?.is_superuser ? 'Enabled' : 'Not enabled'}</dd></div>
+                    <div><dt>Member since</dt><dd>{currentUser?.date_joined ? new Date(currentUser.date_joined).toLocaleDateString() : 'Not available'}</dd></div>
+                  </dl>
+                </section>
+
+                {currentUser?.bio && (
+                  <section className="admin-profile-bio">
+                    <h3>About</h3>
+                    <p>{currentUser.bio}</p>
+                  </section>
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* MODAL 1: Account Verification Review Modal */}
+          {selectedAccount && (
+            <div style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15, 23, 42, 0.7)',
+              backdropFilter: 'blur(4px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1100,
+              padding: '20px',
+            }}>
+              <div style={{
+                background: '#fff',
+                borderRadius: '16px',
+                maxWidth: '560px',
+                width: '100%',
+                maxHeight: '90vh',
+                overflowY: 'auto',
+                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+                display: 'flex',
+                flexDirection: 'column',
+              }}>
+                <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
+                  <div>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: '#0d8a73' }}>
+                      {selectedAccount.account_type} Verification Details
+                    </span>
+                    <h3 style={{ margin: '2px 0 0', fontSize: '1.25rem', fontWeight: 800, color: '#1e293b' }}>
+                      {selectedAccount.business_name}
+                    </h3>
+                  </div>
+                  <button
+                    onClick={() => setSelectedAccount(null)}
+                    style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px' }}
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '0.9rem' }}>
+                  {selectedAccount.logo_url && (
+                    <div style={{ textAlign: 'center', marginBottom: '8px' }}>
+                      <img
+                        src={selectedAccount.logo_url}
+                        alt="Logo"
+                        style={{ maxHeight: '80px', maxWidth: '200px', borderRadius: '8px', objectFit: 'contain' }}
+                      />
+                    </div>
+                  )}
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Type / Category</span>
+                      <strong style={{ color: '#1e293b' }}>{selectedAccount.category_or_type}</strong>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Location</span>
+                      <strong style={{ color: '#1e293b' }}>{selectedAccount.location}</strong>
+                    </div>
+                  </div>
+
+                  {selectedAccount.address && (
+                    <div>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Physical Address</span>
+                      <span style={{ color: '#334155' }}>{selectedAccount.address}</span>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    {selectedAccount.email && (
+                      <div>
+                        <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Email Address</span>
+                        <a href={`mailto:${selectedAccount.email}`} style={{ color: '#0d8a73', textDecoration: 'none', fontWeight: 600 }}>
+                          {selectedAccount.email}
+                        </a>
+                      </div>
+                    )}
+                    {selectedAccount.phone && (
+                      <div>
+                        <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Phone Number</span>
+                        <a href={`tel:${selectedAccount.phone}`} style={{ color: '#0d8a73', textDecoration: 'none', fontWeight: 600 }}>
+                          {selectedAccount.phone}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+
+                  {selectedAccount.years_in_business !== undefined && (
+                    <div>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Experience</span>
+                      <span style={{ color: '#334155', fontWeight: 600 }}>{selectedAccount.years_in_business} years in business</span>
+                    </div>
+                  )}
+
+                  {selectedAccount.website_url && (
+                    <div>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Website / Portfolio</span>
+                      <a
+                        href={selectedAccount.website_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ color: '#2563eb', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}
+                      >
+                        {selectedAccount.website_url} <ExternalLink size={13} />
+                      </a>
+                    </div>
+                  )}
+
+                  {selectedAccount.description && (
+                    <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>Business Description</span>
+                      <p style={{ margin: 0, color: '#334155', lineHeight: 1.5, fontSize: '0.85rem' }}>
+                        {selectedAccount.description}
+                      </p>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', borderRadius: '8px', background: selectedAccount.verification_status === 'APPROVED' ? '#ecfdf5' : selectedAccount.verification_status === 'REJECTED' ? '#fef2f2' : '#fef3c7' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>Current Status:</span>
+                    <span style={{ fontWeight: 800, fontSize: '0.85rem', color: selectedAccount.verification_status === 'APPROVED' ? '#059669' : selectedAccount.verification_status === 'REJECTED' ? '#dc2626' : '#b45309' }}>
+                      {selectedAccount.verification_status}
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px', background: '#f8fafc', borderBottomLeftRadius: '16px', borderBottomRightRadius: '16px' }}>
+                  <button
+                    onClick={() => setSelectedAccount(null)}
+                    style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={() => handleRejectAccount(selectedAccount)}
+                    style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#ef4444', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    Reject Application
+                  </button>
+                  <button
+                    onClick={() => handleApproveAccount(selectedAccount)}
+                    style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#059669', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    Approve & Verify
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODAL 2: Booking Details Modal */}
+          {selectedBooking && (
+            <div style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15, 23, 42, 0.7)',
+              backdropFilter: 'blur(4px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1100,
+              padding: '20px',
+            }}>
+              <div style={{
+                background: '#fff',
+                borderRadius: '16px',
+                maxWidth: '560px',
+                width: '100%',
+                maxHeight: '90vh',
+                overflowY: 'auto',
+                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+              }}>
+                <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
+                  <div>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: '#0d8a73' }}>
+                      Booking #{selectedBooking.id} Information
+                    </span>
+                    <h3 style={{ margin: '2px 0 0', fontSize: '1.25rem', fontWeight: 800, color: '#1e293b' }}>
+                      {selectedBooking.event_title}
+                    </h3>
+                  </div>
+                  <button onClick={() => setSelectedBooking(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px' }}>
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '0.9rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Customer</span>
+                      <strong style={{ color: '#1e293b' }}>{selectedBooking.customer_name}</strong>
+                      {selectedBooking.customer_email && <div style={{ fontSize: '0.78rem', color: '#64748b' }}>{selectedBooking.customer_email}</div>}
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Reserved Item</span>
+                      <strong style={{ color: '#1e293b' }}>
+                        {selectedBooking.venue_details?.title || selectedBooking.vendor_details?.business_name || 'Service Item'}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Event Date</span>
+                      <strong style={{ color: '#1e293b' }}>{selectedBooking.event_date}</strong>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Guest Count</span>
+                      <strong style={{ color: '#1e293b' }}>{selectedBooking.guest_count} Attendees</strong>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Total Price</span>
+                      <strong style={{ color: '#0d8a73', fontSize: '1.1rem' }}>KES {Number(selectedBooking.total_price).toLocaleString()}</strong>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Current Status</span>
+                      <span style={{
+                        display: 'inline-block',
+                        padding: '3px 8px',
+                        borderRadius: '999px',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        background: selectedBooking.status === 'APPROVED' ? '#ecfdf5' : selectedBooking.status === 'PENDING' ? '#fef3c7' : selectedBooking.status === 'COMPLETED' ? '#eff6ff' : '#fee2e2',
+                        color: selectedBooking.status === 'APPROVED' ? '#059669' : selectedBooking.status === 'PENDING' ? '#b45309' : selectedBooking.status === 'COMPLETED' ? '#2563eb' : '#dc2626',
+                      }}>
+                        {selectedBooking.status}
+                      </span>
+                    </div>
+                  </div>
+
+                  {selectedBooking.notes && (
+                    <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>Client Notes</span>
+                      <p style={{ margin: 0, color: '#334155', lineHeight: 1.5, fontSize: '0.85rem' }}>
+                        {selectedBooking.notes}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '8px', background: '#f8fafc', borderBottomLeftRadius: '16px', borderBottomRightRadius: '16px' }}>
+                  <button
+                    onClick={() => setSelectedBooking(null)}
+                    style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    Close
+                  </button>
+                  {selectedBooking.status === 'PENDING' && (
+                    <button
+                      onClick={() => handleUpdateBookingStatus(selectedBooking.id, 'APPROVED')}
+                      style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#059669', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Approve Booking
+                    </button>
+                  )}
+                  {selectedBooking.status === 'APPROVED' && (
+                    <button
+                      onClick={() => handleUpdateBookingStatus(selectedBooking.id, 'COMPLETED')}
+                      style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Mark Completed
+                    </button>
+                  )}
+                  {selectedBooking.status !== 'CANCELLED' && (
+                    <button
+                      onClick={() => handleUpdateBookingStatus(selectedBooking.id, 'CANCELLED')}
+                      style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#dc2626', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Cancel Booking
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODAL 3: Edit User Role Modal */}
+          {editingUser && (
+            <div style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15, 23, 42, 0.7)',
+              backdropFilter: 'blur(4px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1100,
+              padding: '20px',
+            }}>
+              <div style={{ background: '#fff', borderRadius: '16px', maxWidth: '440px', width: '100%', padding: '24px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+                <h3 style={{ margin: '0 0 8px', fontSize: '1.2rem', fontWeight: 800, color: '#1e293b' }}>
+                  Modify User Role
+                </h3>
+                <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: '#64748b' }}>
+                  Change the permission tier for <strong>{editingUser.username}</strong>.
+                </p>
+
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>
+                    Select Role
+                  </label>
+                  <select
+                    value={newRoleSelection}
+                    onChange={(e) => setNewRoleSelection(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.9rem',
+                      fontWeight: 600,
+                      outline: 'none',
+                    }}
+                  >
+                    <option value="CUSTOMER">Customer (Book spaces & services)</option>
+                    <option value="PROVIDER">Business Provider (List venues & services)</option>
+                    <option value="ADMIN">Administrator (Full platform moderation)</option>
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                  <button
+                    onClick={() => setEditingUser(null)}
+                    style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveUserRole}
+                    style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#0d8a73', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    Save Role
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODAL 4: Delete Confirmation Dialog */}
+          {deleteConfirm && (
+            <div style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15, 23, 42, 0.7)',
+              backdropFilter: 'blur(4px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1200,
+              padding: '20px',
+            }}>
+              <div style={{ background: '#fff', borderRadius: '16px', maxWidth: '420px', width: '100%', padding: '24px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+                <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: '#fee2e2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+                  <AlertCircle size={24} />
+                </div>
+                <h3 style={{ margin: '0 0 8px', fontSize: '1.2rem', fontWeight: 800, color: '#1e293b' }}>
+                  Confirm Deletion
+                </h3>
+                <p style={{ margin: '0 0 20px', fontSize: '0.85rem', color: '#64748b', lineHeight: 1.5 }}>
+                  Are you sure you want to permanently delete <strong>{deleteConfirm.title}</strong>? This action cannot be undone.
+                </p>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                  <button
+                    onClick={() => setDeleteConfirm(null)}
+                    style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (deleteConfirm.type === 'user') handleDeleteUser(deleteConfirm.id);
+                      else if (deleteConfirm.type === 'booking') handleDeleteBooking(deleteConfirm.id);
+                      else if (deleteConfirm.type === 'venue') handleDeleteVenue(deleteConfirm.id);
+                      else if (deleteConfirm.type === 'review') handleDeleteReview(deleteConfirm.id);
+                    }}
+                    style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#ef4444', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    Delete Permanently
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          {/* MODAL 5: Inspect Venue Listing Modal */}
+          {inspectVenueModal && (
+            <div style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15, 23, 42, 0.7)',
+              backdropFilter: 'blur(4px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1100,
+              padding: '20px',
+            }}>
+              <div style={{
+                background: '#fff',
+                borderRadius: '16px',
+                maxWidth: '580px',
+                width: '100%',
+                maxHeight: '90vh',
+                overflowY: 'auto',
+                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+                display: 'flex',
+                flexDirection: 'column',
+              }}>
+                <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
+                  <div>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: '#0d8a73' }}>
+                      Listing Inspection #{inspectVenueModal.id}
+                    </span>
+                    <h3 style={{ margin: '2px 0 0', fontSize: '1.25rem', fontWeight: 800, color: '#1e293b' }}>
+                      {inspectVenueModal.title}
+                    </h3>
+                  </div>
+                  <button onClick={() => setInspectVenueModal(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px' }}>
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '0.9rem' }}>
+                  <div
+                    style={{
+                      height: '200px',
+                      width: '100%',
+                      borderRadius: '10px',
+                      overflow: 'hidden',
+                      background: '#f1f5f9',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginBottom: '8px'
+                    }}
+                  >
+                    {cleanImageUrl(inspectVenueModal.image_url) ? (
+                      <img
+                        src={cleanImageUrl(inspectVenueModal.image_url)}
+                        alt={inspectVenueModal.title}
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          const placeholder = e.currentTarget.nextElementSibling;
+                          if (placeholder instanceof HTMLElement) placeholder.style.display = 'flex';
+                        }}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                    ) : null}
+                    <div
+                      style={{
+                        display: cleanImageUrl(inspectVenueModal.image_url) ? 'none' : 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '8px',
+                        color: '#94a3b8'
+                      }}
+                    >
+                      <ImageOff size={32} />
+                      <span style={{ fontSize: '0.8rem' }}>No image available</span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Category</span>
+                      <strong style={{ color: '#1e293b' }}>{inspectVenueModal.category_display || inspectVenueModal.category}</strong>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Location</span>
+                      <strong style={{ color: '#1e293b' }}>{inspectVenueModal.location}</strong>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Daily Rental Rate</span>
+                      <strong style={{ color: '#0d8a73', fontSize: '1.05rem' }}>KES {Number(inspectVenueModal.price_per_day).toLocaleString()}</strong>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Guest Capacity</span>
+                      <strong style={{ color: '#1e293b' }}>{inspectVenueModal.capacity} Attendees</strong>
+                    </div>
+                  </div>
+
+                  {inspectVenueModal.cancellation_policy && (
+                    <div>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Cancellation Policy</span>
+                      <strong style={{ color: '#334155' }}>{inspectVenueModal.cancellation_policy}</strong>
+                    </div>
+                  )}
+
+                  {inspectVenueModal.description && (
+                    <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>Listing Description</span>
+                      <p style={{ margin: 0, color: '#334155', lineHeight: 1.5, fontSize: '0.85rem' }}>
+                        {inspectVenueModal.description}
+                      </p>
+                    </div>
+                  )}
+
+                  {inspectVenueModal.rejection_reason && (
+                    <div style={{ background: '#fee2e2', padding: '12px 14px', borderRadius: '8px', border: '1px solid #fecaca' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#991b1b', fontWeight: 700, display: 'block', marginBottom: '4px' }}>Previous Rejection Reason</span>
+                      <p style={{ margin: 0, color: '#b91c1c', fontSize: '0.85rem' }}>
+                        {inspectVenueModal.rejection_reason}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px', background: '#f8fafc', borderBottomLeftRadius: '16px', borderBottomRightRadius: '16px' }}>
+                  <button
+                    onClick={() => setInspectVenueModal(null)}
+                    style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    Close
+                  </button>
+                  {inspectVenueModal.approval_status !== 'APPROVED' && (
+                    <button
+                      onClick={async () => {
+                        const res = await ApiService.approveVenue(inspectVenueModal.id);
+                        if (res.success) {
+                          setVenues(prev => prev.map(item => item.id === inspectVenueModal.id ? { ...item, approval_status: 'APPROVED', is_verified: true, rejection_reason: undefined } : item));
+                          toast.success(`Venue '${inspectVenueModal.title}' approved!`);
+                          setInspectVenueModal(null);
+                          onDataChange?.();
+                        } else {
+                          toast.error(res.error || 'Failed to approve listing.');
+                        }
+                      }}
+                      style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#059669', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Approve Listing
+                    </button>
+                  )}
+                  {inspectVenueModal.approval_status !== 'REJECTED' && (
+                    <button
+                      onClick={() => {
+                        const target = inspectVenueModal;
+                        setInspectVenueModal(null);
+                        setRejectVenueModal(target);
+                        setVenueRejectReason('');
+                      }}
+                      style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#ef4444', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Reject Listing
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODAL 6: Reject Venue with Reason Modal */}
+          {rejectVenueModal && (
+            <div style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15, 23, 42, 0.7)',
+              backdropFilter: 'blur(4px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1200,
+              padding: '20px',
+            }}>
+              <div style={{ background: '#fff', borderRadius: '16px', maxWidth: '480px', width: '100%', padding: '24px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+                <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: '#fee2e2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+                  <AlertCircle size={24} />
+                </div>
+                <h3 style={{ margin: '0 0 8px', fontSize: '1.2rem', fontWeight: 800, color: '#1e293b' }}>
+                  Reject Listing: {rejectVenueModal.title}
+                </h3>
+                <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: '#64748b' }}>
+                  Please provide a specific reason explaining what requirements were not met so the host can address them.
+                </p>
+
+                <textarea
+                  rows={4}
+                  placeholder="e.g. Inadequate pricing clarity, incorrect location details, or poor image quality..."
+                  value={venueRejectReason}
+                  onChange={(e) => setVenueRejectReason(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: '1.5px solid #cbd5e1',
+                    fontSize: '0.88rem',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                    fontFamily: 'inherit',
+                    marginBottom: '20px',
+                    resize: 'vertical',
+                  }}
+                />
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                  <button
+                    onClick={() => setRejectVenueModal(null)}
+                    style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const res = await ApiService.rejectVenue(rejectVenueModal.id, venueRejectReason.trim() || 'Listing does not satisfy verification standards.');
+                      if (res.success) {
+                        setVenues(prev => prev.map(item => item.id === rejectVenueModal.id ? { ...item, approval_status: 'REJECTED', is_verified: false, rejection_reason: venueRejectReason.trim() } : item));
+                        toast.success(`Listing '${rejectVenueModal.title}' has been rejected.`);
+                        setRejectVenueModal(null);
+                        onDataChange?.();
+                      } else {
+                        toast.error(res.error || 'Failed to reject listing.');
+                      }
+                    }}
+                    style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#ef4444', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    Confirm Rejection
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODAL: REJECT VERIFICATION DOCUMENT */}
+          {rejectingDocModal && (
+            <div style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15, 23, 42, 0.7)',
+              backdropFilter: 'blur(4px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1200,
+              padding: '20px',
+            }}>
+              <div style={{ background: '#fff', borderRadius: '16px', maxWidth: '500px', width: '100%', padding: '24px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+                <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: '#fee2e2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+                  <AlertTriangle size={24} />
+                </div>
+                <h3 style={{ margin: '0 0 8px', fontSize: '1.2rem', fontWeight: 800, color: '#1e293b' }}>
+                  Reject Document: {rejectingDocModal.title || rejectingDocModal.document_type_display}
+                </h3>
+                <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: '#64748b' }}>
+                  Provide a clear reason for the document rejection. The provider will see this explanation and will be allowed to resubmit a valid replacement.
+                </p>
+
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                    Rejection Reason (Visible to Provider) *
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="e.g., The permit has expired, official seal is unreadable, or company registration name doesn't match..."
+                    value={docRejectionReason}
+                    onChange={(e) => setDocRejectionReason(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      border: '1.5px solid #cbd5e1',
+                      fontSize: '0.88rem',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                      fontFamily: 'inherit',
+                      resize: 'vertical',
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                    Internal Admin Notes (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Internal audit notes..."
+                    value={docAdminNotes}
+                    onChange={(e) => setDocAdminNotes(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.85rem',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                  <button
+                    onClick={() => setRejectingDocModal(null)}
+                    disabled={submittingDocReview}
+                    style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    disabled={submittingDocReview}
+                    onClick={async () => {
+                      const reason = docRejectionReason.trim() || 'Document does not satisfy LOCYFY verification requirements.';
+                      setSubmittingDocReview(true);
+                      try {
+                        const res = await ApiService.rejectVerificationDocument(rejectingDocModal.id, reason, docAdminNotes, currentUser?.id);
+                        if (res.success) {
+                          setVerificationDocuments(prev => prev.map(d => d.id === rejectingDocModal.id ? res.data || { ...d, status: 'REJECTED', rejection_reason: reason } : d));
+                          toast.success(`Document marked as rejected.`);
+                          setRejectingDocModal(null);
+                          loadAdminData();
+                          onDataChange?.();
+                        } else {
+                          toast.error(res.error || 'Failed to reject document.');
+                        }
+                      } catch (e: any) {
+                        toast.error(e?.message || 'Error rejecting document.');
+                      } finally {
+                        setSubmittingDocReview(false);
+                      }
+                    }}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: '#ef4444',
+                      color: '#fff',
+                      fontWeight: 700,
+                      cursor: submittingDocReview ? 'not-allowed' : 'pointer',
+                      opacity: submittingDocReview ? 0.7 : 1,
+                    }}
+                  >
+                    {submittingDocReview ? 'Submitting...' : 'Confirm Rejection'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

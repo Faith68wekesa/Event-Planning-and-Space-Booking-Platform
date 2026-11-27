@@ -1,5 +1,5 @@
 import type {
-  User, Venue, Vendor, VenueOwner, Booking, PlatformStats, FilterState, BookingStatus,
+  User, Venue, Vendor, VenueOwner, Booking, PortfolioImage, PlatformStats, FilterState, BookingStatus,
   Review, Message, ConversationThread, EventItem, EventServiceItem, NotificationItem,
   ReminderPreference, VerificationDocument, UserInteractionEvent, AdminAnalyticsData,
   VendorAnalyticsData, VenueOwnerAnalyticsData
@@ -575,6 +575,41 @@ export const ApiService = {
     }
   },
 
+  async createPortfolioImage(imageData: Pick<PortfolioImage, 'venue' | 'image_url' | 'caption' | 'display_order'>): Promise<PortfolioImage> {
+    const res = await fetch(`${API_BASE}/portfolio-images/`, {
+      method: 'POST',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(imageData),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(formatApiError(data, 'Failed to save portfolio image.'));
+    return data;
+  },
+
+  async updatePortfolioImage(id: number, imageData: Partial<Pick<PortfolioImage, 'caption' | 'display_order'>>): Promise<PortfolioImage> {
+    const res = await fetch(`${API_BASE}/portfolio-images/${id}/`, {
+      method: 'PATCH',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(imageData),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(formatApiError(data, 'Failed to update portfolio image.'));
+    return data;
+  },
+
+  async deletePortfolioImage(id: number): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/portfolio-images/${id}/`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      return res.ok || res.status === 204;
+    } catch (e) {
+      console.error('Failed to delete portfolio image:', e);
+      return false;
+    }
+  },
+
   async deleteVenue(id: number): Promise<boolean> {
     try {
       const res = await fetch(`${API_BASE}/venues/${id}/`, {
@@ -683,6 +718,24 @@ export const ApiService = {
       return { success: false, error: data.error || 'Failed to submit review' };
     } catch (e: any) {
       console.error('Error submitting review:', e);
+      return { success: false, error: e.message || 'Network error' };
+    }
+  },
+
+  async updateReview(id: number, reviewData: { rating: number; comment: string }): Promise<{ success: boolean; data?: Review; error?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/reviews/${id}/`, {
+        method: 'PATCH',
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(reviewData),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        return { success: true, data };
+      }
+      return { success: false, error: data.error || data.detail || 'Failed to update review' };
+    } catch (e: any) {
+      console.error('Error updating review:', e);
       return { success: false, error: e.message || 'Network error' };
     }
   },

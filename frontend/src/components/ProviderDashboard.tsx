@@ -31,7 +31,8 @@ import {
   Send,
   ShieldCheck,
   Clock,
-  ImageOff
+  ImageOff,
+  Menu
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cleanImageUrl } from '../utils/imageUtils';
@@ -57,16 +58,21 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'listings' | 'spaces' | 'services' | 'availability' | 'bookings' | 'calendar' | 'reviews' | 'messages' | 'profile' | 'settings' | 'create_listing'>('overview');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [providerSearchQuery, setProviderSearchQuery] = useState('');
   const [showAccountMenu, setShowAccountMenu] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const [createListingDefaultMode, setCreateListingDefaultMode] = useState<'service' | 'venue'>('service');
   const [editingListing, setEditingListing] = useState<Venue | null>(null);
-  
+
+  useEffect(() => {
+    setIsMobileSidebarOpen(false);
+  }, [activeTab]);
+
   // Inspiration UI Navigation and Filter States
   const [showAddListingDropdown, setShowAddListingDropdown] = useState(false);
   const [listingsCategoryFilter, setListingsCategoryFilter] = useState<string>('ALL');
-  
+
   // Data states
   const [spaces, setSpaces] = useState<Venue[]>([]);
   const [services, setServices] = useState<Venue[]>([]);
@@ -148,7 +154,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
     category: 'WEDDING',
     custom_category: '',
     address: '',
-    capacity: 250,
+    capacity: '' as number | '',
     price_per_day: 65000,
     price_per_hour: 8000,
     description: '',
@@ -162,6 +168,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
     category: 'PHOTOGRAPHY',
     custom_category: '',
     pricing_type: 'Per Event',
+    capacity: '' as number | '',
     price_per_day: 25000,
     description: '',
     image_url: '',
@@ -327,13 +334,17 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
       const loadReviews = async () => {
         setLoadingReviews(true);
         try {
-          let revs: Review[] = [];
-          if (effectiveVendor?.id) {
-            revs = await ApiService.getReviews({ vendor: effectiveVendor.id });
-          } else if (effectiveVenueOwner?.id) {
-            revs = await ApiService.getReviews({ venue: effectiveVenueOwner.id });
-          }
-          setProviderReviews(revs);
+          const listingReviews = await Promise.all(
+            [...spaces, ...services].map(listing => ApiService.getReviews({ venue: listing.id }))
+          );
+          const vendorProfileReviews = effectiveVendor?.id
+            ? await ApiService.getReviews({ vendor: effectiveVendor.id })
+            : [];
+          const uniqueReviews = new Map<number, Review>();
+          [...listingReviews.flat(), ...vendorProfileReviews].forEach(review => {
+            uniqueReviews.set(review.id, review);
+          });
+          setProviderReviews([...uniqueReviews.values()]);
         } catch (e) {
           console.error("Failed to load provider reviews", e);
         } finally {
@@ -342,7 +353,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
       };
       loadReviews();
     }
-  }, [activeTab, effectiveVendor?.id, effectiveVenueOwner?.id]);
+  }, [activeTab, effectiveVendor?.id, spaces, services]);
 
   const handleProfilePictureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0 && currentUser?.id) {
@@ -367,6 +378,10 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
       : newSpace.category;
     if (!spaceCategory) {
       setSpaceErrorNotice('Enter a category for your venue.');
+      return;
+    }
+    if (!newSpace.capacity || Number(newSpace.capacity) <= 0) {
+      setSpaceErrorNotice('Enter the maximum guest capacity for your venue.');
       return;
     }
 
@@ -418,7 +433,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
         category: 'WEDDING',
         custom_category: '',
         address: '',
-        capacity: 250,
+        capacity: '' as number | '',
         price_per_day: 65000,
         price_per_hour: 8000,
         description: '',
@@ -443,6 +458,10 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
       : newService.category;
     if (!serviceCategory) {
       setServiceErrorNotice('Enter a category for your service.');
+      return;
+    }
+    if (!newService.capacity || Number(newService.capacity) <= 0) {
+      setServiceErrorNotice('Enter the maximum number of guests your service can support.');
       return;
     }
 
@@ -473,7 +492,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
         title: newService.title,
         category: serviceCategory,
         location: location || 'Nairobi',
-        capacity: 0,
+        capacity: Number(newService.capacity),
         price_per_day: Number(newService.price_per_day),
         description: `${newService.description} (${newService.pricing_type})`,
         image_url: cleanImageUrl(newService.image_url),
@@ -491,6 +510,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
         category: 'PHOTOGRAPHY',
         custom_category: '',
         pricing_type: 'Per Event',
+        capacity: '' as number | '',
         price_per_day: 25000,
         description: '',
         image_url: '',
@@ -643,10 +663,17 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
   return (
     <div className={`vendor-dashboard-layout ${isSidebarCollapsed ? 'vendor-sidebar-collapsed' : ''}`}>
-      
+      {isMobileSidebarOpen && (
+        <div
+          className="vendor-sidebar-backdrop"
+          onClick={() => setIsMobileSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       {/* 1. Signature Vendor Green Sidebar */}
-      <aside className="vendor-sidebar">
-        
+      <aside className={`vendor-sidebar ${isMobileSidebarOpen ? 'vendor-sidebar-open' : ''}`}>
+
         {/* Header Branding */}
         <div className="vendor-sidebar-header">
           <button
@@ -673,12 +700,26 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
           >
             {isSidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
           </button>
+          <button
+            type="button"
+            className="vendor-sidebar-close-btn"
+            onClick={() => setIsMobileSidebarOpen(false)}
+            aria-label="Close navigation"
+          >
+            <X size={19} />
+          </button>
         </div>
 
 
 
         {/* Nav List */}
-        <nav className="vendor-sidebar-nav" style={{ paddingTop: '8px' }}>
+        <nav
+          className="vendor-sidebar-nav"
+          style={{ paddingTop: '8px' }}
+          onClick={(event) => {
+            if ((event.target as HTMLElement).closest('button')) setIsMobileSidebarOpen(false);
+          }}
+        >
           {/* Overview */}
           <button
             className={`vendor-sidebar-item ${activeTab === 'overview' ? 'active' : ''}`}
@@ -803,9 +844,9 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
           {/* Footer Actions inside Sidebar */}
           <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)', padding: '16px 12px 0', marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <button 
+            <button
               onClick={onLogout}
-              className="vendor-sidebar-item" 
+              className="vendor-sidebar-item"
               aria-label="Log out"
               title="Log out"
               style={{ color: '#fca5a5', justifyContent: 'center', fontSize: '0.85rem' }}
@@ -819,6 +860,17 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
       {/* 2. Main Content Area */}
       <main className="vendor-main-content">
         <header className="vendor-app-topbar">
+          <button
+            type="button"
+            className="vendor-mobile-menu-btn"
+            onClick={() => {
+              setIsSidebarCollapsed(false);
+              setIsMobileSidebarOpen(true);
+            }}
+            aria-label="Open navigation"
+          >
+            <Menu size={20} />
+          </button>
           <div className="vendor-search-box">
             <Search size={18} />
             <input
@@ -910,7 +962,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
             </div>
           </div>
         </header>
-        
+
         {/* Top Header Row for non-overview tabs */}
         {activeTab !== 'overview' && activeTab !== 'create_listing' && (
           <div className="vendor-topbar">
@@ -967,7 +1019,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
         {/* 4. Tab: OVERVIEW (Inspiration Layout) */}
         {activeTab === 'overview' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            
+
             {/* Hero Greeting Banner matching inspiration */}
             <div className="vendor-hero-banner">
               <div className="vendor-hero-left">
@@ -981,7 +1033,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
               <div className="vendor-hero-right">
                 <div className="vendor-hero-image-bg" />
-                <button 
+                <button
                   className="btn-add-listing-hero"
                   onClick={() => setShowAddListingDropdown(prev => !prev)}
                 >
@@ -1020,7 +1072,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
             {/* KPI Stat Cards with Real Data */}
             <div className="inspo-stat-grid">
-              
+
               {/* Card 1: Total Listings */}
               <div className="inspo-stat-card" onClick={() => setActiveTab('listings')}>
                 <div className="inspo-stat-icon-wrap mint">
@@ -1091,14 +1143,14 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
             {/* Split Lower Layout: Your Listings (Left) + Booking Requests (Right) */}
             <div className="inspo-overview-grid">
-              
+
               {/* Left Column: Your Listings */}
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
                   <h2 style={{ fontSize: '1.3rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
                     Your Listings
                   </h2>
-                  
+
                   {/* Category Pills */}
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     {['ALL', 'VENUES', 'DECORATION', 'PHOTOGRAPHY', 'CATERING', 'MUSIC & DJ'].map(cat => (
@@ -1120,7 +1172,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                     ...spaces.map(s => ({ ...s, itemKind: 'VENUE' as const })),
                     ...services.map(s => ({ ...s, itemKind: 'SERVICE' as const }))
                   ];
-                  
+
                   const filtered = allItems.filter(item => {
                     if (listingsCategoryFilter === 'ALL') return true;
                     if (listingsCategoryFilter === 'VENUES') return item.itemKind === 'VENUE';
@@ -1159,7 +1211,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                   }
 
                   return (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '16px' }}>
+                    <div className="vendor-overview-listings-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 260px), 1fr))', gap: '16px' }}>
                       {filtered.slice(0, 6).map(item => (
                         <div key={`${item.itemKind}-${item.id}`} className="listing-card" style={{ background: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
                           <div style={{ position: 'relative', height: '150px', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1190,16 +1242,16 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                               <ImageOff size={28} />
                               <span style={{ fontSize: '0.75rem' }}>No image available</span>
                             </div>
-                            <span 
-                              style={{ 
-                                position: 'absolute', 
-                                top: '10px', 
-                                left: '10px', 
+                            <span
+                              style={{
+                                position: 'absolute',
+                                top: '10px',
+                                left: '10px',
                                 background: item.itemKind === 'VENUE' ? '#0F8F7A' : '#0284c7',
-                                color: '#ffffff', 
-                                fontSize: '0.72rem', 
-                                fontWeight: 700, 
-                                padding: '3px 8px', 
+                                color: '#ffffff',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                padding: '3px 8px',
                                 borderRadius: '6px',
                                 textTransform: 'uppercase'
                               }}
@@ -1220,11 +1272,9 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                                 KES {Number(item.price_per_day).toLocaleString()}
                                 {item.itemKind === 'VENUE' ? '/day' : ''}
                               </span>
-                              {item.itemKind === 'VENUE' && item.capacity && (
-                                <span style={{ color: '#64748b', fontSize: '0.78rem' }}>
-                                  Cap: {item.capacity}
-                                </span>
-                              )}
+                              <span style={{ color: Number(item.capacity) > 0 ? '#64748b' : '#b45309', fontSize: '0.78rem' }}>
+                                Max guests: {Number(item.capacity) > 0 ? item.capacity : 'Not set'}
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -1269,16 +1319,16 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {bookings.slice(0, 4).map((req: any) => (
-                      <div 
-                        key={req.id} 
-                        style={{ 
-                          padding: '12px', 
-                          background: '#f8fafc', 
-                          borderRadius: '12px', 
+                      <div
+                        key={req.id}
+                        style={{
+                          padding: '12px',
+                          background: '#f8fafc',
+                          borderRadius: '12px',
                           border: '1px solid #f1f5f9',
-                          display: 'flex', 
-                          flexDirection: 'column', 
-                          gap: '8px' 
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '8px'
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1551,6 +1601,26 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                           {item.title}
                         </h3>
 
+                        <div
+                          aria-label={`${Number(item.rating || 0).toFixed(1)} out of 5 from ${Number(item.review_count || 0)} reviews`}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            color: Number(item.review_count || 0) > 0 ? '#b45309' : '#64748b',
+                            fontSize: '0.85rem',
+                            fontWeight: 700,
+                            marginBottom: '12px'
+                          }}
+                        >
+                          <Star
+                            size={15}
+                            fill={Number(item.review_count || 0) > 0 ? '#fbbf24' : 'none'}
+                            color={Number(item.review_count || 0) > 0 ? '#f59e0b' : '#94a3b8'}
+                          />
+                          {Number(item.rating || 0).toFixed(1)} ({Number(item.review_count || 0)} {Number(item.review_count || 0) === 1 ? 'review' : 'reviews'})
+                        </div>
+
                         {isVenue ? (
                           <>
                             <div
@@ -1683,7 +1753,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
         {/* 7. Tab: BOOKINGS */}
         {activeTab === 'bookings' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            
+
             {/* Filters Row */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
               <div style={{ display: 'flex', gap: '8px' }}>
@@ -1844,17 +1914,40 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
         {/* 9. Tab: REVIEWS */}
         {activeTab === 'reviews' && (() => {
+          const listingReviewCount = allListings.reduce((count, listing) => count + Number(listing.review_count || 0), 0);
+          const listingRatingTotal = allListings.reduce(
+            (total, listing) => total + Number(listing.rating || 0) * Number(listing.review_count || 0),
+            0
+          );
           const avgRatingVal = providerReviews.length > 0
             ? (providerReviews.reduce((sum, r) => sum + Number(r.rating || 0), 0) / providerReviews.length)
-            : (effectiveVendor?.rating && Number(effectiveVendor.rating) > 0 ? Number(effectiveVendor.rating) : null);
-          const hasRating = avgRatingVal !== null && avgRatingVal > 0;
+            : listingReviewCount > 0
+              ? listingRatingTotal / listingReviewCount
+              : Number(effectiveVendor?.rating || 0);
+          const hasRating = avgRatingVal > 0;
+          const renderReview = (review: Review) => (
+            <div key={review.id} style={{ padding: '18px 20px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <div style={{ fontWeight: 700, color: '#0f172a' }}>{review.user_name || 'Verified Client'}</div>
+                <div style={{ display: 'flex', gap: '2px', color: '#fbbf24' }}>
+                  {[1, 2, 3, 4, 5].map(star => (
+                    <Star key={star} size={16} fill={review.rating >= star ? '#fbbf24' : 'none'} color="#fbbf24" />
+                  ))}
+                </div>
+              </div>
+              <p style={{ margin: '0 0 8px', fontSize: '0.9rem', color: '#334155', lineHeight: 1.5 }}>{review.comment}</p>
+              <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
+                {review.created_at ? new Date(review.created_at).toLocaleDateString() : ''}
+              </div>
+            </div>
+          );
 
           return (
             <div className="dashboard-card" style={{ padding: '32px' }}>
               <h3 style={{ margin: '0 0 16px', fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>Customer Reviews & Ratings</h3>
               <div style={{ display: 'flex', alignItems: 'center', gap: '20px', padding: '24px', background: '#f8fafc', borderRadius: '12px', marginBottom: '24px' }}>
                 <div style={{ fontSize: '2.8rem', fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>
-                  {hasRating ? avgRatingVal.toFixed(1) : '—'}
+                  {avgRatingVal.toFixed(1)}
                 </div>
                 <div>
                   <div style={{ display: 'flex', gap: '4px', color: '#fbbf24' }}>
@@ -1868,37 +1961,55 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                     ))}
                   </div>
                   <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '6px' }}>
-                    {hasRating
-                      ? `Based on ${providerReviews.length} verified customer reviews across your listings`
-                      : 'No ratings yet. Reviews from completed customer bookings will display here.'}
+                    Based on {providerReviews.length || listingReviewCount} customer reviews across your listings
                   </div>
                 </div>
               </div>
 
               {loadingReviews ? (
                 <div style={{ textAlign: 'center', color: '#64748b', padding: '32px' }}>Loading reviews...</div>
-              ) : providerReviews.length === 0 ? (
+              ) : allListings.length === 0 && providerReviews.length === 0 ? (
                 <div style={{ color: '#64748b', fontSize: '0.9rem', background: '#ffffff', border: '1px dashed #cbd5e1', borderRadius: '12px', padding: '32px', textAlign: 'center' }}>
                   No customer reviews received yet. When clients complete bookings for your venues or services and leave ratings, their feedback will display here.
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  {providerReviews.map(r => (
-                    <div key={r.id} style={{ padding: '18px 20px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <div style={{ fontWeight: 700, color: '#0f172a' }}>{r.user_name || 'Verified Client'}</div>
-                        <div style={{ display: 'flex', gap: '2px', color: '#fbbf24' }}>
-                          {[1, 2, 3, 4, 5].map(s => (
-                            <Star key={s} size={16} fill={r.rating >= s ? '#fbbf24' : 'none'} color="#fbbf24" />
-                          ))}
+                  {allListings.map(listing => {
+                    const listingReviews = providerReviews.filter(review => review.venue === listing.id);
+                    const average = listingReviews.length > 0
+                      ? listingReviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) / listingReviews.length
+                      : Number(listing.rating || 0);
+                    const reviewCount = listingReviews.length || Number(listing.review_count || 0);
+
+                    return (
+                      <section key={`${listing.listingType}-${listing.id}`} style={{ padding: '20px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '14px' }}>
+                          <div>
+                            <span style={{ display: 'block', marginBottom: '4px', fontSize: '0.72rem', fontWeight: 800, color: '#0d8a73', textTransform: 'uppercase' }}>
+                              {listing.listingType === 'SERVICE' ? 'Service' : 'Venue'}
+                            </span>
+                            <h4 style={{ margin: 0, color: '#0f172a', fontSize: '1rem' }}>{listing.title}</h4>
+                          </div>
+                          <div style={{ color: '#b45309', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                            <Star size={15} fill="#fbbf24" color="#f59e0b" style={{ verticalAlign: 'text-bottom', marginRight: '4px' }} />
+                            {average.toFixed(1)} ({reviewCount})
+                          </div>
                         </div>
-                      </div>
-                      <p style={{ margin: '0 0 8px', fontSize: '0.9rem', color: '#334155', lineHeight: 1.5 }}>{r.comment}</p>
-                      <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
-                        {r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}
-                      </div>
-                    </div>
-                  ))}
+                        {listingReviews.length > 0 ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            {listingReviews.map(renderReview)}
+                          </div>
+                        ) : (
+                          <div style={{ padding: '16px', background: '#ffffff', borderRadius: '8px', color: '#64748b', fontSize: '0.88rem' }}>
+                            No customer reviews for this listing yet.
+                          </div>
+                        )}
+                      </section>
+                    );
+                  })}
+                  {providerReviews
+                    .filter(review => !review.venue || !allListings.some(listing => listing.id === review.venue))
+                    .map(renderReview)}
                 </div>
               )}
             </div>
@@ -1965,9 +2076,9 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
           };
 
           return (
-            <div className="dashboard-card" style={{ padding: 0, overflow: 'hidden', minHeight: '520px', display: 'flex' }}>
+            <div className="dashboard-card vendor-messages-layout" style={{ padding: 0, overflow: 'hidden', minHeight: '520px', display: 'flex' }}>
               {/* Conversation List */}
-              <div style={{ width: '320px', borderRight: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
+              <div className="vendor-conversation-list" style={{ width: '320px', borderRight: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ padding: '20px 18px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>Messages</h3>
                   {conversations.reduce((sum, c) => sum + (c.unread_count || 0), 0) > 0 && (
@@ -2056,8 +2167,8 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
               </div>
 
               {/* Chat Conversation View */}
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#ffffff' }}>
-                <div style={{ padding: '16px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div className="vendor-chat-pane" style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#ffffff' }}>
+                <div className="vendor-chat-header" style={{ padding: '16px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#ccfbf1', color: '#0d8a73', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {clientInitial}
@@ -2070,9 +2181,9 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                     </div>
                   </div>
                   {activeBooking && (
-                    <button 
+                    <button
                       onClick={() => setActiveTab('bookings')}
-                      className="btn-primary-light" 
+                      className="btn-primary-light"
                       style={{ fontSize: '0.82rem', padding: '6px 14px' }}
                     >
                       View Booking
@@ -2081,12 +2192,12 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                 </div>
 
                 {/* Official In-Platform Policy Banner */}
-                <div style={{ background: '#f0fdf4', borderBottom: '1px solid #bbf7d0', padding: '8px 24px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.76rem', color: '#166534', fontWeight: 600 }}>
+                <div className="vendor-chat-policy" style={{ background: '#f0fdf4', borderBottom: '1px solid #bbf7d0', padding: '8px 24px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.76rem', color: '#166534', fontWeight: 600 }}>
                   <ShieldCheck size={14} color="#16a34a" /> In-Platform Official Communication: All inquiries & chats must stay strictly inside Locyfy. Off-platform communications are prohibited.
                 </div>
 
                 {/* Message Bubbles */}
-                <div style={{ flex: 1, padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div className="vendor-chat-history" style={{ flex: 1, padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
                   {activeBooking?.notes && (
                     <div style={{ alignSelf: 'flex-start', maxWidth: '75%', background: '#f1f5f9', padding: '12px 16px', borderRadius: '14px 14px 14px 2px', fontSize: '0.9rem', color: '#1e293b', lineHeight: 1.5 }}>
                       <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#0d8a73', marginBottom: '4px' }}>
@@ -2152,7 +2263,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                 </div>
 
                 {/* Reply Box */}
-                <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <div className="vendor-chat-reply" style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', gap: '12px', alignItems: 'center' }}>
                   <input
                     type="text"
                     placeholder={`Type your reply to ${clientName}...`}
@@ -2206,10 +2317,10 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
             <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Vendor / Business Name</label>
-                <input 
-                  type="text" 
-                  value={profileFormData.business_name} 
-                  onChange={e => setProfileFormData({...profileFormData, business_name: e.target.value})}
+                <input
+                  type="text"
+                  value={profileFormData.business_name}
+                  onChange={e => setProfileFormData({ ...profileFormData, business_name: e.target.value })}
                   style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                 />
               </div>
@@ -2217,19 +2328,19 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Primary City / Location</label>
-                  <input 
-                    type="text" 
-                    value={profileFormData.location} 
-                    onChange={e => setProfileFormData({...profileFormData, location: e.target.value})}
+                  <input
+                    type="text"
+                    value={profileFormData.location}
+                    onChange={e => setProfileFormData({ ...profileFormData, location: e.target.value })}
                     style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                   />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Contact Phone</label>
-                  <input 
-                    type="text" 
-                    value={profileFormData.contact_phone} 
-                    onChange={e => setProfileFormData({...profileFormData, contact_phone: e.target.value})}
+                  <input
+                    type="text"
+                    value={profileFormData.contact_phone}
+                    onChange={e => setProfileFormData({ ...profileFormData, contact_phone: e.target.value })}
                     style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                   />
                 </div>
@@ -2237,26 +2348,26 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Public Contact Email</label>
-                <input 
-                  type="email" 
-                  value={profileFormData.contact_email} 
-                  onChange={e => setProfileFormData({...profileFormData, contact_email: e.target.value})}
+                <input
+                  type="email"
+                  value={profileFormData.contact_email}
+                  onChange={e => setProfileFormData({ ...profileFormData, contact_email: e.target.value })}
                   style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                 />
               </div>
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Vendor Description & Overview</label>
-                <textarea 
-                  rows={4} 
-                  value={profileFormData.description} 
-                  onChange={e => setProfileFormData({...profileFormData, description: e.target.value})}
+                <textarea
+                  rows={4}
+                  value={profileFormData.description}
+                  onChange={e => setProfileFormData({ ...profileFormData, description: e.target.value })}
                   style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                 />
               </div>
 
-              <button 
-                type="submit" 
+              <button
+                type="submit"
                 className="btn-primary-light"
                 style={{ background: '#0d8a73', color: '#fff', padding: '12px 20px', borderRadius: '8px', fontWeight: 700, width: 'fit-content' }}
               >
@@ -2326,12 +2437,12 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
             <form onSubmit={handleAddSpaceSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Space Title / Venue Name *</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   required
                   placeholder="e.g. Serena Grand Ballroom"
-                  value={newSpace.title} 
-                  onChange={e => setNewSpace({...newSpace, title: e.target.value})}
+                  value={newSpace.title}
+                  onChange={e => setNewSpace({ ...newSpace, title: e.target.value })}
                   style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                 />
               </div>
@@ -2339,9 +2450,9 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Category *</label>
-                  <select 
-                    value={newSpace.category} 
-                    onChange={e => setNewSpace({...newSpace, category: e.target.value, custom_category: ''})}
+                  <select
+                    value={newSpace.category}
+                    onChange={e => setNewSpace({ ...newSpace, category: e.target.value, custom_category: '' })}
                     style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                   >
                     <option value="WEDDING">Wedding Hall</option>
@@ -2358,20 +2469,20 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                       maxLength={100}
                       placeholder="Type your venue category"
                       value={newSpace.custom_category}
-                      onChange={e => setNewSpace({...newSpace, custom_category: e.target.value})}
+                      onChange={e => setNewSpace({ ...newSpace, custom_category: e.target.value })}
                       style={{ width: '100%', boxSizing: 'border-box', marginTop: '8px', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                     />
                   )}
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Guest Capacity *</label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     required
                     min="1"
-                    placeholder="e.g. 300"
-                    value={newSpace.capacity} 
-                    onChange={e => setNewSpace({...newSpace, capacity: Number(e.target.value)})}
+                    placeholder="Enter maximum guests"
+                    value={newSpace.capacity}
+                    onChange={e => setNewSpace({ ...newSpace, capacity: e.target.value === '' ? '' : Number(e.target.value) })}
                     style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                   />
                 </div>
@@ -2380,8 +2491,8 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Location (County) *</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     required
                     value={NYERI_COUNTY_LOCATION}
                     readOnly
@@ -2390,13 +2501,13 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Daily Rate (KES) *</label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     required
                     min="1"
                     placeholder="e.g. 75000"
-                    value={newSpace.price_per_day} 
-                    onChange={e => setNewSpace({...newSpace, price_per_day: Number(e.target.value)})}
+                    value={newSpace.price_per_day}
+                    onChange={e => setNewSpace({ ...newSpace, price_per_day: Number(e.target.value) })}
                     style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                   />
                 </div>
@@ -2404,48 +2515,48 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Amenities (comma-separated)</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   placeholder="Parking, Sound System, Restrooms, Security, Wi-Fi"
-                  value={newSpace.amenities} 
-                  onChange={e => setNewSpace({...newSpace, amenities: e.target.value})}
+                  value={newSpace.amenities}
+                  onChange={e => setNewSpace({ ...newSpace, amenities: e.target.value })}
                   style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                 />
               </div>
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Image URL</label>
-                <input 
-                  type="url" 
+                <input
+                  type="url"
                   placeholder="https://images.unsplash.com/..."
-                  value={newSpace.image_url} 
-                  onChange={e => setNewSpace({...newSpace, image_url: e.target.value})}
+                  value={newSpace.image_url}
+                  onChange={e => setNewSpace({ ...newSpace, image_url: e.target.value })}
                   style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                 />
               </div>
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Description *</label>
-                <textarea 
-                  rows={3} 
+                <textarea
+                  rows={3}
                   required
                   placeholder="Describe your space, layout, lighting, and suitable event types..."
-                  value={newSpace.description} 
-                  onChange={e => setNewSpace({...newSpace, description: e.target.value})}
+                  value={newSpace.description}
+                  onChange={e => setNewSpace({ ...newSpace, description: e.target.value })}
                   style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                 />
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setShowAddSpaceModal(false)}
                   style={{ padding: '10px 18px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}
                 >
                   Cancel
                 </button>
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   disabled={submitting}
                   style={{ padding: '10px 22px', background: '#0d8a73', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 700, cursor: submitting ? 'not-allowed' : 'pointer' }}
                 >
@@ -2481,12 +2592,12 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
             <form onSubmit={handleAddServiceSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Service Name *</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   required
                   placeholder="e.g. Executive Wedding Photography Package"
-                  value={newService.title} 
-                  onChange={e => setNewService({...newService, title: e.target.value})}
+                  value={newService.title}
+                  onChange={e => setNewService({ ...newService, title: e.target.value })}
                   style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                 />
               </div>
@@ -2494,9 +2605,9 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Category *</label>
-                  <select 
-                    value={newService.category} 
-                    onChange={e => setNewService({...newService, category: e.target.value, custom_category: ''})}
+                  <select
+                    value={newService.category}
+                    onChange={e => setNewService({ ...newService, category: e.target.value, custom_category: '' })}
                     style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                   >
                     <option value="PHOTOGRAPHY">Photography & Video</option>
@@ -2513,16 +2624,16 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                       maxLength={100}
                       placeholder="Type your service category"
                       value={newService.custom_category}
-                      onChange={e => setNewService({...newService, custom_category: e.target.value})}
+                      onChange={e => setNewService({ ...newService, custom_category: e.target.value })}
                       style={{ width: '100%', boxSizing: 'border-box', marginTop: '8px', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                     />
                   )}
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Pricing Model *</label>
-                  <select 
-                    value={newService.pricing_type} 
-                    onChange={e => setNewService({...newService, pricing_type: e.target.value})}
+                  <select
+                    value={newService.pricing_type}
+                    onChange={e => setNewService({ ...newService, pricing_type: e.target.value })}
                     style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                   >
                     <option value="Per Event">Per Event / Flat Package</option>
@@ -2533,14 +2644,27 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
               </div>
 
               <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Maximum Guests Supported *</label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  placeholder="Enter maximum guests"
+                  value={newService.capacity}
+                  onChange={e => setNewService({ ...newService, capacity: e.target.value === '' ? '' : Number(e.target.value) })}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                />
+              </div>
+
+              <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Starting Price (KES) *</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   required
                   min="1"
                   placeholder="e.g. 25000"
-                  value={newService.price_per_day} 
-                  onChange={e => setNewService({...newService, price_per_day: Number(e.target.value)})}
+                  value={newService.price_per_day}
+                  onChange={e => setNewService({ ...newService, price_per_day: Number(e.target.value) })}
                   style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                 />
               </div>
@@ -2548,11 +2672,11 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Service Cover Image</label>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <input 
-                    type="url" 
+                  <input
+                    type="url"
                     placeholder="https://images.unsplash.com/... or upload file"
-                    value={newService.image_url} 
-                    onChange={e => setNewService({...newService, image_url: e.target.value})}
+                    value={newService.image_url}
+                    onChange={e => setNewService({ ...newService, image_url: e.target.value })}
                     style={{ flex: 1, padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                   />
                   <label style={{ background: '#f1f5f9', color: '#0d8a73', border: '1px solid #cbd5e1', padding: '10px 14px', borderRadius: '8px', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
@@ -2577,26 +2701,26 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Package Details & Inclusions *</label>
-                <textarea 
-                  rows={3} 
+                <textarea
+                  rows={3}
                   required
                   placeholder="What is included in this package? (e.g. 8 hours coverage, 2 photographers, edited digital album...)"
-                  value={newService.description} 
-                  onChange={e => setNewService({...newService, description: e.target.value})}
+                  value={newService.description}
+                  onChange={e => setNewService({ ...newService, description: e.target.value })}
                   style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
                 />
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setShowAddServiceModal(false)}
                   style={{ padding: '10px 18px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}
                 >
                   Cancel
                 </button>
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   disabled={submitting}
                   style={{ padding: '10px 22px', background: '#0d8a73', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 700, cursor: submitting ? 'not-allowed' : 'pointer' }}
                 >

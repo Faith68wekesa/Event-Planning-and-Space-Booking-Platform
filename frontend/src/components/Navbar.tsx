@@ -11,6 +11,7 @@ interface NavbarProps {
   onLoginClick?: () => void;
   onRegisterClick?: () => void;
   onRequestRole?: (role: 'CUSTOMER' | 'VENDOR' | 'VENUE_OWNER' | 'PROVIDER' | 'ADMIN') => void;
+  onAdminHomeClick?: () => void;
   onLogoutClick?: () => void;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
@@ -25,18 +26,19 @@ export const Navbar: React.FC<NavbarProps> = ({
   onLoginClick,
   onRegisterClick,
   onRequestRole,
+  onAdminHomeClick,
   onLogoutClick,
   searchQuery = '',
   onSearchChange,
 }) => {
   const [showAccountMenu, setShowAccountMenu] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
-  const [profileTab, setProfileTab] = useState<'personal'|'roles'>('roles');
+  const [profileTab, setProfileTab] = useState<'personal' | 'roles'>('roles');
   return (
     <header style={{ position: 'sticky', top: 0, zIndex: 50 }}>
 
       {/* Main Navbar */}
-      <nav style={{
+      <nav className="app-navbar" style={{
         background: '#ffffff',
         borderBottom: '1px solid rgba(0, 0, 0, 0.08)',
         boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)',
@@ -49,7 +51,15 @@ export const Navbar: React.FC<NavbarProps> = ({
       }}>
         {/* Brand Logo */}
         <div
-          onClick={() => setActiveTab('landing')}
+          className="app-navbar-brand"
+          onClick={() => {
+            if (activeRole === 'ADMIN' || activeTab === 'admin-dashboard') {
+              onAdminHomeClick?.();
+              setActiveTab('admin-dashboard');
+            } else {
+              setActiveTab('landing');
+            }
+          }}
           style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}
         >
           <div style={{
@@ -76,7 +86,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Search Bar */}
-        <div style={{ flex: 1, display: 'flex', justifyContent: 'center', padding: '0 20px', minWidth: '250px' }}>
+        <div className="app-navbar-search" style={{ flex: 1, display: 'flex', justifyContent: 'center', padding: '0 20px', minWidth: '250px' }}>
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -102,7 +112,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Primary Navigation Tabs */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div className="app-navbar-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
 
           {currentUser ? (
             <div style={{ position: 'relative' }}>
@@ -129,7 +139,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
                 <ChevronDown size={16} />
               </button>
-              
+
               {showAccountMenu && (
                 <div style={{
                   position: 'absolute',
@@ -155,19 +165,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                         </div>
                       </div>
 
-                      <button 
-                        onClick={() => { setShowAccountMenu(false); setActiveTab('admin-dashboard'); }}
-                        style={{ 
-                          width: '100%', 
-                          textAlign: 'left', 
-                          padding: '12px 16px', 
-                          background: activeTab === 'admin-dashboard' ? '#f0fdfa' : 'none', 
-                          border: 'none', 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          gap: '12px', 
-                          cursor: 'pointer', 
-                          fontSize: '0.9rem', 
+                      <button
+                        onClick={() => { setShowAccountMenu(false); onAdminHomeClick?.(); setActiveTab('admin-dashboard'); }}
+                        style={{
+                          width: '100%',
+                          textAlign: 'left',
+                          padding: '12px 16px',
+                          background: activeTab === 'admin-dashboard' ? '#f0fdfa' : 'none',
+                          border: 'none',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px',
+                          cursor: 'pointer',
+                          fontSize: '0.9rem',
                           color: activeTab === 'admin-dashboard' ? '#0d8a73' : '#1e293b',
                           fontWeight: activeTab === 'admin-dashboard' ? 700 : 500,
                         }}
@@ -175,23 +185,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                         <ShieldCheck size={18} color="#0d8a73" /> Admin Dashboard
                       </button>
 
-                      <button 
-                        onClick={() => { setShowAccountMenu(false); setShowProfileModal(true); setProfileTab('roles'); }}
-                        style={{ width: '100%', textAlign: 'left', padding: '12px 16px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', fontSize: '0.9rem', color: '#1e293b' }}
-                      >
-                        <User size={18} color="#0F8F7A" /> Admin Profile
-                      </button>
                     </>
                   ) : (
                     <>
-                      <button 
+                      <button
                         onClick={() => { setShowAccountMenu(false); setShowProfileModal(true); setProfileTab('personal'); }}
                         style={{ width: '100%', textAlign: 'left', padding: '12px 16px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', fontSize: '0.9rem', color: '#1e293b' }}
                       >
                         <User size={18} color="#0F8F7A" /> My Profile
                       </button>
 
-                      <button 
+                      <button
                         onClick={() => {
                           setShowAccountMenu(false);
                           if (onRequestRole) {
@@ -201,17 +205,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                             setActiveRole('CUSTOMER');
                           }
                         }}
-                        style={{ 
-                          width: '100%', 
-                          textAlign: 'left', 
-                          padding: '12px 16px', 
-                          background: activeRole === 'CUSTOMER' && activeTab === 'my-bookings' ? '#f0fdfa' : 'none', 
-                          border: 'none', 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          gap: '12px', 
-                          cursor: 'pointer', 
-                          fontSize: '0.9rem', 
+                        style={{
+                          width: '100%',
+                          textAlign: 'left',
+                          padding: '12px 16px',
+                          background: activeRole === 'CUSTOMER' && activeTab === 'my-bookings' ? '#f0fdfa' : 'none',
+                          border: 'none',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px',
+                          cursor: 'pointer',
+                          fontSize: '0.9rem',
                           color: activeRole === 'CUSTOMER' && activeTab === 'my-bookings' ? '#0d8a73' : '#1e293b',
                           fontWeight: activeRole === 'CUSTOMER' && activeTab === 'my-bookings' ? 700 : 500,
                         }}
@@ -219,13 +223,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                         <Calendar size={18} color="#0d8a73" /> Customer Dashboard
                       </button>
 
-                      <button 
-                        onClick={() => { 
-                          setShowAccountMenu(false); 
+                      <button
+                        onClick={() => {
+                          setShowAccountMenu(false);
                           const isAlreadyProvider = Boolean(
-                            currentUser?.is_provider || 
-                            currentUser?.is_vendor || 
-                            currentUser?.is_venue_owner || 
+                            currentUser?.is_provider ||
+                            currentUser?.is_vendor ||
+                            currentUser?.is_venue_owner ||
                             currentUser?.role === 'PROVIDER'
                           );
                           if (isAlreadyProvider) {
@@ -241,18 +245,18 @@ export const Navbar: React.FC<NavbarProps> = ({
                             }
                           }
                         }}
-                        style={{ 
-                          width: '100%', 
-                          textAlign: 'left', 
-                          padding: '12px 16px', 
-                          background: activeRole === 'PROVIDER' && activeTab === 'provider-dashboard' ? '#f0fdfa' : 'none', 
-                          border: 'none', 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          gap: '12px', 
-                          cursor: 'pointer', 
-                          fontSize: '0.9rem', 
-                          color: activeRole === 'PROVIDER' && activeTab === 'provider-dashboard' ? '#0d8a73' : '#1e293b', 
+                        style={{
+                          width: '100%',
+                          textAlign: 'left',
+                          padding: '12px 16px',
+                          background: activeRole === 'PROVIDER' && activeTab === 'provider-dashboard' ? '#f0fdfa' : 'none',
+                          border: 'none',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px',
+                          cursor: 'pointer',
+                          fontSize: '0.9rem',
+                          color: activeRole === 'PROVIDER' && activeTab === 'provider-dashboard' ? '#0d8a73' : '#1e293b',
                           fontWeight: activeRole === 'PROVIDER' && activeTab === 'provider-dashboard' ? 700 : 500
                         }}
                       >
@@ -262,8 +266,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                   )}
 
                   <div style={{ borderTop: '1px solid #e2e8f0', margin: '4px 0' }}></div>
-                  
-                  <button 
+
+                  <button
                     onClick={() => { setShowAccountMenu(false); onLogoutClick?.(); }}
                     style={{ width: '100%', textAlign: 'left', padding: '12px 16px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', fontSize: '0.9rem', color: '#ef4444' }}
                   >
@@ -274,13 +278,13 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           ) : (
             <>
-              <button 
+              <button
                 onClick={() => onLoginClick?.()}
                 style={{ padding: '8px 16px', fontWeight: 600, color: '#1e293b', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.9rem' }}
               >
                 Log In
               </button>
-              <button 
+              <button
                 onClick={() => onRegisterClick?.()}
                 style={{ padding: '8px 20px', fontWeight: 600, color: '#ffffff', background: '#0F8F7A', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '0.9rem', boxShadow: '0 2px 4px rgba(15, 143, 122, 0.2)' }}
               >
@@ -325,7 +329,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div style={{ padding: '24px 24px 0' }}>
               <button onClick={() => setShowProfileModal(false)} style={{ position: 'absolute', top: '24px', right: '24px', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}><X size={20} /></button>
               <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0f172a', margin: '0 0 16px' }}>My Profile</h2>
-              
+
               <div style={{ display: 'flex', gap: '16px', borderBottom: '1px solid #e2e8f0', marginBottom: '24px' }}>
                 <button onClick={() => setProfileTab('personal')} style={{ padding: '8px 16px', border: 'none', background: 'none', fontWeight: 600, color: profileTab === 'personal' ? '#0F8F7A' : '#64748b', borderBottom: profileTab === 'personal' ? '2px solid #0F8F7A' : '2px solid transparent', cursor: 'pointer' }}>Personal Info</button>
                 <button onClick={() => setProfileTab('roles')} style={{ padding: '8px 16px', border: 'none', background: 'none', fontWeight: 600, color: profileTab === 'roles' ? '#0F8F7A' : '#64748b', borderBottom: profileTab === 'roles' ? '2px solid #0F8F7A' : '2px solid transparent', cursor: 'pointer' }}>Roles & Access</button>
@@ -336,7 +340,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               {profileTab === 'roles' && (
                 <div>
                   <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0f172a', margin: '0 0 12px' }}>Current Roles</h3>
-                  
+
                   {currentUser?.role === 'ADMIN' ? (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', border: '1px solid #0d8a73', borderRadius: '12px', marginBottom: '16px', background: '#f0fdfa' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -382,8 +386,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                         <>
                           <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>Expand Your Capabilities</h3>
                           <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 12px' }}>Want to list physical event spaces or offer professional services?</p>
-                          
-                          <button 
+
+                          <button
                             onClick={() => { onRequestRole?.('PROVIDER'); setShowProfileModal(false); }}
                             style={{ width: '100%', textAlign: 'left', padding: '16px', background: '#fff', border: '1px solid #0d8a73', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', transition: 'all 0.15s ease' }}
                           >
@@ -420,18 +424,18 @@ export const Navbar: React.FC<NavbarProps> = ({
                       Joined recently
                     </div>
                   </div>
-                  
+
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
                       <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Email Address</div>
                       <div style={{ color: '#0f172a', fontWeight: 600 }}>{currentUser?.email}</div>
                     </div>
-                    
+
                     <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
                       <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Phone Number</div>
                       <div style={{ color: '#0f172a', fontWeight: 600 }}>{currentUser?.phone_number || 'Not provided'}</div>
                     </div>
-                    
+
                     <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
                       <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Active Roles</div>
                       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>

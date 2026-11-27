@@ -21,10 +21,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 }) => {
   const defaultPrice = venue ? Number(venue.price_per_day || 0) : (vendor ? Number(vendor.starting_price || 0) : 0);
   const targetTitle = venue ? venue.title : (vendor ? vendor.business_name : 'Event Service');
+  const isServiceListing = venue?.listing_type === 'SERVICE';
   const targetLocation = venue ? venue.location : 'Nairobi Central';
   const targetRating = venue ? Number(venue.rating || 0) : (vendor ? Number(vendor.rating || 0) : 0);
   const targetReviews = venue ? Number(venue.review_count || 0) : (vendor ? Number(vendor.review_count || 0) : 0);
   const imageUrl = venue?.image_url || vendor?.logo_url || vendor?.portfolio_images?.[0] || '';
+  const listingCapacity = venue ? Number(venue.capacity) : undefined;
+  const hasListingCapacity = listingCapacity !== undefined && Number.isFinite(listingCapacity) && listingCapacity > 0;
 
   const [eventTitle, setEventTitle] = useState('');
   const [eventType, setEventType] = useState('Birthday Party');
@@ -59,6 +62,14 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     const bookingEventType = eventType === 'Other' ? customEventType.trim() : eventType;
     if (!bookingEventType) {
       toast.error('Please enter the event type.');
+      return;
+    }
+    if (venue && !hasListingCapacity) {
+      toast.error('This listing has no maximum guest capacity set. Please ask the provider to update it.');
+      return;
+    }
+    if (venue && listingCapacity !== undefined && Number(guestCount) > listingCapacity) {
+      toast.error(`This listing supports up to ${listingCapacity} guests.`);
       return;
     }
     setSubmitting(true);
@@ -141,10 +152,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         {/* Header */}
         <div style={{ padding: '24px 32px', textAlign: 'center', position: 'relative' }}>
           <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-            Request to Book This {venue ? 'Venue' : 'Service Provider'}
+            Request to Book This {venue ? (isServiceListing ? 'Service' : 'Venue') : 'Service Provider'}
           </h2>
           <p style={{ color: '#475569', fontSize: '0.9rem', margin: '4px 0 0' }}>
-            Provide details about your event to the {venue ? 'venue' : 'service provider'}.
+            Provide details about your event to the {venue ? (isServiceListing ? 'service provider' : 'venue') : 'service provider'}.
           </p>
           <button
             onClick={onClose}
@@ -223,22 +234,18 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   <MapPin size={14} /> {targetLocation}
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  {targetReviews > 0 ? (
-                    <>
-                      <Star size={14} color="#f59e0b" fill="#f59e0b" /> {targetRating.toFixed(1)} ({targetReviews} reviews)
-                    </>
-                  ) : (
-                    <span style={{ color: '#64748b' }}>No reviews yet</span>
-                  )}
+                  <Star size={14} color={targetReviews > 0 ? '#f59e0b' : '#94a3b8'} fill={targetReviews > 0 ? '#f59e0b' : 'none'} /> {targetRating.toFixed(1)} ({targetReviews} {targetReviews === 1 ? 'review' : 'reviews'})
                 </span>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', color: '#475569' }}>
-                <Users size={14} /> Minimum {venue ? Math.min(20, venue.capacity) : 20} guests
-              </div>
+              {venue && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', color: hasListingCapacity ? '#475569' : '#b45309' }}>
+                  <Users size={14} /> Maximum guests: {hasListingCapacity ? listingCapacity : 'Not provided'}
+                </div>
+              )}
 
               <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.9rem', marginTop: '2px' }}>
-                Price: From KSh {defaultPrice.toLocaleString()} {venue ? 'per day' : 'per guest'}
+                Price: From KSh {defaultPrice.toLocaleString()} {venue ? (isServiceListing ? 'per event' : 'per day') : 'per guest'}
               </div>
             </div>
           </div>
@@ -312,7 +319,16 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               </div>
               <div>
                 <label style={labelStyle}>Expected Guests</label>
-                <input type="number" required min={1} placeholder="150" value={guestCount} onChange={(e) => setGuestCount(e.target.value)} style={inputStyle} />
+                <input
+                  type="number"
+                  required
+                  min={1}
+                  max={hasListingCapacity ? listingCapacity : undefined}
+                  placeholder={hasListingCapacity ? `Up to ${listingCapacity}` : 'Enter expected guests'}
+                  value={guestCount}
+                  onChange={(e) => setGuestCount(e.target.value)}
+                  style={inputStyle}
+                />
               </div>
             </div>
 

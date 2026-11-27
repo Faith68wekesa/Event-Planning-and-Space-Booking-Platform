@@ -79,13 +79,7 @@ export const VendorCard: React.FC<VendorCardProps> = ({ vendor, onSelect, onBook
           fontWeight: 700,
           color: (vendor.review_count || 0) > 0 ? '#d97706' : '#64748b'
         }}>
-          {(vendor.review_count || 0) > 0 ? (
-            <>
-              <Star size={14} fill="#fbbf24" stroke="#d97706" /> {Number(vendor.rating).toFixed(1)} ({vendor.review_count})
-            </>
-          ) : (
-            <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>No reviews yet</span>
-          )}
+          <Star size={14} fill="#fbbf24" stroke="#d97706" /> {Number(vendor.rating || 0).toFixed(1)} ({Number(vendor.review_count || 0)})
         </div>
       </div>
 
