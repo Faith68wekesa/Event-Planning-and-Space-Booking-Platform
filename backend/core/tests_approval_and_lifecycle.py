@@ -85,6 +85,44 @@ class AdminApprovalAndLifecycleTestCase(TestCase):
         self.assertFalse(venue.is_verified)
         self.assertFalse(venue.is_publicly_visible)
 
+    def test_unapproved_business_account_cannot_create_service_or_venue_listing(self):
+        pending_user = User.objects.create_user(
+            username='pending_business',
+            email='pending-business@example.com',
+            password='Password123!',
+            role='PROVIDER',
+        )
+        VendorProfile.objects.create(
+            user=pending_user,
+            business_name='Pending Services',
+            vendor_type='Event Services',
+            description='',
+            location='Nyeri County, Kenya',
+        )
+        VenueOwnerProfile.objects.create(
+            user=pending_user,
+            business_name='Pending Venues',
+        )
+        self.client.force_authenticate(user=pending_user)
+
+        for listing_type, category in (
+            ('SERVICE', 'PHOTOGRAPHY'),
+            ('VENUE', 'WEDDING'),
+        ):
+            response = self.client.post('/api/venues/', {
+                'listing_type': listing_type,
+                'title': f'Pending {listing_type}',
+                'category': category,
+                'location': 'Nyeri County, Kenya',
+                'capacity': 100,
+                'price_per_day': 10000,
+            }, format='json')
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+            self.assertIn('business account must be approved', str(response.data))
+
+        self.assertFalse(Venue.objects.filter(vendor__user=pending_user).exists())
+        self.assertFalse(Venue.objects.filter(owner__user=pending_user).exists())
+
     def test_public_endpoints_exclude_pending_and_rejected_listings(self):
         """Public listing endpoints must only expose APPROVED and active listings."""
         approved_venue = Venue.objects.create(
@@ -120,6 +158,16 @@ class AdminApprovalAndLifecycleTestCase(TestCase):
             is_verified=False,
             is_available=True
         )
+        orphaned_venue = Venue.objects.create(
+            title='Orphaned Approved Venue',
+            category='WEDDING',
+            location='Nyeri County, Kenya',
+            capacity=100,
+            price_per_day=30000,
+            approval_status='APPROVED',
+            is_verified=True,
+            is_available=True,
+        )
 
         # Unauthenticated public request
         self.client.force_authenticate(user=None)
@@ -130,10 +178,13 @@ class AdminApprovalAndLifecycleTestCase(TestCase):
         self.assertIn(approved_venue.id, returned_ids)
         self.assertNotIn(pending_venue.id, returned_ids)
         self.assertNotIn(rejected_venue.id, returned_ids)
+        self.assertNotIn(orphaned_venue.id, returned_ids)
 
         # Detail endpoint public access for pending venue should return 404
         detail_res = self.client.get(f'/api/venues/{pending_venue.id}/')
         self.assertEqual(detail_res.status_code, status.HTTP_404_NOT_FOUND)
+        orphan_detail = self.client.get(f'/api/venues/{orphaned_venue.id}/')
+        self.assertEqual(orphan_detail.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_providers_can_view_own_pending_listings(self):
         """Venue owners can view their own listings even if pending."""

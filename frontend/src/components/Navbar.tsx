@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { UserRole } from '../types';
-import { ShieldCheck, Building2, Search, User, ChevronDown, LogOut, X, ChevronRight, Calendar } from 'lucide-react';
+import { ShieldCheck, Building2, Search, User, ChevronDown, LogOut, X, Calendar } from 'lucide-react';
 
 interface NavbarProps {
   activeTab: string;
@@ -10,7 +10,6 @@ interface NavbarProps {
   currentUser?: any;
   onLoginClick?: () => void;
   onRegisterClick?: () => void;
-  onRequestRole?: (role: 'CUSTOMER' | 'VENDOR' | 'VENUE_OWNER' | 'PROVIDER' | 'ADMIN') => void;
   onAdminHomeClick?: () => void;
   onLogoutClick?: () => void;
   searchQuery?: string;
@@ -25,7 +24,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   currentUser,
   onLoginClick,
   onRegisterClick,
-  onRequestRole,
   onAdminHomeClick,
   onLogoutClick,
   searchQuery = '',
@@ -34,6 +32,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [showAccountMenu, setShowAccountMenu] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [profileTab, setProfileTab] = useState<'personal' | 'roles'>('roles');
+  const isCustomerAccount = currentUser?.role === 'CUSTOMER';
+  const isProviderAccount = ['PROVIDER', 'VENDOR', 'VENUE_OWNER'].includes(currentUser?.role);
   return (
     <header style={{ position: 'sticky', top: 0, zIndex: 50 }}>
 
@@ -195,73 +195,57 @@ export const Navbar: React.FC<NavbarProps> = ({
                         <User size={18} color="#0F8F7A" /> My Profile
                       </button>
 
-                      <button
-                        onClick={() => {
-                          setShowAccountMenu(false);
-                          if (onRequestRole) {
-                            onRequestRole('CUSTOMER');
-                          } else {
-                            setActiveTab('my-bookings');
+                      {isCustomerAccount && (
+                        <button
+                          onClick={() => {
+                            setShowAccountMenu(false);
                             setActiveRole('CUSTOMER');
-                          }
-                        }}
-                        style={{
-                          width: '100%',
-                          textAlign: 'left',
-                          padding: '12px 16px',
-                          background: activeRole === 'CUSTOMER' && activeTab === 'my-bookings' ? '#f0fdfa' : 'none',
-                          border: 'none',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '12px',
-                          cursor: 'pointer',
-                          fontSize: '0.9rem',
-                          color: activeRole === 'CUSTOMER' && activeTab === 'my-bookings' ? '#0d8a73' : '#1e293b',
-                          fontWeight: activeRole === 'CUSTOMER' && activeTab === 'my-bookings' ? 700 : 500,
-                        }}
-                      >
-                        <Calendar size={18} color="#0d8a73" /> Customer Dashboard
-                      </button>
+                            setActiveTab('my-bookings');
+                          }}
+                          style={{
+                            width: '100%',
+                            textAlign: 'left',
+                            padding: '12px 16px',
+                            background: activeRole === 'CUSTOMER' && activeTab === 'my-bookings' ? '#f0fdfa' : 'none',
+                            border: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            cursor: 'pointer',
+                            fontSize: '0.9rem',
+                            color: activeRole === 'CUSTOMER' && activeTab === 'my-bookings' ? '#0d8a73' : '#1e293b',
+                            fontWeight: activeRole === 'CUSTOMER' && activeTab === 'my-bookings' ? 700 : 500,
+                          }}
+                        >
+                          <Calendar size={18} color="#0d8a73" /> Customer Dashboard
+                        </button>
+                      )}
 
-                      <button
-                        onClick={() => {
-                          setShowAccountMenu(false);
-                          const isAlreadyProvider = Boolean(
-                            currentUser?.is_provider ||
-                            currentUser?.is_vendor ||
-                            currentUser?.is_venue_owner ||
-                            currentUser?.role === 'PROVIDER'
-                          );
-                          if (isAlreadyProvider) {
+                      {isProviderAccount && (
+                        <button
+                          onClick={() => {
+                            setShowAccountMenu(false);
                             setActiveRole('PROVIDER');
                             setActiveTab('provider-dashboard');
-                          } else {
-                            // First-time customer activating vendor dashboard
-                            if (onRequestRole) {
-                              onRequestRole('PROVIDER');
-                            } else {
-                              setActiveRole('PROVIDER');
-                              setActiveTab('provider-dashboard');
-                            }
-                          }
-                        }}
-                        style={{
-                          width: '100%',
-                          textAlign: 'left',
-                          padding: '12px 16px',
-                          background: activeRole === 'PROVIDER' && activeTab === 'provider-dashboard' ? '#f0fdfa' : 'none',
-                          border: 'none',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '12px',
-                          cursor: 'pointer',
-                          fontSize: '0.9rem',
-                          color: activeRole === 'PROVIDER' && activeTab === 'provider-dashboard' ? '#0d8a73' : '#1e293b',
-                          fontWeight: activeRole === 'PROVIDER' && activeTab === 'provider-dashboard' ? 700 : 500
-                        }}
-                      >
-                        <Building2 size={18} color="#0d8a73" /> Vendor Dashboard
-                      </button>
+                          }}
+                          style={{
+                            width: '100%',
+                            textAlign: 'left',
+                            padding: '12px 16px',
+                            background: activeRole === 'PROVIDER' && activeTab === 'provider-dashboard' ? '#f0fdfa' : 'none',
+                            border: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            cursor: 'pointer',
+                            fontSize: '0.9rem',
+                            color: activeRole === 'PROVIDER' && activeTab === 'provider-dashboard' ? '#0d8a73' : '#1e293b',
+                            fontWeight: activeRole === 'PROVIDER' && activeTab === 'provider-dashboard' ? 700 : 500
+                          }}
+                        >
+                          <Building2 size={18} color="#0d8a73" /> Vendor Dashboard
+                        </button>
+                      )}
                     </>
                   )}
 
@@ -340,6 +324,11 @@ export const Navbar: React.FC<NavbarProps> = ({
               {profileTab === 'roles' && (
                 <div>
                   <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0f172a', margin: '0 0 12px' }}>Current Roles</h3>
+                  {currentUser?.role !== 'ADMIN' && (
+                    <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '-4px 0 12px' }}>
+                      Your account type is fixed when you register.
+                    </p>
+                  )}
 
                   {currentUser?.role === 'ADMIN' ? (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', border: '1px solid #0d8a73', borderRadius: '12px', marginBottom: '16px', background: '#f0fdfa' }}>
@@ -356,7 +345,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     </div>
                   ) : (
                     <>
-                      {currentUser?.is_customer && (
+                      {isCustomerAccount && (
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', marginBottom: '16px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                             <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#0F8F7A', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><User size={20} color="#fff" /></div>
@@ -369,7 +358,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                         </div>
                       )}
 
-                      {(currentUser?.is_provider || currentUser?.is_vendor || currentUser?.is_venue_owner || currentUser?.role === 'PROVIDER') && (
+                      {isProviderAccount && (
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', marginBottom: '16px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                             <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#0d8a73', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Building2 size={20} color="#fff" /></div>
@@ -382,26 +371,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                         </div>
                       )}
 
-                      {!(currentUser?.is_provider || currentUser?.is_vendor || currentUser?.is_venue_owner || currentUser?.role === 'PROVIDER') && (
-                        <>
-                          <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>Expand Your Capabilities</h3>
-                          <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 12px' }}>Want to list physical event spaces or offer professional services?</p>
-
-                          <button
-                            onClick={() => { onRequestRole?.('PROVIDER'); setShowProfileModal(false); }}
-                            style={{ width: '100%', textAlign: 'left', padding: '16px', background: '#fff', border: '1px solid #0d8a73', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', transition: 'all 0.15s ease' }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                              <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#ccfbf1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Building2 size={20} color="#0d8a73" /></div>
-                              <div>
-                                <div style={{ fontWeight: 700, color: '#0d8a73' }}>Activate Business Provider Account</div>
-                                <div style={{ fontSize: '0.78rem', color: '#64748b' }}>List event venues, banquet halls, or offer catering/photography services</div>
-                              </div>
-                            </div>
-                            <ChevronRight size={20} color="#0d8a73" />
-                          </button>
-                        </>
-                      )}
                     </>
                   )}
                 </div>
@@ -439,8 +408,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
                       <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Active Roles</div>
                       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        <span style={{ padding: '4px 12px', borderRadius: '999px', background: '#dcfce7', color: '#16a34a', fontSize: '0.8rem', fontWeight: 700 }}>Customer</span>
-                        {(currentUser?.is_provider || currentUser?.is_vendor || currentUser?.is_venue_owner || currentUser?.role === 'PROVIDER') && (
+                        {isCustomerAccount && (
+                          <span style={{ padding: '4px 12px', borderRadius: '999px', background: '#dcfce7', color: '#16a34a', fontSize: '0.8rem', fontWeight: 700 }}>Customer</span>
+                        )}
+                        {isProviderAccount && (
                           <span style={{ padding: '4px 12px', borderRadius: '999px', background: '#ccfbf1', color: '#0d8a73', fontSize: '0.8rem', fontWeight: 700 }}>Business Provider</span>
                         )}
                       </div>

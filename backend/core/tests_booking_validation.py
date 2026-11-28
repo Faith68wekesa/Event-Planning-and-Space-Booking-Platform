@@ -4,7 +4,10 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework import status
 from django.contrib.auth import get_user_model
-from core.models import Venue, VenueOwnerProfile, VendorProfile, Booking, ProviderAvailabilitySetting
+from core.models import (
+    Venue, VenueOwnerProfile, VendorProfile, Booking,
+    Message, Notification, ProviderAvailabilitySetting,
+)
 
 User = get_user_model()
 
@@ -93,6 +96,151 @@ class BookingCapacityValidationTestCase(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('guest_count', response.data)
+
+    def test_newly_unavailable_date_notifies_customers_with_active_bookings(self):
+        event_date = datetime.date.today() + datetime.timedelta(days=45)
+        booking = Booking.objects.create(
+            customer=self.customer,
+            venue=self.venue,
+            event_title='Availability Notice',
+            event_type='Wedding',
+            event_date=event_date,
+            guest_count=20,
+            status='PENDING',
+            total_price=10000,
+        )
+
+        self.client.force_authenticate(user=self.provider_user)
+        response = self.client.put(
+            '/api/provider/availability/',
+            {'unavailable_dates': self.avail_setting.unavailable_dates + [event_date.isoformat()]},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        notification = Notification.objects.get(
+            user=self.customer,
+            booking=booking,
+            notification_type='LISTING_AVAILABILITY',
+        )
+        self.assertIn(event_date.isoformat(), notification.message)
+
+    def test_incoming_customer_message_creates_linked_notification(self):
+        booking = Booking.objects.create(
+            customer=self.customer,
+            venue=self.venue,
+            event_title='Message Notification',
+            event_type='Wedding',
+            event_date=datetime.date.today() + datetime.timedelta(days=45),
+            guest_count=20,
+            status='PENDING',
+            total_price=10000,
+        )
+
+        self.client.force_authenticate(user=self.provider_user)
+        response = self.client.post(
+            '/api/messages/',
+            {
+                'recipient': self.customer.id,
+                'booking': booking.id,
+                'content': 'We received your request.',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        message = Message.objects.get(pk=response.data['id'])
+        notification = Notification.objects.get(
+            user=self.customer,
+            source_message=message,
+            notification_type='MESSAGE',
+        )
+        self.assertEqual(notification.booking, booking)
+        self.assertIn(self.provider_user.username, notification.message)
+
+        self.client.force_authenticate(user=self.customer)
+        provider_response = self.client.post(
+            '/api/messages/',
+            {
+                'recipient': self.provider_user.id,
+                'booking': booking.id,
+                'content': 'Can we discuss the booking details?',
+            },
+            format='json',
+        )
+        self.assertEqual(provider_response.status_code, status.HTTP_201_CREATED)
+        provider_message = Message.objects.get(pk=provider_response.data['id'])
+        self.assertTrue(Notification.objects.filter(
+            user=self.provider_user,
+            source_message=provider_message,
+            target_tab='messages',
+        ).exists())
+
+    def test_new_booking_notifies_provider_and_admin(self):
+        admin = User.objects.create_user(
+            username='platform_admin',
+            email='platform-admin@example.com',
+            password='Password123!',
+            role='ADMIN',
+            is_staff=True,
+        )
+        event_date = datetime.date.today() + datetime.timedelta(days=45)
+
+        response = self.client.post(
+            '/api/bookings/',
+            {
+                'customer': self.customer.id,
+                'venue': self.venue.id,
+                'event_title': 'Booking Activity',
+                'event_type': 'Wedding',
+                'event_date': event_date.isoformat(),
+                'guest_count': 20,
+                'total_price': 50000,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        booking = Booking.objects.get(pk=response.data['id'])
+        self.assertTrue(Notification.objects.filter(
+            user=self.provider_user,
+            booking=booking,
+            target_tab='bookings',
+            notification_type='BOOKING_UPDATE',
+        ).exists())
+        self.assertTrue(Notification.objects.filter(
+            user=admin,
+            booking=booking,
+            target_tab='bookings',
+            notification_type='SYSTEM',
+        ).exists())
+
+    def test_booking_rejects_listing_without_active_provider(self):
+        orphaned_listing = Venue.objects.create(
+            title='Orphaned Approved Venue',
+            category='WEDDING',
+            location='Nyeri County, Kenya',
+            capacity=100,
+            price_per_day=30000,
+            approval_status='APPROVED',
+            is_verified=True,
+            is_available=True,
+        )
+        response = self.client.post(
+            '/api/bookings/',
+            {
+                'customer': self.customer.id,
+                'venue': orphaned_listing.id,
+                'event_title': 'Booking Orphaned Venue',
+                'event_type': 'Wedding Reception',
+                'event_date': (datetime.date.today() + datetime.timedelta(days=30)).isoformat(),
+                'guest_count': 40,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('no longer linked to an active provider', str(response.data))
 
     def test_service_booking_uses_provider_entered_listing_capacity(self):
         service = Venue.objects.create(
@@ -191,6 +339,44 @@ class BookingCapacityValidationTestCase(TestCase):
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertTrue('marked 2026-12-25 as unavailable' in str(res.data))
 
+    def test_customer_availability_reports_provider_blocked_date(self):
+        self.venue.location = 'Karatina, Nyeri County'
+        self.venue.save(update_fields=['location'])
+
+        response = self.client.get(
+            f'/api/venues/{self.venue.pk}/availability/?date=2026-12-25'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data['available'])
+        self.assertEqual(response.data['status'], 'UNAVAILABLE')
+        self.assertIn('provider marked this date unavailable', response.data['message'])
+
+    def test_customer_availability_shows_remaining_guest_capacity(self):
+        self.venue.location = 'Karatina, Nyeri County'
+        self.venue.save(update_fields=['location'])
+        Booking.objects.create(
+            customer=self.customer,
+            venue=self.venue,
+            event_title='Existing Event',
+            event_type='Wedding Reception',
+            event_date=datetime.date(2026, 12, 15),
+            guest_count=40,
+            total_price=50000,
+            status='APPROVED',
+        )
+
+        response = self.client.get(
+            f'/api/venues/{self.venue.pk}/availability/?date=2026-12-15'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['available'])
+        self.assertEqual(response.data['status'], 'AVAILABLE')
+        self.assertEqual(response.data['booked_guests'], 40)
+        self.assertEqual(response.data['remaining_capacity'], 60)
+        self.assertIn('60 of 100 guest spaces remaining', response.data['message'])
+
     def test_rejection_when_confirmed_bookings_exhaust_capacity(self):
         """3. Multiple confirmed bookings on same date aggregate guest count."""
         # Pre-existing confirmed booking with 70 guests
@@ -251,6 +437,11 @@ class BookingCapacityValidationTestCase(TestCase):
         self.assertEqual(res_a.status_code, status.HTTP_200_OK)
         booking_a.refresh_from_db()
         self.assertEqual(booking_a.status, 'APPROVED')
+        self.assertTrue(Notification.objects.filter(
+            user=self.customer,
+            booking=booking_a,
+            notification_type='BOOKING_UPDATE',
+        ).exists())
 
         # Provider attempts to approve booking B (60 requested + 60 already confirmed = 120 > 100) -> rejected!
         res_b = self.client.patch(f'/api/bookings/{booking_b.id}/update_status/', {'status': 'APPROVED'}, format='json')
@@ -362,6 +553,45 @@ class BookingCapacityValidationTestCase(TestCase):
         over_capacity = self.client.post('/api/bookings/', payload, format='json')
         self.assertEqual(over_capacity.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('Only 10 capacity remains', str(over_capacity.data))
+
+    def test_customer_vendor_availability_shows_remaining_daily_capacity(self):
+        vendor_user = User.objects.create_user(
+            username='availability_vendor_user',
+            email='availability-vendor@example.com',
+            password='Password123!',
+            role='VENDOR',
+        )
+        vendor_profile = VendorProfile.objects.create(
+            user=vendor_user,
+            business_name='Availability Decorators',
+            vendor_type='Decor',
+            starting_price=20000,
+            is_verified=True,
+            verification_status='APPROVED',
+        )
+        event_date = datetime.date.today() + datetime.timedelta(days=30)
+        ProviderAvailabilitySetting.objects.create(
+            user=vendor_user,
+            max_guests=100,
+        )
+        Booking.objects.create(
+            customer=self.customer,
+            vendor=vendor_profile,
+            event_title='Existing Vendor Event',
+            event_type='Wedding Reception',
+            event_date=event_date,
+            guest_count=40,
+            total_price=20000,
+            status='APPROVED',
+        )
+
+        response = self.client.get(
+            f'/api/vendors/{vendor_profile.pk}/availability/?date={event_date.isoformat()}'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['available'])
+        self.assertEqual(response.data['remaining_capacity'], 60)
 
     def test_rejection_of_unavailable_and_unapproved_listings(self):
         """7. Reject bookings for unavailable or unapproved venues and vendors."""
@@ -614,8 +844,7 @@ class BookingCapacityValidationTestCase(TestCase):
         self.assertEqual(res_patch_unavail.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertTrue('currently marked as unavailable or inactive' in str(res_patch_unavail.data))
 
-    def test_unverified_vendor_blocked_but_verified_listing_is_bookable(self):
-        """A profile-only vendor needs verification; an approved listing does not."""
+    def test_unapproved_business_account_blocks_vendor_and_venue_bookings(self):
         # A. Unverified Vendor
         vnd_user_unv = User.objects.create_user(username='unv_vendor_user', email='unv@test.com', password='Password123!', role='VENDOR')
         unv_vendor = VendorProfile.objects.create(
@@ -662,7 +891,8 @@ class BookingCapacityValidationTestCase(TestCase):
             'event_date': '2026-11-28',
             'guest_count': 50
         }, format='json')
-        self.assertEqual(res_unv_owner.status_code, status.HTTP_201_CREATED, res_unv_owner.data)
+        self.assertEqual(res_unv_owner.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue('business account' in str(res_unv_owner.data))
 
     def test_missing_invalid_negative_prices_for_venue_and_vendor(self):
         """12. Individual tests for missing, invalid, zero, and negative prices."""

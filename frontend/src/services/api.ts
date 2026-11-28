@@ -85,6 +85,31 @@ const getAuthHeaders = (extraHeaders: Record<string, string> = {}): Record<strin
   return headers;
 };
 
+export interface ListingDateAvailability {
+  date: string;
+  available: boolean;
+  status: 'AVAILABLE' | 'UNAVAILABLE' | 'FULL' | 'CAPACITY_NEEDED';
+  total_capacity: number;
+  booked_guests: number;
+  remaining_capacity: number;
+  message: string;
+}
+
+const fetchDateAvailability = async (
+  listingPath: string,
+  date: string
+): Promise<ListingDateAvailability> => {
+  const query = new URLSearchParams({ date });
+  const response = await fetch(`${API_BASE}/${listingPath}/availability/?${query.toString()}`);
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(formatApiError(data, 'Could not check availability.'));
+  }
+
+  return data as ListingDateAvailability;
+};
+
 export interface ProviderAvailabilitySetting {
   id: number;
   user: number;
@@ -252,17 +277,20 @@ export const ApiService = {
     }
   },
 
-  async sendOTP(email: string): Promise<boolean> {
+  async sendOTP(email: string): Promise<{ success: boolean; error?: string }> {
     try {
       const res = await fetch(`${API_BASE}/otp/send/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
       });
-      return res.ok;
+      const data = await res.json();
+      return res.ok
+        ? { success: true }
+        : { success: false, error: data.error || 'Failed to send verification code.' };
     } catch (e) {
       console.error('Failed to send OTP:', e);
-      return false;
+      return { success: false, error: 'Network error while sending verification code.' };
     }
   },
 
@@ -319,6 +347,14 @@ export const ApiService = {
     return [];
   },
 
+  async getVenueDateAvailability(venueId: number, date: string): Promise<ListingDateAvailability> {
+    return fetchDateAvailability(`venues/${venueId}`, date);
+  },
+
+  async getVendorDateAvailability(vendorId: number, date: string): Promise<ListingDateAvailability> {
+    return fetchDateAvailability(`vendors/${vendorId}`, date);
+  },
+
   async createBooking(bookingData: Partial<Booking>): Promise<Booking> {
     const res = await fetch(`${API_BASE}/bookings/`, {
       method: 'POST',
@@ -352,6 +388,18 @@ export const ApiService = {
       console.error("Failed to update status", e);
       return { success: false, error: e.message || 'Network error occurred.' };
     }
+  },
+
+  async retryProviderPayout(paymentId: number): Promise<Booking> {
+    const res = await fetch(`${API_BASE}/mpesa/admin/payments/${paymentId}/retry-payout/`, {
+      method: 'POST',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success || !data.booking) {
+      throw new Error(formatApiError(data, 'Failed to retry provider payout.'));
+    }
+    return data.booking as Booking;
   },
 
   async approveVenue(id: number): Promise<{ success: boolean; data?: Venue; error?: string }> {
@@ -523,18 +571,28 @@ export const ApiService = {
 
   async getVendorDashboard(vendorId: number): Promise<{
     total_revenue: number;
+    total_customer_paid: number;
+    total_commission_deducted: number;
+    total_provider_net: number;
+    total_provider_received: number;
+    pending_payouts: number;
+    failed_payouts: number;
     pending_bookings: number;
     upcoming_bookings: number;
     total_venues: number;
     venues: Venue[];
   }> {
-    const res = await fetch(`${API_BASE}/vendors/${vendorId}/dashboard/`);
+    const res = await fetch(`${API_BASE}/vendors/${vendorId}/dashboard/`, {
+      headers: getAuthHeaders(),
+    });
     if (!res.ok) throw new Error("Failed to fetch dashboard");
     return await res.json();
   },
 
   async getVendorBookings(vendorId: number): Promise<Booking[]> {
-    const res = await fetch(`${API_BASE}/vendors/${vendorId}/bookings/`);
+    const res = await fetch(`${API_BASE}/vendors/${vendorId}/bookings/`, {
+      headers: getAuthHeaders(),
+    });
     if (!res.ok) throw new Error("Failed to fetch vendor bookings");
     return await res.json();
   },
@@ -543,19 +601,29 @@ export const ApiService = {
 
   async getVenueOwnerDashboard(ownerId: number): Promise<{
     total_revenue: number;
+    total_customer_paid: number;
+    total_commission_deducted: number;
+    total_provider_net: number;
+    total_provider_received: number;
+    pending_payouts: number;
+    failed_payouts: number;
     pending_bookings: number;
     upcoming_bookings: number;
     total_venues: number;
     verified_venues: number;
     venues: Venue[];
   }> {
-    const res = await fetch(`${API_BASE}/venue-owners/${ownerId}/dashboard/`);
+    const res = await fetch(`${API_BASE}/venue-owners/${ownerId}/dashboard/`, {
+      headers: getAuthHeaders(),
+    });
     if (!res.ok) throw new Error("Failed to fetch venue owner dashboard");
     return await res.json();
   },
 
   async getVenueOwnerBookings(ownerId: number): Promise<Booking[]> {
-    const res = await fetch(`${API_BASE}/venue-owners/${ownerId}/bookings/`);
+    const res = await fetch(`${API_BASE}/venue-owners/${ownerId}/bookings/`, {
+      headers: getAuthHeaders(),
+    });
     if (!res.ok) throw new Error("Failed to fetch venue owner bookings");
     return await res.json();
   },
@@ -1078,18 +1146,23 @@ export const ApiService = {
   async getNotifications(userId: number | string): Promise<NotificationItem[]> {
     try {
       const res = await fetch(`${API_BASE}/notifications/?user_id=${userId}`);
-      if (res.ok) {
-        return await res.json();
+      if (!res.ok) throw new Error(`Failed to fetch notifications (${res.status}).`);
+
+      const data: unknown = await res.json();
+      if (Array.isArray(data)) return data as NotificationItem[];
+      if (data && typeof data === 'object' && 'results' in data && Array.isArray(data.results)) {
+        return data.results as NotificationItem[];
       }
+      throw new Error('Unexpected notifications response.');
     } catch (e) {
       console.error('Failed to fetch notifications:', e);
+      throw e;
     }
-    return [];
   },
 
-  async markNotificationRead(id: number): Promise<boolean> {
+  async markNotificationRead(id: number, userId: number | string): Promise<boolean> {
     try {
-      const res = await fetch(`${API_BASE}/notifications/${id}/mark_read/`, {
+      const res = await fetch(`${API_BASE}/notifications/${id}/mark_read/?user_id=${userId}`, {
         method: 'POST',
       });
       return res.ok;

@@ -236,9 +236,9 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
 
   // Service form fields
   const [serviceName, setServiceName] = useState(editingListing?.title || '');
-  const [servicePricingBasis, setServicePricingBasis] = useState('Per Event');
+  const [servicePricingBasis, setServicePricingBasis] = useState('');
   const [serviceCategory, setServiceCategory] = useState<string>(
-    existingCustomServiceCategory ? 'OTHER' : editingListing?.category || 'PLANNING'
+    existingCustomServiceCategory ? 'OTHER' : editingListing?.category || ''
   );
   const [customServiceCategory, setCustomServiceCategory] = useState(
     existingCustomServiceCategory ? editingListing?.category || '' : ''
@@ -247,8 +247,8 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
   const [servicePrice, setServicePrice] = useState<number | ''>(editingListing?.price_per_day ?? '');
   const [serviceCoverUrl, setServiceCoverUrl] = useState(editingListing?.image_url || '');
   const [serviceInclusions, setServiceInclusions] = useState('');
-  const [serviceEventTypes, setServiceEventTypes] = useState('Weddings, Birthdays, Corporate Events');
-  const [serviceDuration, setServiceDuration] = useState('4 hours');
+  const [serviceEventTypes, setServiceEventTypes] = useState('');
+  const [serviceDuration, setServiceDuration] = useState('');
   const [serviceMaxGuests, setServiceMaxGuests] = useState<number | ''>(
     editingListing?.listing_type === 'SERVICE' && editingListing.capacity > 0
       ? editingListing.capacity
@@ -257,16 +257,16 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
   const [serviceArea, setServiceArea] = useState(
     editingListing?.location.trim().toLowerCase() === nyeriCountyLocation.toLowerCase()
       ? editingListing.location
-      : editingListing ? '' : nyeriCountyLocation
+      : ''
   );
-  const [serviceAvailability, setServiceAvailability] = useState('Weekdays & Weekends (Flexible)');
+  const [serviceAvailability, setServiceAvailability] = useState('');
   const [serviceEquipment, setServiceEquipment] = useState('');
 
   // Venue form fields
   const [venueName, setVenueName] = useState(editingListing?.title || '');
-  const [venuePricingBasis, setVenuePricingBasis] = useState('Per Day');
+  const [venuePricingBasis, setVenuePricingBasis] = useState('');
   const [venueCategory, setVenueCategory] = useState<string>(
-    existingCustomVenueCategory ? 'OTHER' : editingListing?.category || 'WEDDING'
+    existingCustomVenueCategory ? 'OTHER' : editingListing?.category || ''
   );
   const [customVenueCategory, setCustomVenueCategory] = useState(
     existingCustomVenueCategory ? editingListing?.category || '' : ''
@@ -276,15 +276,15 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
   const [venueLocation, setVenueLocation] = useState(
     editingListing?.location.trim().toLowerCase() === nyeriCountyLocation.toLowerCase()
       ? editingListing.location
-      : editingListing ? '' : nyeriCountyLocation
+      : ''
   );
   const [venueCoverUrl, setVenueCoverUrl] = useState(editingListing?.image_url || '');
   const [venueCapacity, setVenueCapacity] = useState<number | ''>(editingListing?.capacity || '');
   const [venueLayout, setVenueLayout] = useState('');
-  const [venueFacilities, setVenueFacilities] = useState(editingListing?.amenities?.join(', ') || 'Parking, Wi-Fi, Restrooms, Standby Generator, Kitchen');
-  const [venueEventTypes, setVenueEventTypes] = useState('Weddings, Corporate Conferences, Banquets, Private Celebrations');
-  const [venueBookingDuration, setVenueBookingDuration] = useState('Full Day (8:00 AM - 11:00 PM) including setup');
-  const [venueAvailability, setVenueAvailability] = useState('Available All Days (Subject to advance booking)');
+  const [venueFacilities, setVenueFacilities] = useState(editingListing?.amenities?.join(', ') || '');
+  const [venueEventTypes, setVenueEventTypes] = useState('');
+  const [venueBookingDuration, setVenueBookingDuration] = useState('');
+  const [venueAvailability, setVenueAvailability] = useState('');
 
   const resolveIds = async () => {
     let vendorId = currentVendorId;
@@ -330,6 +330,7 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
       const fullDescription = editingListing ? serviceDesc.trim() : [
         serviceDesc.trim(),
         serviceInclusions ? `\n\nWhat's Included / Package Details:\n${serviceInclusions.trim()}` : '',
+        serviceEventTypes ? `\n\nSupported Event Types:\n${serviceEventTypes.trim()}` : '',
         serviceEquipment ? `\n\nSpecial Equipment & Capabilities:\n${serviceEquipment.trim()}` : '',
         `\n\nPricing Basis: ${servicePricingBasis}`,
         serviceDuration ? `\nDuration: ${serviceDuration}` : '',
@@ -518,6 +519,7 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
                       if (e.target.value !== 'OTHER') setCustomServiceCategory('');
                     }}
                   >
+                      <option value="">Select a service category</option>
                     <option value="PHOTOGRAPHY">Photography &amp; Videography</option>
                     <option value="CATERING">Catering &amp; Bar Service</option>
                     <option value="DECORATION">Event Decoration &amp; Styling</option>
@@ -547,10 +549,12 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
               <label className="listing-field-label">Pricing Basis *</label>
               <div className="listing-select-wrapper">
                 <select
+                  required={!editingListing}
                   className="listing-select"
                   value={servicePricingBasis}
                   onChange={(e) => setServicePricingBasis(e.target.value)}
                 >
+                  <option value="">Select a pricing basis</option>
                   <option value="Per Event">Per Event</option>
                   <option value="Per Hour">Per Hour</option>
                   <option value="Per Guest">Per Guest / Plate</option>
@@ -651,7 +655,7 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
                 <label className="listing-field-label">Supported Event Types *</label>
                 <input
                   type="text"
-                  required
+                  required={!editingListing}
                   className="listing-input"
                   placeholder="e.g. Weddings, Birthdays, Corporate Events..."
                   value={serviceEventTypes}
@@ -709,11 +713,12 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
                 <label className="listing-field-label">Availability *</label>
                 <div className="listing-select-wrapper">
                   <select
-                    required
+                    required={!editingListing}
                     className="listing-select"
                     value={serviceAvailability}
                     onChange={(e) => setServiceAvailability(e.target.value)}
                   >
+                    <option value="">Select availability</option>
                     <option value="Weekdays & Weekends (Flexible)">Weekdays & Weekends (Flexible)</option>
                     <option value="Weekends Only">Weekends Only</option>
                     <option value="Weekdays Only">Weekdays Only</option>
@@ -793,11 +798,12 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
                 <label className="listing-field-label">Pricing Basis *</label>
                 <div className="listing-select-wrapper">
                   <select
-                    required
+                    required={!editingListing}
                     className="listing-select"
                     value={venuePricingBasis}
                     onChange={(e) => setVenuePricingBasis(e.target.value)}
                   >
+                    <option value="">Select a pricing basis</option>
                     <option value="Per Day">Per Day</option>
                     <option value="Per Hour">Per Hour</option>
                     <option value="Per Guest">Per Guest</option>
@@ -813,10 +819,12 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
               <label className="listing-field-label">Venue Category *</label>
               <div className="listing-select-wrapper">
                 <select
+                  required
                   className="listing-select"
                   value={venueCategory}
                   onChange={(e) => setVenueCategory(e.target.value)}
                 >
+                  <option value="">Select a venue category</option>
                   <option value="WEDDING">Wedding Gardens & Halls</option>
                   <option value="CONFERENCE">Conference & Corporate Centers</option>
                   <option value="BIRTHDAY">Birthday & Private Party Venues</option>
@@ -972,7 +980,7 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
                 <label className="listing-field-label">Event Types Supported *</label>
                 <input
                   type="text"
-                  required
+                  required={!editingListing}
                   className="listing-input"
                   placeholder="e.g. Weddings, Birthdays, Corporate Events..."
                   value={venueEventTypes}
@@ -997,11 +1005,12 @@ export const CreateListingPage: React.FC<CreateListingPageProps> = ({
               <label className="listing-field-label">Availability *</label>
               <div className="listing-select-wrapper">
                 <select
-                  required
+                  required={!editingListing}
                   className="listing-select"
                   value={venueAvailability}
                   onChange={(e) => setVenueAvailability(e.target.value)}
                 >
+                  <option value="">Select availability</option>
                   <option value="Available All Days (Subject to advance booking)">Available All Days (Subject to advance booking)</option>
                   <option value="Weekends Only">Weekends Only</option>
                   <option value="Weekdays Only">Weekdays Only</option>

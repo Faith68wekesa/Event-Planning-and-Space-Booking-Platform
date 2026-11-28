@@ -23,6 +23,11 @@ import { EventFormModal } from './EventFormModal';
 import toast from 'react-hot-toast';
 
 interface MyEventsViewProps {
+  notificationTarget?: {
+    notificationId: number;
+    eventId: number;
+    taskId?: number;
+  } | null;
   events: EventItem[];
   isLoading?: boolean;
   error?: string | null;
@@ -31,10 +36,12 @@ interface MyEventsViewProps {
   onCreateEvent: (data: Partial<EventItem>) => Promise<boolean>;
   onUpdateEvent: (id: number, data: Partial<EventItem>) => Promise<boolean>;
   onDeleteEvent: (id: number) => Promise<boolean>;
+  onNotificationTargetHandled?: (notificationId: number) => void;
   onNavigateTab?: (tab: string) => void;
 }
 
 export const MyEventsView: React.FC<MyEventsViewProps> = ({
+  notificationTarget = null,
   events,
   isLoading = false,
   error = null,
@@ -42,6 +49,7 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
   onCreateEvent,
   onUpdateEvent,
   onDeleteEvent,
+  onNotificationTargetHandled,
   onNavigateTab,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -186,6 +194,19 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
   const [newServiceCost, setNewServiceCost] = useState('');
   const [newServiceDueDate, setNewServiceDueDate] = useState('');
   const [taskFilter, setTaskFilter] = useState<'all' | 'completed' | 'pending' | 'overdue'>('all');
+  const [focusedTaskId, setFocusedTaskId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!notificationTarget) return;
+
+    const targetEvent = events.find((event) => event.id === notificationTarget.eventId);
+    if (!targetEvent) return;
+
+    setSelectedEventDetails(targetEvent);
+    setTaskFilter('all');
+    setFocusedTaskId(notificationTarget.taskId ?? null);
+    onNotificationTargetHandled?.(notificationTarget.notificationId);
+  }, [events, notificationTarget, onNotificationTargetHandled]);
 
   // Load services from event when selected or from API
   useEffect(() => {
@@ -203,6 +224,30 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
       }
     }
   }, [selectedEventDetails?.id]);
+
+  useEffect(() => {
+    if (focusedTaskId === null || !selectedEventDetails) return;
+
+    const eventServices = customServicesByEvent[selectedEventDetails.id]
+      || selectedEventDetails.services
+      || [];
+    if (!eventServices.some((service) => String(service.id) === String(focusedTaskId))) return;
+
+    const scrollTimer = window.setTimeout(() => {
+      document.getElementById(`event-task-${focusedTaskId}`)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }, 0);
+    const clearFocusTimer = window.setTimeout(() => {
+      setFocusedTaskId((current) => current === focusedTaskId ? null : current);
+    }, 5000);
+
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(clearFocusTimer);
+    };
+  }, [customServicesByEvent, focusedTaskId, selectedEventDetails]);
 
   // Default images for event types
   const getEventImage = (event: EventItem) => {
@@ -778,14 +823,17 @@ export const MyEventsView: React.FC<MyEventsViewProps> = ({
                         return (
                           <div
                             key={svc.id}
+                            id={`event-task-${svc.id}`}
                             style={{
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'space-between',
                               padding: '14px 18px',
                               borderRadius: '12px',
-                              border: '1px solid #e2e8f0',
-                              background: status === 'Completed' ? '#f0fdf4' : status === 'Overdue' ? '#fef2f2' : '#ffffff',
+                              border: String(svc.id) === String(focusedTaskId) ? '2px solid #0d8a73' : '1px solid #e2e8f0',
+                              background: String(svc.id) === String(focusedTaskId)
+                                ? '#ecfdf5'
+                                : status === 'Completed' ? '#f0fdf4' : status === 'Overdue' ? '#fef2f2' : '#ffffff',
                               transition: 'background 0.2s ease',
                             }}
                           >

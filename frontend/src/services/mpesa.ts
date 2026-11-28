@@ -2,6 +2,7 @@
  * M-Pesa API Client for Django Backend
  */
 import { API_BASE_URL } from './apiBase';
+import { getApiAuthToken } from './api';
 
 export type MpesaStatus = 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELLED';
 
@@ -13,6 +14,16 @@ export interface PaymentRecord {
     amount: number;
     accountReference: string;
     status: MpesaStatus;
+    isSimulated?: boolean;
+    commissionAmount?: number | string | null;
+    providerPayoutAmount?: number | string | null;
+    payoutStatus?: 'NOT_STARTED' | 'PENDING' | 'PAID' | 'FAILED';
+    payoutReference?: string;
+    payoutError?: string;
+    payoutRetryable?: boolean;
+    manualReconciliationRequired?: boolean;
+    paidAt?: string | null;
+    paidOutAt?: string | null;
     resultCode: number | null;
     resultDesc: string | null;
     mpesaReceiptNumber: string | null;
@@ -48,6 +59,27 @@ export const initiateStkPush = (params: {
         method: 'POST',
         body: JSON.stringify(params),
     });
+
+export const simulatePayment = async (
+    bookingId: number | string
+): Promise<PaymentRecord> => {
+    const token = getApiAuthToken();
+    const res = await fetch(`${API_BASE_URL}/api/mpesa/simulate/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Token ${token}` } : {}),
+        },
+        body: JSON.stringify({ bookingId }),
+    });
+    const data = await res.json();
+
+    if (!res.ok || !data.success || !data.payment) {
+        throw new Error(data.message || 'Could not simulate payment.');
+    }
+
+    return data.payment as PaymentRecord;
+};
 
 export const getPaymentStatus = (
     checkoutRequestId: string

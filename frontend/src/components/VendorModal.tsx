@@ -41,7 +41,7 @@ export const VendorModal: React.FC<VendorModalProps> = ({ vendor, currentUser, o
     checked: boolean;
     available: boolean;
     message: string;
-    statusType: 'AVAILABLE' | 'UNAVAILABLE' | 'BOOKED' | 'UNKNOWN';
+    statusType: 'AVAILABLE' | 'UNAVAILABLE' | 'BOOKED' | 'CAPACITY_NEEDED' | 'UNKNOWN';
   } | null>(null);
 
   const handleCheckDateAvailability = async () => {
@@ -53,75 +53,21 @@ export const VendorModal: React.FC<VendorModalProps> = ({ vendor, currentUser, o
     setCheckingAvailability(true);
 
     try {
-      // 1. Check vendor-configured custom schedule
-      let isExplicitlyBlocked = false;
-      try {
-        const savedStatuses = localStorage.getItem('locyfy_vendor_day_statuses');
-        if (savedStatuses) {
-          const parsed: Record<string, string> = JSON.parse(savedStatuses);
-          if (parsed[checkDate] === 'UNAVAILABLE') {
-            isExplicitlyBlocked = true;
-          }
-        }
-      } catch (e) {
-        console.error(e);
-      }
-
-      // 2. Check bookings for this vendor and calculate remaining guest capacity
-      // Strictly respect the provider's assigned vendor capacity
-      const configuredCapacity = Number((vendor as any).capacity || (vendor as any).max_capacity);
-      const hasCapacityLimit = Number.isFinite(configuredCapacity) && configuredCapacity > 0;
-      const totalCapacityLimit = hasCapacityLimit ? configuredCapacity : 0;
-
-      const bookings = await ApiService.getBookings({ vendor: vendor.id });
-      const confirmedBookingsOnDate = bookings.filter(b =>
-        (b.vendor === vendor.id || (b.vendor_details && b.vendor_details.id === vendor.id)) &&
-        (b.status === 'APPROVED' || b.status === 'COMPLETED') &&
-        b.event_date.startsWith(checkDate)
-      );
-
-      // Sum all guests already booked on this day
-      const bookedGuestsOnDate = confirmedBookingsOnDate.reduce((sum, b) => sum + (Number(b.guest_count) || 0), 0);
-      const remainingGuestCapacity = Math.max(0, totalCapacityLimit - bookedGuestsOnDate);
-      const isDateFull = remainingGuestCapacity <= 0;
-
-      if (isExplicitlyBlocked) {
-        setAvailabilityResult({
-          checked: true,
-          available: false,
-          statusType: 'UNAVAILABLE',
-          message: 'This service provider is marked as unavailable on this date.'
-        });
-      } else if (!hasCapacityLimit) {
-        setAvailabilityResult({
-          checked: true,
-          available: true,
-          statusType: 'UNKNOWN',
-          message: 'The provider has not published a guest capacity. Please confirm availability and capacity with them before booking.'
-        });
-      } else if (isDateFull) {
-        setAvailabilityResult({
-          checked: true,
-          available: false,
-          statusType: 'BOOKED',
-          message: `This service provider is fully booked for this date (${totalCapacityLimit} guests accommodated across bookings).`
-        });
-      } else {
-        setAvailabilityResult({
-          checked: true,
-          available: true,
-          statusType: 'AVAILABLE',
-          message: bookedGuestsOnDate > 0
-            ? `Available! (${remainingGuestCapacity} guest capacity remaining out of ${totalCapacityLimit})`
-            : `Great news! Fully available (Up to ${totalCapacityLimit} guests).`
-        });
-      }
-    } catch {
+      const result = await ApiService.getVendorDateAvailability(vendor.id, checkDate);
       setAvailabilityResult({
         checked: true,
-        available: true,
-        statusType: 'AVAILABLE',
-        message: 'This service appears available on this date!'
+        available: result.available,
+        statusType: result.status === 'FULL' ? 'BOOKED' : result.status,
+        message: result.message,
+      });
+    } catch (error) {
+      console.error('Failed to check vendor availability:', error);
+      toast.error(error instanceof Error ? error.message : 'Could not check availability.');
+      setAvailabilityResult({
+        checked: true,
+        available: false,
+        statusType: 'UNKNOWN',
+        message: 'Availability could not be checked. Please try again.'
       });
     } finally {
       setCheckingAvailability(false);
@@ -350,14 +296,19 @@ export const VendorModal: React.FC<VendorModalProps> = ({ vendor, currentUser, o
                 marginTop: '16px',
                 padding: '14px 16px',
                 borderRadius: '10px',
-                border: `1px solid ${availabilityResult.statusType === 'UNKNOWN' ? '#fcd34d' : availabilityResult.available ? '#a7f3d0' : '#fecaca'
+                border: `1px solid ${
+                  availabilityResult.statusType === 'UNKNOWN' || availabilityResult.statusType === 'CAPACITY_NEEDED'
+                    ? '#fcd34d'
+                    : availabilityResult.available ? '#a7f3d0' : '#fecaca'
                   }`,
-                background: availabilityResult.statusType === 'UNKNOWN' ? '#fffbeb' : availabilityResult.available ? '#ecfdf5' : '#fef2f2',
+                background: availabilityResult.statusType === 'UNKNOWN' || availabilityResult.statusType === 'CAPACITY_NEEDED'
+                  ? '#fffbeb'
+                  : availabilityResult.available ? '#ecfdf5' : '#fef2f2',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '12px'
               }}>
-                {availabilityResult.statusType === 'UNKNOWN' ? (
+                {availabilityResult.statusType === 'UNKNOWN' || availabilityResult.statusType === 'CAPACITY_NEEDED' ? (
                   <AlertCircle size={20} color="#b45309" />
                 ) : availabilityResult.available ? (
                   <CheckCircle2 size={20} color="#059669" />
@@ -368,17 +319,25 @@ export const VendorModal: React.FC<VendorModalProps> = ({ vendor, currentUser, o
                   <div style={{
                     fontSize: '0.9rem',
                     fontWeight: 700,
-                    color: availabilityResult.statusType === 'UNKNOWN' ? '#92400e' : availabilityResult.available ? '#065f46' : '#991b1b'
+                    color: availabilityResult.statusType === 'UNKNOWN' || availabilityResult.statusType === 'CAPACITY_NEEDED'
+                      ? '#92400e'
+                      : availabilityResult.available ? '#065f46' : '#991b1b'
                   }}>
                     {availabilityResult.statusType === 'UNKNOWN'
-                      ? 'Availability needs confirmation'
+                      ? 'Availability could not be checked'
+                      : availabilityResult.statusType === 'CAPACITY_NEEDED'
+                        ? 'Capacity not set'
+                        : availabilityResult.statusType === 'BOOKED'
+                          ? 'Fully booked on this date'
                       : availabilityResult.available
                         ? 'Available on this date!'
                         : 'Unavailable on this date'}
                   </div>
                   <div style={{
                     fontSize: '0.82rem',
-                    color: availabilityResult.statusType === 'UNKNOWN' ? '#a16207' : availabilityResult.available ? '#047857' : '#b91c1c',
+                    color: availabilityResult.statusType === 'UNKNOWN' || availabilityResult.statusType === 'CAPACITY_NEEDED'
+                      ? '#a16207'
+                      : availabilityResult.available ? '#047857' : '#b91c1c',
                     marginTop: '2px'
                   }}>
                     {availabilityResult.message}

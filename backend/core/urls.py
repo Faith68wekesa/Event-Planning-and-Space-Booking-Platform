@@ -16,6 +16,8 @@ from .views import (
     venue_recommendations, service_recommendations, vendor_recommendations, ProviderAvailabilitySettingView,
     # --- NEW: M-Pesa views ---
     mpesa_stk_push, mpesa_callback, mpesa_status, mpesa_status_by_booking,
+    mpesa_b2c_result, mpesa_b2c_timeout, mpesa_retry_payout,
+    mpesa_simulate_payment,
 )
 
 router = DefaultRouter()
@@ -53,8 +55,12 @@ urlpatterns = [
     path('analytics/venue-owner/<int:owner_id>/export-csv/', export_venue_owner_analytics_csv, name='venue-owner-analytics-export-csv'),
 
     # --- NEW: M-Pesa Daraja endpoints ---
+    path('mpesa/simulate/', mpesa_simulate_payment, name='mpesa-simulate'),
     path('mpesa/stkpush/', mpesa_stk_push, name='mpesa-stkpush'),
     path('mpesa/callback/', mpesa_callback, name='mpesa-callback'),
+    path('mpesa/b2c/result/', mpesa_b2c_result, name='mpesa-b2c-result'),
+    path('mpesa/b2c/timeout/', mpesa_b2c_timeout, name='mpesa-b2c-timeout'),
+    path('mpesa/admin/payments/<int:payment_id>/retry-payout/', mpesa_retry_payout, name='mpesa-retry-payout'),
     path('mpesa/status/<str:checkout_request_id>/', mpesa_status, name='mpesa-status'),
     path('mpesa/status-by-booking/<int:booking_id>/', mpesa_status_by_booking, name='mpesa-status-by-booking'),
 

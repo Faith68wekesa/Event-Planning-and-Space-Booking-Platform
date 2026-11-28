@@ -1,7 +1,4 @@
-"""
-M-Pesa Daraja service — STK Push + Query.
-All config comes from settings.py (loaded from .env).
-"""
+"""M-Pesa Daraja collection and payout requests."""
 import base64
 from datetime import datetime
 
@@ -11,6 +8,14 @@ from django.conf import settings
 
 SANDBOX_BASE = 'https://sandbox.safaricom.co.ke'
 PRODUCTION_BASE = 'https://api.safaricom.co.ke'
+
+
+class PayoutNotSubmittedError(Exception):
+    """The B2C request could not be sent, so a safe retry is possible."""
+
+
+class PayoutOutcomeUnknownError(Exception):
+    """The B2C request may have been accepted; retrying could pay twice."""
 
 
 def _base_url():
@@ -113,3 +118,55 @@ def query_stk_status(checkout_request_id: str):
         timeout=30,
     )
     return res.json()
+
+
+def initiate_b2c_payout(phone: str, amount: int, account_reference: str):
+    """Submit one provider payout through Daraja B2C."""
+    required_settings = {
+        'MPESA_B2C_INITIATOR_NAME': settings.MPESA_B2C_INITIATOR_NAME,
+        'MPESA_B2C_SECURITY_CREDENTIAL': settings.MPESA_B2C_SECURITY_CREDENTIAL,
+        'MPESA_B2C_SHORTCODE': settings.MPESA_B2C_SHORTCODE,
+        'MPESA_B2C_RESULT_URL': settings.MPESA_B2C_RESULT_URL,
+        'MPESA_B2C_TIMEOUT_URL': settings.MPESA_B2C_TIMEOUT_URL,
+    }
+    missing = [name for name, value in required_settings.items() if not value]
+    if missing:
+        raise PayoutNotSubmittedError(
+            'B2C payout configuration is incomplete: ' + ', '.join(missing)
+        )
+
+    phone = normalize_phone(phone)
+    if amount < 1:
+        raise PayoutNotSubmittedError('B2C payout amount must be at least KES 1.')
+
+    try:
+        token = get_access_token()
+    except Exception as exc:
+        raise PayoutNotSubmittedError('Could not authenticate with Daraja for B2C.') from exc
+
+    payload = {
+        'InitiatorName': settings.MPESA_B2C_INITIATOR_NAME,
+        'SecurityCredential': settings.MPESA_B2C_SECURITY_CREDENTIAL,
+        'CommandID': settings.MPESA_B2C_COMMAND_ID,
+        'Amount': int(amount),
+        'PartyA': settings.MPESA_B2C_SHORTCODE,
+        'PartyB': phone,
+        'Remarks': settings.MPESA_B2C_REMARKS,
+        'QueueTimeOutURL': settings.MPESA_B2C_TIMEOUT_URL,
+        'ResultURL': settings.MPESA_B2C_RESULT_URL,
+        'Occasion': str(account_reference)[:100],
+    }
+
+    try:
+        response = requests.post(
+            f'{_base_url()}/mpesa/b2c/v1/paymentrequest',
+            json=payload,
+            headers={'Authorization': f'Bearer {token}'},
+            timeout=30,
+        )
+        response.raise_for_status()
+        return response.json()
+    except (requests.RequestException, ValueError) as exc:
+        raise PayoutOutcomeUnknownError(
+            'Daraja did not return a definitive B2C submission response.'
+        ) from exc

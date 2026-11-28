@@ -144,6 +144,7 @@ export interface Venue {
   amenities: string[];
   image_url: string;
   is_verified: boolean;
+  provider_account_approved?: boolean;
   approval_status?: 'PENDING' | 'APPROVED' | 'REJECTED';
   rejection_reason?: string;
   cancellation_policy?: 'FLEXIBLE' | 'MODERATE' | 'STRICT';
@@ -167,11 +168,36 @@ export interface PortfolioImage {
 
 export type BookingStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'COMPLETED';
 
+export interface BookingPaymentBreakdown {
+  payment_id: number;
+  customer_paid: number | string;
+  commission_amount: number | string;
+  provider_payout_amount: number | string;
+  payout_status: 'NOT_STARTED' | 'PENDING' | 'PAID' | 'FAILED';
+  payout_reference?: string;
+  paid_at?: string | null;
+  paid_out_at?: string | null;
+  payout_error?: string;
+  payout_retryable?: boolean;
+  manual_reconciliation_required?: boolean;
+}
+
+export interface BookingSimulatedPayment {
+  payment_id: number;
+  customer_paid: number | string;
+  commission_estimate: number | string;
+  provider_net_estimate: number | string;
+  receipt_number?: string;
+  created_at?: string;
+}
+
 export interface Booking {
   id: number;
   customer: number;
   customer_name?: string;
+  customer_full_name?: string;
   customer_email?: string;
+  customer_phone?: string | null;
   venue?: number;
   venue_details?: Venue;
   vendor?: number;
@@ -189,6 +215,8 @@ export interface Booking {
   cancelled_at?: string;
   cancelled_by?: 'CUSTOMER' | 'PROVIDER' | 'ADMIN' | 'SYSTEM';
   cancellation_reason?: string;
+  payment_breakdown?: BookingPaymentBreakdown | null;
+  simulated_payment?: BookingSimulatedPayment | null;
   has_reviewed?: boolean;
   review?: Review;
   created_at?: string;
@@ -271,6 +299,8 @@ export interface PlatformStats {
   completed_bookings?: number;
   cancelled_bookings?: number;
   total_revenue?: number;
+  total_commission?: number;
+  commission_revenue?: number;
   total_reviews?: number;
   avg_rating?: number;
 }
@@ -317,9 +347,13 @@ export interface NotificationItem {
   event_name?: string | null;
   task?: number | null;
   task_name?: string | null;
+  booking?: number | null;
+  source_message?: number | null;
+  message_sender_id?: number | null;
   title: string;
   message: string;
-  notification_type: 'CHECKLIST_REMINDER' | 'BOOKING_UPDATE' | 'SYSTEM';
+  target_tab?: string | null;
+  notification_type: 'CHECKLIST_REMINDER' | 'BOOKING_UPDATE' | 'LISTING_AVAILABILITY' | 'MESSAGE' | 'SYSTEM';
   is_read: boolean;
   created_at: string;
 }
@@ -451,6 +485,7 @@ export interface AdminAnalyticsData {
     booking_requests: number;
     confirmed_bookings: number;
     completed_bookings: number;
+    commission_revenue: number;
     cancelled_bookings: number;
     cancellation_rate: number;
     search_to_booking_rate: number;
@@ -490,6 +525,12 @@ export interface VendorAnalyticsData {
     completed_bookings: number;
     cancelled_bookings: number;
     pending_bookings: number;
+    total_customer_paid: number;
+    total_commission_deducted: number;
+    total_provider_net: number;
+    total_provider_received: number;
+    pending_payouts: number;
+    failed_payouts: number;
     cancellation_rate: number;
     conversion_rate: number;
   };
@@ -527,6 +568,12 @@ export interface VenueOwnerAnalyticsData {
     completed_bookings: number;
     cancelled_bookings: number;
     pending_bookings: number;
+    total_customer_paid: number;
+    total_commission_deducted: number;
+    total_provider_net: number;
+    total_provider_received: number;
+    pending_payouts: number;
+    failed_payouts: number;
     cancellation_rate: number;
     conversion_rate: number;
   };

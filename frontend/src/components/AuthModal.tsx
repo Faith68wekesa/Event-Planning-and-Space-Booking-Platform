@@ -16,8 +16,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess, initia
     isAdminLogin ? 'login' : initialMode
   );
   const [loading, setLoading] = useState(false);
-  const [userId, setUserId] = useState<number | null>(null);
   const [otpCode, setOtpCode] = useState('');
+  const [selectedRole, setSelectedRole] = useState<'CUSTOMER' | 'PROVIDER' | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
@@ -46,12 +46,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess, initia
     if (resendCooldown > 0 || !formData.email) return;
     setLoading(true);
     try {
-      const ok = await ApiService.sendOTP(formData.email);
-      if (ok) {
+      const result = await ApiService.sendOTP(formData.email);
+      if (result.success) {
         toast.success("Verification code resent to your email.");
         setResendCooldown(30);
       } else {
-        toast.error("Failed to resend code. Please try again.");
+        toast.error(result.error || "Failed to resend code. Please try again.");
       }
     } catch {
       toast.error("Network error while resending code.");
@@ -85,32 +85,48 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess, initia
           setMode('login');
           return;
         }
+        const result = await ApiService.sendOTP(formData.email);
+        if (result.success) {
+          setResendCooldown(30);
+          toast.success("Verification code sent. Choose your account type to continue.");
+          setMode('select_role');
+        } else {
+          const msg = result.error || "Failed to send verification code.";
+          setErrorNotice(msg);
+          toast.error(msg);
+        }
+      } else if (mode === 'verify_email') {
+        if (!selectedRole) {
+          setErrorNotice('Choose an account type before completing registration.');
+          return;
+        }
+
         const data = await ApiService.registerUser({
           email: formData.email,
           password: formData.password,
           full_name: formData.full_name,
           phone_number: formData.phone_number,
+          otp: otpCode,
+          role: selectedRole,
         });
         if (data && data.id) {
-          setUserId(data.id);
-          // Send OTP
-          await ApiService.sendOTP(formData.email);
-          setResendCooldown(30);
-          toast.success("Account created! Verification code sent to your email.");
-          setMode('verify_email');
+          const loginData = await ApiService.loginUser({
+            email: formData.email,
+            password: formData.password,
+          });
+          if (loginData?.user && loginData?.token) {
+            toast.success('Account created successfully!');
+            onSuccess(loginData);
+          } else {
+            const msg = 'Your account was created, but automatic sign-in failed. Please log in.';
+            setErrorNotice(msg);
+            toast.error(msg);
+            setMode('login');
+          }
         } else {
-          const msg = data?.error || "Failed to create account. Please check your details.";
+          const msg = data?.error || "Invalid or expired verification code.";
           setErrorNotice(msg);
           toast.error(msg);
-        }
-      } else if (mode === 'verify_email') {
-        const success = await ApiService.verifyOTP(formData.email, otpCode);
-        if (success) {
-          toast.success("Email verified successfully! Choose your role.");
-          setMode('select_role');
-        } else {
-          setErrorNotice("Invalid or expired verification code.");
-          toast.error("Invalid or expired verification code.");
         }
       } else if (mode === 'forgot_password') {
         if (forgotStep === 'request_otp') {
@@ -118,14 +134,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess, initia
             setErrorNotice("Please enter your registered email address.");
             return;
           }
-          const ok = await ApiService.sendOTP(formData.email);
-          if (ok) {
+          const result = await ApiService.sendOTP(formData.email);
+          if (result.success) {
             toast.success("Reset code sent to your email!");
             setForgotStep('verify_reset');
             setResendCooldown(30);
           } else {
-            setErrorNotice("Failed to send reset code. Please check your email.");
-            toast.error("Failed to send reset code.");
+            const msg = result.error || "Failed to send reset code.";
+            setErrorNotice(msg);
+            toast.error(msg);
           }
         } else {
           if (!otpCode || !newPassword) {
@@ -158,50 +175,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess, initia
     }
   };
 
-  const handleRoleSelection = async (role: 'CUSTOMER' | 'PROVIDER') => {
-    if (!userId) return;
-
-    setLoading(true);
+  const handleRoleSelection = (role: 'CUSTOMER' | 'PROVIDER') => {
+    setSelectedRole(role);
     setErrorNotice(null);
-
-    try {
-      // First, log in to obtain an authentication token.
-      const loginData = await ApiService.loginUser({
-        email: formData.email,
-        password: formData.password,
-      });
-
-      if (!loginData || !loginData.user || !loginData.token) {
-        const msg = loginData?.error || 'Login failed. Please log in manually.';
-        setErrorNotice(msg);
-        toast.error(msg);
-        setMode('login');
-        return;
-      }
-
-      // Then request the selected role using the authenticated account.
-      const roleData = await ApiService.requestRole(userId, role);
-
-      if (roleData && roleData.user) {
-        toast.success('Role selected successfully!');
-
-        // Preserve the login token and use the updated role/profile data.
-        onSuccess({
-          ...loginData,
-          ...roleData,
-          token: loginData.token,
-        });
-      } else {
-        const msg = roleData?.error || 'Failed to select role.';
-        setErrorNotice(msg);
-        toast.error(msg);
-      }
-    } catch {
-      setErrorNotice('An error occurred configuring your account.');
-      toast.error('An error occurred configuring your account.');
-    } finally {
-      setLoading(false);
-    }
+    setMode('verify_email');
   };
 
   return (
@@ -374,6 +351,34 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess, initia
                       {resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : "Didn't receive code? Resend"}
                     </button>
                   </div>
+                  <div style={{ display: 'flex', justifyContent: 'center', marginTop: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode('register');
+                        setFormData(prev => ({ ...prev, email: '' }));
+                        setSelectedRole(null);
+                        setOtpCode('');
+                        setResendCooldown(0);
+                        setErrorNotice(null);
+                      }}
+                      style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      Change email
+                    </button>
+                  </div>
+                  {selectedRole && (
+                    <div style={{ textAlign: 'center', marginTop: '12px', color: '#64748b', fontSize: '0.85rem' }}>
+                      Account type: {selectedRole === 'PROVIDER' ? 'Business Provider' : 'Customer'}{' '}
+                      <button
+                        type="button"
+                        onClick={() => setMode('select_role')}
+                        style={{ background: 'none', border: 'none', color: '#0F8F7A', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Change
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : mode === 'forgot_password' ? (
                 <>
@@ -382,8 +387,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess, initia
                       <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Registered Email Address</label>
                       <input 
                         type="email" 
+                        name="email"
                         required 
                         placeholder="name@example.com"
+                        autoComplete="email"
                         value={formData.email}
                         onChange={(e) => setFormData({...formData, email: e.target.value})}
                         style={{ width: '100%', boxSizing: 'border-box', padding: '12px 14px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '0.95rem', outline: 'none' }}
@@ -461,8 +468,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess, initia
                     <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Email Address</label>
                     <input 
                       type="email" 
+                      name={mode === 'register' ? 'signup-email' : 'email'}
                       required 
                       placeholder="name@example.com"
+                      autoComplete={mode === 'register' ? 'off' : 'email'}
                       value={formData.email}
                       onChange={(e) => setFormData({...formData, email: e.target.value})}
                       style={{ width: '100%', boxSizing: 'border-box', padding: '12px 14px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '0.95rem', outline: 'none' }}
@@ -525,8 +534,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess, initia
                   <button 
                     type="button" 
                     onClick={() => {
-                      setMode(mode === 'login' ? 'register' : 'login');
+                      const nextMode = mode === 'login' ? 'register' : 'login';
+                      if (nextMode === 'register') {
+                        setFormData(prev => ({ ...prev, email: '' }));
+                      }
+                      setMode(nextMode);
                       setErrorNotice(null);
+                      setSelectedRole(null);
+                      setOtpCode('');
                     }}
                     style={{ background: 'none', border: 'none', color: '#0F8F7A', fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer' }}
                   >

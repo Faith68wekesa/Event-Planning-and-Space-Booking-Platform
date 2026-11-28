@@ -135,6 +135,7 @@ class VenueSerializer(serializers.ModelSerializer):
     category = serializers.CharField(max_length=100)
     category_display = serializers.SerializerMethodField()
     owner_user_id = serializers.SerializerMethodField()
+    provider_account_approved = serializers.SerializerMethodField()
     portfolio = serializers.SerializerMethodField()
 
     def get_category_display(self, obj):
@@ -146,6 +147,9 @@ class VenueSerializer(serializers.ModelSerializer):
         if obj.vendor and obj.vendor.user_id:
             return obj.vendor.user_id
         return None
+
+    def get_provider_account_approved(self, obj):
+        return obj.has_approved_business_account
 
     def get_portfolio(self, obj):
         request = self.context.get('request')
@@ -224,7 +228,8 @@ class VenueSerializer(serializers.ModelSerializer):
     class Meta:
         model = Venue
         fields = [
-            'id', 'vendor', 'vendor_name', 'owner', 'owner_name', 'owner_user_id', 'listing_type', 'title', 'description', 'category',
+            'id', 'vendor', 'vendor_name', 'owner', 'owner_name', 'owner_user_id',
+            'provider_account_approved', 'listing_type', 'title', 'description', 'category',
             'category_display', 'location', 'address', 'capacity', 'price_per_day',
             'portfolio',
             'price_per_hour', 'amenities', 'image_url', 'is_verified', 'approval_status', 'rejection_reason',
@@ -276,12 +281,21 @@ class ReviewSerializer(serializers.ModelSerializer):
 class BookingSerializer(serializers.ModelSerializer):
     guest_count = serializers.IntegerField(min_value=1)
     customer_name = serializers.ReadOnlyField(source='customer.username')
+    customer_full_name = serializers.SerializerMethodField()
     customer_email = serializers.ReadOnlyField(source='customer.email')
+    customer_phone = serializers.ReadOnlyField(source='customer.phone_number')
     venue_details = VenueSerializer(source='venue', read_only=True)
     vendor_details = VendorProfileSerializer(source='vendor', read_only=True)
     provider_user_id = serializers.SerializerMethodField()
+    payment_breakdown = serializers.SerializerMethodField()
+    simulated_payment = serializers.SerializerMethodField()
     has_reviewed = serializers.SerializerMethodField()
     review = ReviewSerializer(read_only=True)
+
+    def get_customer_full_name(self, obj):
+        return ' '.join(
+            part for part in (obj.customer.first_name, obj.customer.last_name) if part
+        )
 
     def get_provider_user_id(self, obj):
         if obj.venue:
@@ -296,14 +310,66 @@ class BookingSerializer(serializers.ModelSerializer):
     def get_has_reviewed(self, obj):
         return hasattr(obj, 'review') and obj.review is not None
 
+    def get_payment_breakdown(self, obj):
+        commissioned_payments = getattr(obj, 'commissioned_payments', None)
+        if commissioned_payments is not None:
+            payment = commissioned_payments[0] if commissioned_payments else None
+        else:
+            payment = obj.payments.filter(
+                status='SUCCESS',
+                is_simulated=False,
+                commission_amount__isnull=False,
+            ).order_by('-paid_at', '-created_at').first()
+        if not payment:
+            return None
+
+        return {
+            'payment_id': payment.id,
+            'customer_paid': payment.amount,
+            'commission_amount': payment.commission_amount,
+            'provider_payout_amount': payment.provider_payout_amount,
+            'payout_status': payment.payout_status,
+            'payout_reference': payment.payout_reference,
+            'paid_at': payment.paid_at,
+            'paid_out_at': payment.paid_out_at,
+            'payout_error': payment.payout_error,
+            'payout_retryable': payment.payout_retryable,
+            'manual_reconciliation_required': payment.manual_reconciliation_required,
+        }
+
+    def get_simulated_payment(self, obj):
+        simulated_payments = getattr(obj, 'simulated_payments', None)
+        if simulated_payments is not None:
+            payment = simulated_payments[0] if simulated_payments else None
+        else:
+            payment = obj.payments.filter(
+                status='SUCCESS',
+                is_simulated=True,
+            ).order_by('-created_at').first()
+        if not payment:
+            return None
+
+        from core.services.payouts import calculate_payment_split
+
+        commission_estimate, provider_net_estimate = calculate_payment_split(payment.amount)
+        return {
+            'payment_id': payment.id,
+            'customer_paid': payment.amount,
+            'commission_estimate': commission_estimate,
+            'provider_net_estimate': provider_net_estimate,
+            'receipt_number': payment.mpesa_receipt_number,
+            'created_at': payment.created_at,
+        }
+
     class Meta:
         model = Booking
         fields = [
-            'id', 'customer', 'customer_name', 'customer_email', 'venue', 'venue_details',
+            'id', 'customer', 'customer_name', 'customer_full_name', 'customer_email',
+            'customer_phone', 'venue', 'venue_details',
             'vendor', 'vendor_details', 'provider_user_id', 'event_title', 'event_type', 'event_date',
             'end_date', 'guest_count', 'total_price', 'status', 'notes',
             'rejection_reason', 'cancelled_at', 'cancelled_by', 'cancellation_reason',
-            'has_reviewed', 'review',
+            'payment_breakdown', 'simulated_payment', 'has_reviewed', 'review',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['total_price']
@@ -466,14 +532,22 @@ class EventSerializer(serializers.ModelSerializer):
 class NotificationSerializer(serializers.ModelSerializer):
     event_name = serializers.CharField(source='event.name', read_only=True)
     task_name = serializers.CharField(source='task.name', read_only=True)
+    message_sender_id = serializers.SerializerMethodField()
+
+    def get_message_sender_id(self, obj):
+        return obj.source_message.sender_id if obj.source_message_id else None
 
     class Meta:
         model = Notification
         fields = [
             'id', 'user', 'event', 'event_name', 'task', 'task_name',
-            'title', 'message', 'notification_type', 'is_read', 'created_at'
+            'booking', 'source_message', 'message_sender_id',
+            'title', 'message', 'target_tab', 'notification_type', 'is_read', 'created_at'
         ]
-        read_only_fields = ['id', 'user', 'created_at']
+        read_only_fields = [
+            'id', 'user', 'event', 'task', 'booking', 'source_message',
+            'target_tab', 'created_at',
+        ]
 
 
 class CustomerReminderPreferenceSerializer(serializers.ModelSerializer):
@@ -604,10 +678,20 @@ class PaymentSerializer(serializers.ModelSerializer):
     bookingId = serializers.IntegerField(source='booking_id', read_only=True)
     customerPhone = serializers.CharField(source='customer_phone', read_only=True)
     accountReference = serializers.CharField(source='account_reference', read_only=True)
+    isSimulated = serializers.BooleanField(source='is_simulated', read_only=True)
     resultCode = serializers.IntegerField(source='result_code', read_only=True)
     resultDesc = serializers.CharField(source='result_desc', read_only=True)
     mpesaReceiptNumber = serializers.CharField(source='mpesa_receipt_number', read_only=True)
     transactionDate = serializers.CharField(source='transaction_date', read_only=True)
+    commissionAmount = serializers.DecimalField(source='commission_amount', max_digits=10, decimal_places=2, read_only=True, allow_null=True)
+    providerPayoutAmount = serializers.DecimalField(source='provider_payout_amount', max_digits=10, decimal_places=2, read_only=True, allow_null=True)
+    payoutStatus = serializers.CharField(source='payout_status', read_only=True)
+    payoutReference = serializers.CharField(source='payout_reference', read_only=True)
+    payoutError = serializers.CharField(source='payout_error', read_only=True)
+    payoutRetryable = serializers.BooleanField(source='payout_retryable', read_only=True)
+    manualReconciliationRequired = serializers.BooleanField(source='manual_reconciliation_required', read_only=True)
+    paidAt = serializers.DateTimeField(source='paid_at', read_only=True, allow_null=True)
+    paidOutAt = serializers.DateTimeField(source='paid_out_at', read_only=True, allow_null=True)
     createdAt = serializers.DateTimeField(source='created_at', read_only=True)
     updatedAt = serializers.DateTimeField(source='updated_at', read_only=True)
 
@@ -615,7 +699,10 @@ class PaymentSerializer(serializers.ModelSerializer):
         model = Payment
         fields = [
             'checkoutRequestId', 'merchantRequestId', 'bookingId',
-            'customerPhone', 'amount', 'accountReference', 'status',
+            'customerPhone', 'amount', 'accountReference', 'status', 'isSimulated',
             'resultCode', 'resultDesc', 'mpesaReceiptNumber', 'transactionDate',
+            'commissionAmount', 'providerPayoutAmount', 'payoutStatus',
+            'payoutReference', 'payoutError', 'payoutRetryable',
+            'manualReconciliationRequired', 'paidAt', 'paidOutAt',
             'createdAt', 'updatedAt',
         ]

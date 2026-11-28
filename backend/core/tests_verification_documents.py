@@ -211,11 +211,7 @@ class VerificationDocumentAndGatingTests(TestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertEqual(res.data['rejection_reason'], 'Permit stamp is unreadable. Please provide a clear scanned copy.')
 
-    def test_verified_listing_is_public_and_bookable_with_owner_verification_pending(self):
-        """
-        Owner-account verification is separate from listing approval.
-        Public visibility and booking follow the listing's own approval state.
-        """
+    def test_listing_waits_for_business_account_approval_before_public_access(self):
         self.venue.location = 'Nyeri County, Kenya'
         self.venue.is_verified = True
         self.venue.save(update_fields=['location', 'is_verified'])
@@ -237,9 +233,9 @@ class VerificationDocumentAndGatingTests(TestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         results = res.data.get('results', res.data) if isinstance(res.data, dict) else res.data
         venue_ids = [v['id'] for v in results]
-        self.assertIn(self.venue.id, venue_ids)
+        self.assertNotIn(self.venue.id, venue_ids)
 
-        # A verified, approved listing can be booked while owner verification is pending.
+        # An approved listing cannot be booked while its business account is pending.
         future_date = datetime.date.today() + datetime.timedelta(days=14)
         public_client.force_authenticate(user=self.customer_user)
         book_res = public_client.post('/api/bookings/', {
@@ -251,7 +247,31 @@ class VerificationDocumentAndGatingTests(TestCase):
             'guest_count': 50,
             'total_price': 90000.00
         })
-        self.assertEqual(book_res.status_code, status.HTTP_201_CREATED, book_res.data)
+        self.assertEqual(book_res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('business account', str(book_res.data))
+
+        self.venue_owner.is_verified = True
+        self.venue_owner.verification_status = 'APPROVED'
+        self.venue_owner.save(update_fields=['is_verified', 'verification_status'])
+        res_approved_owner = public_client.get('/api/venues/')
+        self.assertEqual(res_approved_owner.status_code, status.HTTP_200_OK)
+        approved_owner_results = (
+            res_approved_owner.data.get('results', res_approved_owner.data)
+            if isinstance(res_approved_owner.data, dict)
+            else res_approved_owner.data
+        )
+        self.assertIn(self.venue.id, [v['id'] for v in approved_owner_results])
+
+        book_after_owner_approval = public_client.post('/api/bookings/', {
+            'venue': self.venue.id,
+            'customer': self.customer_user.id,
+            'event_title': 'Verified Listing Booking',
+            'event_type': 'Wedding',
+            'event_date': future_date.strftime('%Y-%m-%d'),
+            'guest_count': 50,
+            'total_price': 90000.00
+        })
+        self.assertEqual(book_after_owner_approval.status_code, status.HTTP_201_CREATED)
 
         # Pending listing approval still hides the listing and blocks booking.
         self.venue.approval_status = 'PENDING'

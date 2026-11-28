@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import type { Booking, Venue, BookingStatus, Vendor, VenueOwner, User, Message, ConversationThread, Review } from '../types';
+import type { Booking, Venue, BookingStatus, Vendor, VenueOwner, User, Message, ConversationThread, Review, NotificationItem } from '../types';
 import { ApiService } from '../services/api';
+import { NotificationBell } from './NotificationBell';
 import './vendor-dashboard.css';
 import {
   Building2,
@@ -11,14 +12,12 @@ import {
   Trash2,
   User as UserIcon,
   LayoutDashboard,
-  Package,
   CalendarCheck,
   Calendar,
   Star,
   Settings,
   LogOut,
   Search,
-  Bell,
   ChevronDown,
   ChevronRight,
   PanelLeftClose,
@@ -32,6 +31,8 @@ import {
   ShieldCheck,
   Clock,
   ImageOff,
+  Mail,
+  Phone,
   Menu
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -41,12 +42,31 @@ import { ProviderAvailabilityDashboard } from './ProviderAvailabilityDashboard';
 
 const NYERI_COUNTY_LOCATION = 'Nyeri County, Kenya';
 
+const getBookingListingTitle = (booking: Booking) =>
+  booking.venue_details?.title || booking.vendor_details?.business_name || 'Booked listing';
+
+const getBookingListingImage = (booking: Booking) => cleanImageUrl(
+  booking.venue_details?.image_url
+    || booking.vendor_details?.logo_url
+    || booking.vendor_details?.portfolio_images?.[0]
+);
+
+const parseBookingSchedule = (notes?: string) => {
+  const startTime = notes?.match(/\bStart Time:\s*(\d{1,2}:\d{2})/i)?.[1];
+  const endTime = notes?.match(/\bEnd Time:\s*(\d{1,2}:\d{2})/i)?.[1];
+  const customerNotes = (notes || '')
+    .replace(/\bStart Time:\s*\d{1,2}:\d{2}/gi, '')
+    .replace(/\bEnd Time:\s*\d{1,2}:\d{2}/gi, '')
+    .trim();
+
+  return { startTime, endTime, customerNotes };
+};
+
 interface ProviderDashboardProps {
   currentUser?: User | null;
   currentVendor?: Vendor | null;
   currentVenueOwner?: VenueOwner | null;
   onLogout: () => void;
-  onExplore?: () => void;
 }
 
 export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
@@ -54,7 +74,6 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   currentVendor,
   currentVenueOwner,
   onLogout,
-  onExplore,
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'listings' | 'spaces' | 'services' | 'availability' | 'bookings' | 'calendar' | 'reviews' | 'messages' | 'profile' | 'settings' | 'create_listing'>('overview');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -70,7 +89,6 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   }, [activeTab]);
 
   // Inspiration UI Navigation and Filter States
-  const [showAddListingDropdown, setShowAddListingDropdown] = useState(false);
   const [listingsCategoryFilter, setListingsCategoryFilter] = useState<string>('ALL');
 
   // Data states
@@ -113,11 +131,24 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
   const effectiveVendor = liveVendor || currentVendor;
   const effectiveVenueOwner = liveVenueOwner || currentVenueOwner;
+  const hasApprovedBusinessAccount = [effectiveVendor, effectiveVenueOwner].some(
+    profile => profile?.verification_status === 'APPROVED' && profile.is_verified
+  );
 
   const businessName = effectiveVenueOwner?.business_name || effectiveVendor?.business_name || 'My Business';
   const location = effectiveVenueOwner?.location || effectiveVendor?.location || 'Nairobi';
   const email = effectiveVenueOwner?.contact_email || effectiveVendor?.contact_email || '';
   const phone = effectiveVenueOwner?.contact_phone || effectiveVendor?.contact_phone || '';
+
+  const openCreateListing = (mode: 'service' | 'venue' = 'service') => {
+    if (!hasApprovedBusinessAccount) {
+      toast.error('Your business account must be approved before you can create listings.');
+      return;
+    }
+    setEditingListing(null);
+    setCreateListingDefaultMode(mode);
+    setActiveTab('create_listing');
+  };
 
   const [profileFormData, setProfileFormData] = useState({
     business_name: businessName,
@@ -232,6 +263,35 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
       setLoadingChatMessages(false);
     }
   }, []);
+
+  const handleOpenNotification = (notification: NotificationItem) => {
+    if (notification.message_sender_id) {
+      setSelectedPartnerId(notification.message_sender_id);
+      if (notification.booking) setSelectedBookingChatId(notification.booking);
+      setActiveTab('messages');
+      return;
+    }
+
+    switch (notification.target_tab) {
+      case 'messages':
+        setActiveTab('messages');
+        break;
+      case 'reviews':
+        setActiveTab('reviews');
+        break;
+      case 'listings':
+        setActiveTab('listings');
+        break;
+      case 'profile':
+        setActiveTab('profile');
+        break;
+      case 'bookings':
+      default:
+        setActiveTab('bookings');
+        break;
+    }
+    void fetchData();
+  };
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -593,9 +653,45 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
   const activeSpacesCount = spaces.filter(isListingPublished).length;
   const activeServicesCount = services.filter(isListingPublished).length;
   const pendingRequestsCount = bookings.filter(b => b.status === 'PENDING').length;
-  const totalRevenue = bookings
-    .filter(b => b.status === 'COMPLETED' || b.status === 'APPROVED')
-    .reduce((sum, b) => sum + Number(b.total_price || 0), 0);
+  const paymentBreakdowns = bookings.flatMap(booking => (
+    booking.payment_breakdown ? [booking.payment_breakdown] : []
+  ));
+  const simulatedPayments = bookings.flatMap(booking => (
+    booking.simulated_payment ? [booking.simulated_payment] : []
+  ));
+  const totalCustomerPaid = paymentBreakdowns.reduce(
+    (sum, payment) => sum + Number(payment.customer_paid || 0),
+    0,
+  ) + simulatedPayments.reduce(
+    (sum, payment) => sum + Number(payment.customer_paid || 0),
+    0,
+  );
+  const totalCommissionDeducted = paymentBreakdowns.reduce(
+    (sum, payment) => sum + Number(payment.commission_amount || 0),
+    0,
+  ) + simulatedPayments.reduce(
+    (sum, payment) => sum + Number(payment.commission_estimate || 0),
+    0,
+  );
+  const totalProviderNet = paymentBreakdowns.reduce(
+    (sum, payment) => sum + Number(payment.provider_payout_amount || 0),
+    0,
+  ) + simulatedPayments.reduce(
+    (sum, payment) => sum + Number(payment.provider_net_estimate || 0),
+    0,
+  );
+  const totalRevenue = paymentBreakdowns
+    .filter(payment => payment.payout_status === 'PAID')
+    .reduce((sum, payment) => sum + Number(payment.provider_payout_amount || 0), 0);
+  const pendingPayoutsCount = paymentBreakdowns.filter(
+    payment => payment.payout_status === 'PENDING',
+  ).length;
+  const failedPayoutsCount = paymentBreakdowns.filter(
+    payment => payment.payout_status === 'FAILED',
+  ).length;
+  const paidPayoutsCount = paymentBreakdowns.filter(
+    payment => payment.payout_status === 'PAID',
+  ).length;
 
   // Filtered views
   const allListings = [
@@ -887,16 +983,10 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
           </div>
 
           <div className="vendor-app-topbar-actions">
-            <button
-              type="button"
-              className="vendor-notification-btn"
-              onClick={() => setActiveTab('bookings')}
-              aria-label={`View booking requests${pendingRequestsCount ? ` (${pendingRequestsCount} pending)` : ''}`}
-              title="Booking requests"
-            >
-              <Bell size={19} />
-              {pendingRequestsCount > 0 && <span className="vendor-notification-badge">{pendingRequestsCount}</span>}
-            </button>
+            <NotificationBell
+              userId={currentUser?.id}
+              onOpenNotification={handleOpenNotification}
+            />
             <div ref={accountMenuRef} className="vendor-account-menu-wrap">
               <button
                 type="button"
@@ -926,17 +1016,6 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                   >
                     <UserIcon size={16} /> My Profile
                   </button>
-                  {onExplore && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowAccountMenu(false);
-                        onExplore();
-                      }}
-                    >
-                      <Calendar size={16} /> Customer Dashboard
-                    </button>
-                  )}
                   <button
                     type="button"
                     className="active"
@@ -974,11 +1053,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
             <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
               {activeTab === 'listings' && (
                 <button
-                  onClick={() => {
-                    setEditingListing(null);
-                    setCreateListingDefaultMode('service');
-                    setActiveTab('create_listing');
-                  }}
+                  onClick={() => openCreateListing('service')}
                   className="btn-primary-light"
                 >
                   <Plus size={16} /> Add Listing
@@ -989,7 +1064,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
         )}
 
         {/* TAB: CREATE A NEW LISTING (FULL PAGE VIEW MATCHING DESIGN) */}
-        {activeTab === 'create_listing' && (
+        {activeTab === 'create_listing' && (editingListing || hasApprovedBusinessAccount) && (
           <CreateListingPage
             onBack={() => {
               setEditingListing(null);
@@ -1006,6 +1081,15 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
             currentUserId={currentUser?.id}
             editingListing={editingListing}
           />
+        )}
+        {activeTab === 'create_listing' && !editingListing && !hasApprovedBusinessAccount && (
+          <div className="dashboard-card" style={{ maxWidth: '680px', margin: '40px auto', padding: '32px', textAlign: 'center' }}>
+            <h2 style={{ margin: '0 0 8px', color: '#0f172a' }}>Business account approval required</h2>
+            <p style={{ margin: '0 0 20px', color: '#64748b' }}>
+              Your business account must be approved by an administrator before you can create a listing.
+            </p>
+            <button className="btn-primary-light" onClick={() => setActiveTab('overview')}>Back to Dashboard</button>
+          </div>
         )}
 
         {/* TAB: AVAILABILITY & CAPACITY (MATCHING SPEC) */}
@@ -1031,43 +1115,6 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                 </p>
               </div>
 
-              <div className="vendor-hero-right">
-                <div className="vendor-hero-image-bg" />
-                <button
-                  className="btn-add-listing-hero"
-                  onClick={() => setShowAddListingDropdown(prev => !prev)}
-                >
-                  <Plus size={18} /> Add New Listing
-                </button>
-
-                {/* Dropdown to add Venue or Service */}
-                {showAddListingDropdown && (
-                  <div className="listing-dropdown-menu">
-                    <button
-                      className="listing-dropdown-item"
-                      onClick={() => {
-                        setShowAddListingDropdown(false);
-                        setCreateListingDefaultMode('venue');
-                        setActiveTab('create_listing');
-                      }}
-                    >
-                      <Building2 size={18} color="#0d8a73" />
-                      <span>Add Venue / Space</span>
-                    </button>
-                    <button
-                      className="listing-dropdown-item"
-                      onClick={() => {
-                        setShowAddListingDropdown(false);
-                        setCreateListingDefaultMode('service');
-                        setActiveTab('create_listing');
-                      }}
-                    >
-                      <Package size={18} color="#0d8a73" />
-                      <span>Add Service Package</span>
-                    </button>
-                  </div>
-                )}
-              </div>
             </div>
 
             {/* KPI Stat Cards with Real Data */}
@@ -1121,24 +1168,44 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                 </div>
               </div>
 
-              {/* Card 4: Total Earnings */}
+              {/* Card 4: Combined provider net */}
               <div className="inspo-stat-card">
                 <div className="inspo-stat-icon-wrap purple">
                   <MessageSquare size={24} />
                 </div>
                 <div className="inspo-stat-info">
-                  <span className="inspo-stat-label">Total Earnings</span>
+                  <span className="inspo-stat-label">Total Provider Net</span>
                   <span className="inspo-stat-value">
-                    KES {totalRevenue.toLocaleString()}
+                    KES {totalProviderNet.toLocaleString()}
                   </span>
-                  <div className="inspo-stat-delta">
-                    <span className="delta-label">
-                      {totalRevenue === 0 ? 'From completed events' : `From ${bookings.filter(b => b.status === 'APPROVED' || b.status === 'COMPLETED').length} events`}
-                    </span>
-                  </div>
                 </div>
               </div>
 
+            </div>
+
+            <div className="dashboard-card" style={{ padding: '18px 20px', marginBottom: '24px' }}>
+              <h3 style={{ margin: '0 0 14px', color: '#0f172a', fontSize: '1rem', fontWeight: 800 }}>
+                Payment breakdown
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '14px' }}>
+                <div>
+                  <div style={{ color: '#64748b', fontSize: '0.78rem' }}>Customer payments</div>
+                  <strong>KES {totalCustomerPaid.toLocaleString()}</strong>
+                </div>
+                <div>
+                  <div style={{ color: '#64748b', fontSize: '0.78rem' }}>Platform commission</div>
+                  <strong>KES {totalCommissionDeducted.toLocaleString()}</strong>
+                </div>
+                <div>
+                  <div style={{ color: '#64748b', fontSize: '0.78rem' }}>Provider net</div>
+                  <strong>KES {totalProviderNet.toLocaleString()}</strong>
+                  <div style={{ color: '#64748b', fontSize: '0.74rem' }}>Confirmed payouts: KES {totalRevenue.toLocaleString()}</div>
+                </div>
+                <div>
+                  <div style={{ color: '#64748b', fontSize: '0.78rem' }}>Payout status</div>
+                  <strong>{paidPayoutsCount} paid · {pendingPayoutsCount} pending · {failedPayoutsCount} failed</strong>
+                </div>
+              </div>
             </div>
 
             {/* Split Lower Layout: Your Listings (Left) + Booking Requests (Right) */}
@@ -1195,14 +1262,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                         </p>
                         <button
                           className="btn-primary-light"
-                          onClick={() => {
-                            if (listingsCategoryFilter === 'VENUES') {
-                              setCreateListingDefaultMode('venue');
-                            } else {
-                              setCreateListingDefaultMode('service');
-                            }
-                            setActiveTab('create_listing');
-                          }}
+                          onClick={() => openCreateListing(listingsCategoryFilter === 'VENUES' ? 'venue' : 'service')}
                         >
                           <Plus size={16} /> Add Listing Now
                         </button>
@@ -1318,7 +1378,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {bookings.slice(0, 4).map((req: any) => (
+                    {bookings.slice(0, 4).map((req: Booking) => (
                       <div
                         key={req.id}
                         style={{
@@ -1332,18 +1392,28 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <div style={{ width: '34px', height: '34px', borderRadius: '50%', background: '#ccfbf1', color: '#0d8a73', fontWeight: 800, fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              {(req.customer_name || 'C').charAt(0).toUpperCase()}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                            <div style={{ width: '50px', height: '46px', flexShrink: 0, borderRadius: '8px', overflow: 'hidden', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              {getBookingListingImage(req) ? (
+                                <img src={getBookingListingImage(req)} alt={getBookingListingTitle(req)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              ) : (
+                                <ImageOff size={17} color="#64748b" />
+                              )}
                             </div>
-                            <div>
-                              <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a' }}>{req.customer_name || 'Client'}</div>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a' }}>{getBookingListingTitle(req)}</div>
                               <div style={{ fontSize: '0.76rem', color: '#64748b' }}>{req.event_title || req.event_type || 'Event Request'}</div>
+                              <div style={{ fontSize: '0.76rem', color: '#475569' }}>{req.customer_full_name || 'Customer'}</div>
                             </div>
                           </div>
                           <span className={`status-badge ${(req.status || 'pending').toLowerCase()}`}>
                             {req.status}
                           </span>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.75rem', color: '#64748b', overflowWrap: 'anywhere' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Mail size={13} />{req.customer_email || 'Email not provided'}</span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Phone size={13} />{req.customer_phone || 'Phone not provided'}</span>
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '4px', borderTop: '1px dashed #e2e8f0', fontSize: '0.78rem' }}>
@@ -1479,10 +1549,7 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                 </p>
 
                 <button
-                  onClick={() => {
-                    setCreateListingDefaultMode('service');
-                    setActiveTab('create_listing');
-                  }}
+                  onClick={() => openCreateListing('service')}
                   className="btn-primary-light"
                   style={{ background: '#0d8a73', color: '#fff' }}
                 >
@@ -1805,23 +1872,53 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                {filteredBookings.map(b => (
+                {filteredBookings.map(b => {
+                  const schedule = parseBookingSchedule(b.notes);
+                  return (
                   <div key={b.id} className="dashboard-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', padding: '20px' }}>
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                        <span style={{ fontWeight: 800, fontSize: '1.05rem', color: '#0f172a' }}>{b.event_title}</span>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', background: '#e0f2fe', color: '#0369a1' }}>
-                          {b.event_type}
-                        </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
+                        <div style={{ width: '72px', height: '62px', flexShrink: 0, borderRadius: '9px', overflow: 'hidden', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {getBookingListingImage(b) ? (
+                            <img src={getBookingListingImage(b)} alt={getBookingListingTitle(b)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                            <ImageOff size={20} color="#64748b" />
+                          )}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: '1rem', color: '#0f172a' }}>{getBookingListingTitle(b)}</div>
+                          <div style={{ fontSize: '0.9rem', color: '#334155', marginTop: '2px' }}>{b.event_title}</div>
+                          <span style={{ display: 'inline-block', marginTop: '4px', fontSize: '0.75rem', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', background: '#e0f2fe', color: '#0369a1' }}>
+                            {b.event_type}
+                          </span>
+                        </div>
                       </div>
                       <div style={{ fontSize: '0.85rem', color: '#64748b', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                        <span>👤 Client: <strong>{b.customer_name}</strong></span>
+                        <span>👤 Client: <strong>{b.customer_full_name || 'Customer'}</strong></span>
                         <span>📅 Date: <strong>{b.event_date}</strong></span>
                         <span>👥 Guests: <strong>{b.guest_count}</strong></span>
                       </div>
-                      {b.notes && (
-                        <div style={{ marginTop: '8px', fontSize: '0.85rem', color: '#475569', background: '#f8fafc', padding: '8px 12px', borderRadius: '6px' }}>
-                          💬 Notes: {b.notes}
+                      <div style={{ marginTop: '8px', display: 'flex', gap: '14px', flexWrap: 'wrap', fontSize: '0.82rem', color: '#475569' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Mail size={14} />{b.customer_email || 'Email not provided'}</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Phone size={14} />{b.customer_phone || 'Phone not provided'}</span>
+                      </div>
+                      {(schedule.startTime || schedule.endTime) && (
+                        <div style={{ marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          {schedule.startTime && (
+                            <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '7px', padding: '7px 10px', fontSize: '0.82rem', color: '#334155' }}>
+                              Start time: <strong>{schedule.startTime}</strong>
+                            </div>
+                          )}
+                          {schedule.endTime && (
+                            <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '7px', padding: '7px 10px', fontSize: '0.82rem', color: '#334155' }}>
+                              End time: <strong>{schedule.endTime}</strong>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {schedule.customerNotes && (
+                        <div style={{ marginTop: '8px', fontSize: '0.85rem', color: '#475569', background: '#f8fafc', padding: '8px 12px', borderRadius: '6px', whiteSpace: 'pre-wrap' }}>
+                          💬 Notes: {schedule.customerNotes}
                         </div>
                       )}
 
@@ -1834,6 +1931,24 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                       {b.rejection_reason && (
                         <div style={{ marginTop: '8px', padding: '6px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', fontSize: '0.8rem', color: '#991b1b' }}>
                           <strong>Declined Reason:</strong> {b.rejection_reason}
+                        </div>
+                      )}
+
+                      {(b.simulated_payment || b.payment_breakdown) && (
+                        <div style={{ marginTop: '10px', padding: '10px 12px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '8px', fontSize: '0.8rem', color: '#334155' }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 14px' }}>
+                            <span>Customer paid: <strong>KES {Number(b.payment_breakdown?.customer_paid ?? b.simulated_payment?.customer_paid).toLocaleString()}</strong></span>
+                            <span>Commission: <strong>KES {Number(b.payment_breakdown?.commission_amount ?? b.simulated_payment?.commission_estimate).toLocaleString()}</strong></span>
+                            <span>Provider net: <strong>KES {Number(b.payment_breakdown?.provider_payout_amount ?? b.simulated_payment?.provider_net_estimate).toLocaleString()}</strong></span>
+                            {b.payment_breakdown && (
+                              <span>Payout: <strong>{b.payment_breakdown.payout_status}</strong></span>
+                            )}
+                          </div>
+                          {b.payment_breakdown?.manual_reconciliation_required && (
+                            <div style={{ marginTop: '5px', color: '#9a3412', fontWeight: 700 }}>
+                              Manual reconciliation required.
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1879,7 +1994,8 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
                       )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1887,26 +2003,123 @@ export const ProviderDashboard: React.FC<ProviderDashboardProps> = ({
 
         {/* 8. Tab: CALENDAR */}
         {activeTab === 'calendar' && (
-          <div className="dashboard-card" style={{ padding: '32px' }}>
-            <h3 style={{ margin: '0 0 8px', fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>Scheduled Bookings & Event Calendar</h3>
-            <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '24px' }}>All confirmed and approved bookings for your spaces and services appear here chronologically.</p>
-            {bookings.filter(b => b.status === 'APPROVED').length === 0 ? (
-              <div style={{ padding: '40px', textAlign: 'center', color: '#64748b', background: '#f8fafc', borderRadius: '12px' }}>
-                No events currently scheduled. When you approve booking requests, they will populate here.
+          <div className="vendor-calendar-page">
+            <div className="vendor-calendar-page-header">
+              <div>
+                <h3 style={{ margin: '0 0 8px', fontSize: '1.4rem', fontWeight: 800, color: '#0f172a' }}>
+                  Scheduled Bookings
+                </h3>
+                <p style={{ color: '#64748b', fontSize: '0.92rem' }}>
+                  Confirmed events with complete client, schedule, and listing details.
+                </p>
+              </div>
+              <span className="vendor-calendar-count">
+                {bookings.filter(booking => booking.status === 'APPROVED').length} scheduled
+              </span>
+            </div>
+            {bookings.filter(booking => booking.status === 'APPROVED').length === 0 ? (
+              <div className="dashboard-card" style={{ padding: '48px 24px', textAlign: 'center', color: '#64748b' }}>
+                No events currently scheduled. When you approve booking requests, they will appear here.
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {bookings.filter(b => b.status === 'APPROVED').map(b => (
-                  <div key={b.id} style={{ padding: '16px 20px', borderLeft: '4px solid #0d8a73', background: '#f8fafc', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: '1.02rem', color: '#0f172a' }}>{b.event_title}</div>
-                      <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '2px' }}>Date: {b.event_date} · Client: {b.customer_name} · Guests: {b.guest_count}</div>
-                    </div>
-                    <span style={{ fontWeight: 800, color: '#0d8a73', fontSize: '1.1rem' }}>
-                      KES {Number(b.total_price).toLocaleString()}
-                    </span>
-                  </div>
-                ))}
+              <div className="vendor-calendar-event-list">
+                {bookings
+                  .filter(booking => booking.status === 'APPROVED')
+                  .sort((a, b) => a.event_date.localeCompare(b.event_date))
+                  .map(booking => {
+                    const schedule = parseBookingSchedule(booking.notes);
+                    const startDate = new Date(`${String(booking.event_date).slice(0, 10)}T00:00:00`);
+                    const formattedStartDate = Number.isNaN(startDate.getTime())
+                      ? booking.event_date
+                      : startDate.toLocaleDateString(undefined, {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                      });
+                    const formattedEndDate = booking.end_date
+                      ? new Date(`${String(booking.end_date).slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                      })
+                      : null;
+                    const listingImage = getBookingListingImage(booking);
+
+                    return (
+                      <article key={booking.id} className="vendor-calendar-event-card">
+                        <div className="vendor-calendar-event-top">
+                          <div className="vendor-calendar-event-title">
+                            <div className="vendor-calendar-event-image">
+                              {listingImage ? (
+                                <img src={listingImage} alt={getBookingListingTitle(booking)} />
+                              ) : (
+                                <ImageOff size={24} color="#94a3b8" />
+                              )}
+                            </div>
+                            <div style={{ minWidth: 0 }}>
+                              <div className="vendor-calendar-listing-title">{getBookingListingTitle(booking)}</div>
+                              <h4 className="vendor-calendar-event-name">{booking.event_title}</h4>
+                              <span className="vendor-calendar-event-type">{booking.event_type}</span>
+                            </div>
+                          </div>
+                          <div className="vendor-calendar-event-quote">
+                            <span className="status-badge approved">Confirmed</span>
+                            <strong>KES {Number(booking.total_price).toLocaleString()}</strong>
+                            <span>Total quote</span>
+                          </div>
+                        </div>
+
+                        <div className="vendor-calendar-event-details">
+                          <div className="vendor-calendar-event-detail">
+                            <span>Date</span>
+                            <strong>{formattedStartDate}</strong>
+                          </div>
+                          {formattedEndDate && (
+                            <div className="vendor-calendar-event-detail">
+                              <span>End date</span>
+                              <strong>{formattedEndDate}</strong>
+                            </div>
+                          )}
+                          <div className="vendor-calendar-event-detail">
+                            <span>Start time</span>
+                            <strong>{schedule.startTime || 'Not specified'}</strong>
+                          </div>
+                          <div className="vendor-calendar-event-detail">
+                            <span>End time</span>
+                            <strong>{schedule.endTime || 'Not specified'}</strong>
+                          </div>
+                          <div className="vendor-calendar-event-detail">
+                            <span>Client</span>
+                            <strong>{booking.customer_full_name || booking.customer_name || 'Customer'}</strong>
+                          </div>
+                          <div className="vendor-calendar-event-detail">
+                            <span>Email</span>
+                            <strong>{booking.customer_email || 'Not provided'}</strong>
+                          </div>
+                          <div className="vendor-calendar-event-detail">
+                            <span>Phone</span>
+                            <strong>{booking.customer_phone || 'Not provided'}</strong>
+                          </div>
+                          <div className="vendor-calendar-event-detail">
+                            <span>Guests</span>
+                            <strong>{booking.guest_count}</strong>
+                          </div>
+                          <div className="vendor-calendar-event-detail">
+                            <span>Location</span>
+                            <strong>{booking.venue_details?.location || booking.venue_details?.address || booking.vendor_details?.location || 'Not specified'}</strong>
+                          </div>
+                        </div>
+
+                        {schedule.customerNotes && (
+                          <div className="vendor-calendar-event-notes">
+                            <strong>Customer notes</strong>
+                            <p>{schedule.customerNotes}</p>
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
               </div>
             )}
           </div>

@@ -18,7 +18,7 @@ class User(AbstractUser):
 
     @property
     def is_provider(self):
-        return self.role == 'PROVIDER' or (self.is_vendor and self.is_venue_owner)
+        return self.role in {'PROVIDER', 'VENDOR', 'VENUE_OWNER'}
     phone_number = models.CharField(max_length=20, blank=True, null=True)
     avatar_url = models.URLField(max_length=500, blank=True, null=True)
     bio = models.TextField(blank=True, null=True)
@@ -227,8 +227,22 @@ class Venue(models.Model):
         self.save(update_fields=['rating', 'review_count'])
 
     @property
+    def has_approved_business_account(self):
+        return any(
+            profile
+            and profile.is_verified
+            and profile.verification_status == 'APPROVED'
+            for profile in (self.owner, self.vendor)
+        )
+
+    @property
     def is_publicly_visible(self):
-        return self.approval_status == 'APPROVED' and self.is_available
+        return (
+            self.approval_status == 'APPROVED'
+            and self.is_verified
+            and self.is_available
+            and self.has_approved_business_account
+        )
 
 
 class PortfolioImage(models.Model):
@@ -322,7 +336,7 @@ class EmailOTP(models.Model):
     created_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.email} - {self.otp_code}"
+        return self.email
 
 
 class Message(models.Model):
@@ -393,13 +407,18 @@ class Notification(models.Model):
     NOTIFICATION_TYPES = [
         ('CHECKLIST_REMINDER', 'Checklist Reminder'),
         ('BOOKING_UPDATE', 'Booking Update'),
+        ('LISTING_AVAILABILITY', 'Listing Availability'),
+        ('MESSAGE', 'Message'),
         ('SYSTEM', 'System Alert'),
     ]
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
     event = models.ForeignKey(Event, on_delete=models.CASCADE, null=True, blank=True, related_name='notifications')
     task = models.ForeignKey(EventService, on_delete=models.CASCADE, null=True, blank=True, related_name='notifications')
+    booking = models.ForeignKey(Booking, on_delete=models.SET_NULL, null=True, blank=True, related_name='notifications')
+    source_message = models.ForeignKey(Message, on_delete=models.SET_NULL, null=True, blank=True, related_name='notifications')
     title = models.CharField(max_length=200)
     message = models.TextField()
+    target_tab = models.CharField(max_length=32, blank=True, default='')
     notification_type = models.CharField(max_length=50, choices=NOTIFICATION_TYPES, default='CHECKLIST_REMINDER')
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -638,14 +657,34 @@ class Payment(models.Model):
         ('FAILED', 'Failed'),
         ('CANCELLED', 'Cancelled'),
     ]
+    PAYOUT_STATUS_CHOICES = [
+        ('NOT_STARTED', 'Not started'),
+        ('PENDING', 'Pending'),
+        ('PAID', 'Paid'),
+        ('FAILED', 'Failed'),
+    ]
 
     booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name='payments')
     checkout_request_id = models.CharField(max_length=100, unique=True, db_index=True)
     merchant_request_id = models.CharField(max_length=100, blank=True)
     customer_phone = models.CharField(max_length=20)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
+    commission_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    provider_payout_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    payout_status = models.CharField(max_length=20, choices=PAYOUT_STATUS_CHOICES, default='NOT_STARTED', db_index=True)
+    payout_reference = models.CharField(max_length=100, blank=True)
+    payout_phone = models.CharField(max_length=20, blank=True)
+    payout_conversation_id = models.CharField(max_length=100, blank=True)
+    payout_originator_conversation_id = models.CharField(max_length=100, blank=True)
+    payout_error = models.TextField(blank=True)
+    payout_retryable = models.BooleanField(default=False)
+    manual_reconciliation_required = models.BooleanField(default=False)
+    payout_attempted_at = models.DateTimeField(null=True, blank=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+    paid_out_at = models.DateTimeField(null=True, blank=True)
     account_reference = models.CharField(max_length=50, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    is_simulated = models.BooleanField(default=False)
     result_code = models.IntegerField(null=True, blank=True)
     result_desc = models.TextField(blank=True)
     mpesa_receipt_number = models.CharField(max_length=50, blank=True)
@@ -662,3 +701,35 @@ class Payment(models.Model):
 
     def __str__(self):
         return f"Payment {self.checkout_request_id} — {self.status}"
+
+
+class PayoutAttempt(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('PAID', 'Paid'),
+        ('FAILED', 'Failed'),
+    ]
+
+    payment = models.ForeignKey(Payment, on_delete=models.CASCADE, related_name='payout_attempts')
+    attempt_number = models.PositiveIntegerField()
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    phone = models.CharField(max_length=20)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    conversation_id = models.CharField(max_length=100, blank=True)
+    originator_conversation_id = models.CharField(max_length=100, blank=True)
+    transaction_id = models.CharField(max_length=100, blank=True)
+    result_code = models.IntegerField(null=True, blank=True)
+    result_desc = models.TextField(blank=True)
+    requested_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    timeout_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-attempt_number']
+        constraints = [
+            models.UniqueConstraint(fields=['payment', 'attempt_number'], name='unique_payment_payout_attempt')
+        ]
+        indexes = [
+            models.Index(fields=['conversation_id']),
+            models.Index(fields=['originator_conversation_id']),
+        ]

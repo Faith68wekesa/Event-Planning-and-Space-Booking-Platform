@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
     X, Smartphone, Loader2, CheckCircle2, XCircle,
-    ShieldCheck, AlertCircle, RefreshCw,
+    ShieldCheck, AlertCircle, RefreshCw, Play,
 } from 'lucide-react';
 import type { Booking } from '../types';
 import {
     initiateStkPush,
     pollPaymentStatus,
+    simulatePayment,
     type PaymentRecord,
 } from '../services/mpesa';
 
@@ -96,6 +97,22 @@ export const MpesaPaymentModal: React.FC<MpesaPaymentModalProps> = ({
         } catch (err: any) {
             setError(err?.message || 'Network error. Please try again.');
             setStage('FAILED');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const handleSimulatePayment = async () => {
+        setError('');
+        setSubmitting(true);
+
+        try {
+            const simulatedPayment = await simulatePayment(booking.id);
+            setPayment(simulatedPayment);
+            setStage('SUCCESS');
+            onSuccess(simulatedPayment);
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'Could not simulate payment.');
         } finally {
             setSubmitting(false);
         }
@@ -215,11 +232,49 @@ export const MpesaPaymentModal: React.FC<MpesaPaymentModalProps> = ({
                             )}
                         </button>
 
+                        {import.meta.env.DEV && (
+                            <div style={{ marginTop: '12px' }}>
+                                <button
+                                    type="button"
+                                    onClick={handleSimulatePayment}
+                                    disabled={submitting}
+                                    style={{
+                                        width: '100%',
+                                        minHeight: '46px',
+                                        padding: '11px 16px',
+                                        border: '1px solid #2563eb',
+                                        borderRadius: '10px',
+                                        background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+                                        color: '#ffffff',
+                                        fontSize: '0.92rem',
+                                        fontWeight: 700,
+                                        cursor: submitting ? 'not-allowed' : 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '8px',
+                                        boxShadow: submitting ? 'none' : '0 4px 12px rgba(37, 99, 235, 0.24)',
+                                        opacity: submitting ? 0.75 : 1,
+                                        transition: 'all 0.2s ease',
+                                    }}
+                                >
+                                    {submitting ? (
+                                        <><Loader2 size={17} className="spin" /> Recording test payment...</>
+                                    ) : (
+                                        <><Play size={16} fill="currentColor" /> Simulate Test Payment</>
+                                    )}
+                                </button>
+                                <p style={{ margin: '7px 0 0', textAlign: 'center', color: '#64748b', fontSize: '0.74rem' }}>
+                                    Development only. No M-Pesa prompt or real charge.
+                                </p>
+                            </div>
+                        )}
+
                         <div style={{
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             gap: '4px', fontSize: '0.72rem', color: '#6B7280', marginTop: '14px',
                         }}>
-                            <ShieldCheck size={12} color="#007A65" /> Secured by Safaricom Daraja
+                            <ShieldCheck size={12} color="#007A65" /> Real M-Pesa payments secured by Safaricom Daraja
                         </div>
                     </>
                 )}
@@ -244,10 +299,12 @@ export const MpesaPaymentModal: React.FC<MpesaPaymentModalProps> = ({
                     <div style={{ textAlign: 'center', padding: '20px 0' }}>
                         <CheckCircle2 size={56} color="#007A65" style={{ marginBottom: '16px', margin: '0 auto' }} />
                         <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#222222', marginBottom: '6px' }}>
-                            Payment Successful!
+                            {payment?.isSimulated ? 'Test Payment Recorded' : 'Payment Successful!'}
                         </h3>
                         <p style={{ fontSize: '0.85rem', color: '#637381', marginBottom: '16px' }}>
-                            Your booking is confirmed.
+                            {payment?.isSimulated
+                                ? 'This simulated payment updated the booking; no money was charged.'
+                                : 'Your booking is confirmed.'}
                         </p>
 
                         <div style={{
@@ -257,7 +314,7 @@ export const MpesaPaymentModal: React.FC<MpesaPaymentModalProps> = ({
                             color: '#006050', marginBottom: '16px',
                         }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                <span>M-Pesa Receipt:</span>
+                                <span>{payment?.isSimulated ? 'Test Receipt:' : 'M-Pesa Receipt:'}</span>
                                 <strong>{payment?.mpesaReceiptNumber || '—'}</strong>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between' }}>

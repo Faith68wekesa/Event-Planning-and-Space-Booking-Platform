@@ -470,9 +470,12 @@ class BackendAccessControlTests(TestCase):
         self.assertNotIn(outside_venue.pk, listing_ids)
         self.assertNotIn(outside_service.pk, listing_ids)
 
-    def test_admin_venue_actions_preserve_listing_status_and_provider_verification(self):
+    def test_admin_cannot_approve_listing_before_business_account(self):
         pending = self.create_venue('Pending venue', 'PENDING')
         rejected = self.create_venue('Rejected venue', 'REJECTED')
+        previously_approved = self.create_venue('Prematurely approved venue', 'APPROVED')
+        previously_approved.is_verified = True
+        previously_approved.save(update_fields=['is_verified'])
 
         self.client.force_authenticate(user=self.customer)
         self.assertEqual(
@@ -492,12 +495,28 @@ class BackendAccessControlTests(TestCase):
         self.assertEqual(rejected.approval_status, 'REJECTED')
 
         approve = self.client.post(f'/api/venues/{pending.pk}/approve/')
-        self.assertEqual(approve.status_code, 200)
+        self.assertEqual(approve.status_code, 400)
         pending.refresh_from_db()
         self.owner_profile.refresh_from_db()
-        self.assertEqual(pending.approval_status, 'APPROVED')
+        self.assertEqual(pending.approval_status, 'PENDING')
         self.assertFalse(self.owner_profile.is_verified)
         self.assertEqual(self.owner_profile.verification_status, 'PENDING')
+
+        profile_approval = self.client.post(
+            f'/api/venue-owners/{self.owner_profile.pk}/set_verification/',
+            {'verification_status': 'APPROVED'},
+            format='json',
+        )
+        self.assertEqual(profile_approval.status_code, 200)
+        self.owner_profile.refresh_from_db()
+        previously_approved.refresh_from_db()
+        self.assertEqual(previously_approved.approval_status, 'PENDING')
+        self.assertFalse(previously_approved.is_verified)
+
+        approve = self.client.post(f'/api/venues/{pending.pk}/approve/')
+        self.assertEqual(approve.status_code, 200)
+        pending.refresh_from_db()
+        self.assertEqual(pending.approval_status, 'APPROVED')
 
     def test_provider_verification_actions_do_not_change_listing_approval_status(self):
         owner_pending = self.create_venue('Owner pending venue', 'PENDING')

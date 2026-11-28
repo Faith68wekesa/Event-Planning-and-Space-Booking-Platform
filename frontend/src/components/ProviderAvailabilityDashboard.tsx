@@ -125,15 +125,21 @@ export const ProviderAvailabilityDashboard: React.FC<ProviderAvailabilityDashboa
   };
 
   const setDayStatus = (day: number, status: 'AVAILABLE' | 'UNAVAILABLE') => {
-    const currentStatus = getDayStatus(day);
+    const key = getDateKey(day);
+    const activeBookings = bookings.filter(booking =>
+      String(booking.event_date).slice(0, 10) === key
+      && (booking.status === 'PENDING' || booking.status === 'APPROVED')
+    );
 
-    if (currentStatus === 'BOOKED' || currentStatus === 'PENDING') {
-      toast.error('This date has a booking and its status cannot be changed here.');
-      setSelectedDayForEdit(null);
+    if (
+      status === 'UNAVAILABLE'
+      && activeBookings.length > 0
+      && !window.confirm(
+        `This date has ${activeBookings.length} active booking(s). Mark it unavailable and notify those customers?`
+      )
+    ) {
       return;
     }
-
-    const key = getDateKey(day);
 
     setVendorDayStatuses(prev => {
       const updated = { ...prev };
@@ -276,8 +282,8 @@ export const ProviderAvailabilityDashboard: React.FC<ProviderAvailabilityDashboa
 
       </div>
 
-      {/* Main Grid: Calendar on Left, Unified Capacity on Right */}
-      <div className="vendor-availability-grid" style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '24px', alignItems: 'start' }}>
+      {/* Full-width calendar with settings below */}
+      <div className="vendor-availability-grid">
 
         {/* Calendar Card */}
         <div className="dashboard-card vendor-calendar-card" style={{ padding: '28px', position: 'relative' }}>
@@ -508,9 +514,10 @@ export const ProviderAvailabilityDashboard: React.FC<ProviderAvailabilityDashboa
               Loading your saved availability settings...
             </p>
           )}
+        </div>
 
-          {/* Capacity & Resources Card */}
-          <div className="dashboard-card vendor-capacity-card" style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        {/* Capacity & Resources Card */}
+        <div className="dashboard-card vendor-capacity-card" style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
             <div>
               <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>
@@ -573,8 +580,6 @@ export const ProviderAvailabilityDashboard: React.FC<ProviderAvailabilityDashboa
                 </button>
               </div>
             </div>
-          </div>
-
           {/* Working Hours Input Row */}
           <div className="vendor-working-hours" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>

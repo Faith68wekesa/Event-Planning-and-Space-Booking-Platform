@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { Venue, Vendor, VenueOwner, VerificationStatus, User, Booking, Review, PlatformStats, BookingStatus, VerificationDocument, AdminAnalyticsData } from '../types';
+import type { Venue, Vendor, VenueOwner, VerificationStatus, User, Booking, Review, PlatformStats, BookingStatus, VerificationDocument, AdminAnalyticsData, NotificationItem } from '../types';
 import {
   ShieldCheck, Building2, UserCheck,
   X, Eye, Clock, MapPin, ExternalLink,
@@ -11,6 +11,7 @@ import {
 import { ApiService } from '../services/api';
 import { toast } from 'react-hot-toast';
 import { AdminSidebar } from './AdminSidebar';
+import { NotificationBell } from './NotificationBell';
 import type { AdminMenuItemId } from './AdminSidebar';
 import { TrendLineChart, HorizontalBarChart, StatusDistributionChart, ConversionFunnelChart, PeakDaysBarChart } from './AnalyticsCharts';
 import './admin-sidebar.css';
@@ -61,6 +62,9 @@ const LEGACY_SERVICE_CATEGORIES = new Set([
   'PLANNING',
   'SOUND',
 ]);
+
+// Roles an admin may assign from the dashboard (ADMIN is intentionally excluded)
+const ASSIGNABLE_ROLES = ['CUSTOMER', 'PROVIDER'];
 
 const isServiceListing = (listing: Venue): boolean => {
   if (listing.listing_type) {
@@ -156,7 +160,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [reviewRatingFilter, setReviewRatingFilter] = useState<string>('ALL');
 
   const [verificationStatusFilter, setVerificationStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('PENDING');
-  const [verificationTypeFilter, setVerificationTypeFilter] = useState<'ALL' | 'VENDOR' | 'VENUE_OWNER'>('ALL');
 
   // Verification Documents State
   const [verificationDocuments, setVerificationDocuments] = useState<VerificationDocument[]>([]);
@@ -171,6 +174,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Modals
   const [selectedAccount, setSelectedAccount] = useState<UnifiedAccount | null>(null);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [retryingPayoutId, setRetryingPayoutId] = useState<number | null>(null);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [newRoleSelection, setNewRoleSelection] = useState<string>('CUSTOMER');
   const [deleteConfirm, setDeleteConfirm] = useState<{
@@ -246,6 +250,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   }, [isAdmin]);
 
+  const handleOpenNotification = (notification: NotificationItem) => {
+    const adminTabs: AdminTab[] = [
+      'overview', 'users', 'bookings', 'venues', 'verifications',
+      'reviews', 'analytics', 'settings', 'profile',
+    ];
+    if (notification.target_tab && adminTabs.includes(notification.target_tab as AdminTab)) {
+      setActiveTab(notification.target_tab as AdminTab);
+    } else if (notification.booking) {
+      setActiveTab('bookings');
+    } else {
+      setActiveTab('overview');
+    }
+    void loadAdminData();
+  };
+
   useEffect(() => {
     if (propVendors && propVendors.length > 0) setVendors(propVendors);
   }, [propVendors]);
@@ -296,6 +315,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleSaveUserRole = async () => {
     if (!editingUser) return;
+
+    if (editingUser.role === 'ADMIN' || !ASSIGNABLE_ROLES.includes(newRoleSelection)) {
+      toast.error('Administrator roles cannot be assigned or changed from here.');
+      return;
+    }
+
     const toastId = toast.loading(`Updating role for ${editingUser.username}...`);
     try {
       const updated = await ApiService.updateUserRole(editingUser.id, newRoleSelection);
@@ -334,9 +359,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try {
       const res = await ApiService.updateBookingStatus(bookingId, status);
       if (res.success) {
-        setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status } : b));
+        const updatedBooking = (res.data || { id: bookingId, status }) as Booking;
+        setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, ...updatedBooking } : b));
         if (selectedBooking && selectedBooking.id === bookingId) {
-          setSelectedBooking(prev => prev ? { ...prev, status } : null);
+          setSelectedBooking(prev => prev ? { ...prev, ...updatedBooking } : null);
         }
         toast.success(`Booking #${bookingId} is now ${status}.`, { id: toastId });
         // Refresh stats
@@ -347,6 +373,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
     } catch (e) {
       toast.error('Error updating booking.', { id: toastId });
+    }
+  };
+
+  const handleRetryProviderPayout = async (paymentId: number) => {
+    setRetryingPayoutId(paymentId);
+    try {
+      const updatedBooking = await ApiService.retryProviderPayout(paymentId);
+      setBookings(prev => prev.map(booking => (
+        booking.id === updatedBooking.id ? updatedBooking : booking
+      )));
+      setSelectedBooking(updatedBooking);
+      toast.success('Payout retry submitted. The final result will update when confirmed.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to retry provider payout.');
+    } finally {
+      setRetryingPayoutId(null);
     }
   };
 
@@ -457,17 +499,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
       }
 
-      // Interconnect: sync all venues and services linked to this approved provider
-      setVenues(prev => prev.map(v => {
-        const vOwnerId = typeof v.owner === 'object' ? (v.owner as any)?.id : v.owner;
-        const vVendorId = typeof v.vendor === 'object' ? (v.vendor as any)?.id : v.vendor;
-        if ((account.account_type === 'Vendor' && vVendorId === account.id) ||
-          (account.account_type === 'Venue Owner' && vOwnerId === account.id)) {
-          return { ...v, is_verified: true, approval_status: 'APPROVED' };
-        }
-        return v;
-      }));
-      // Fetch fresh listings so they immediately appear in Provider Listings
+      // Refresh linked listings without approving them; listing review remains a separate step.
       ApiService.getVenues({ all_status: true }).then(freshVenues => {
         if (freshVenues && freshVenues.length > 0) setVenues(freshVenues);
       });
@@ -568,8 +600,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const filteredAccounts = unifiedAccounts.filter(acc => {
     if (verificationStatusFilter !== 'ALL' && acc.verification_status !== verificationStatusFilter) return false;
-    if (verificationTypeFilter === 'VENDOR' && acc.account_type !== 'Vendor') return false;
-    if (verificationTypeFilter === 'VENUE_OWNER' && acc.account_type !== 'Venue Owner') return false;
     return true;
   });
 
@@ -599,15 +629,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     listingTypesByUserId.has(user.id)
       ? listingTypesByUserId.get(user.id)?.venue
       : user.role === 'VENUE_OWNER' ||
-        (user.is_venue_owner && !user.is_vendor) ||
-        (hasVenueOwnerProfile(user) && !hasVendorProfile(user))
+      (user.is_venue_owner && !user.is_vendor) ||
+      (hasVenueOwnerProfile(user) && !hasVendorProfile(user))
   );
   const isVendorUser = (user: User) => Boolean(
     listingTypesByUserId.has(user.id)
       ? listingTypesByUserId.get(user.id)?.service
       : user.role === 'VENDOR' ||
-        (user.is_vendor && !user.is_venue_owner) ||
-        (hasVendorProfile(user) && !hasVenueOwnerProfile(user))
+      (user.is_vendor && !user.is_venue_owner) ||
+      (hasVendorProfile(user) && !hasVenueOwnerProfile(user))
   );
 
   const filteredUsers = users.filter(u => {
@@ -636,6 +666,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
     return true;
   });
+
+  const usersById = new Map(users.map(user => [user.id, user]));
 
   const filteredVenues = venues.filter(v => {
     const isVendorListing = isServiceListing(v);
@@ -834,6 +866,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             />
           </div>
           <div className="admin-topbar-actions">
+            <NotificationBell
+              userId={currentUser?.id}
+              onOpenNotification={handleOpenNotification}
+            />
             <div className="admin-account-menu-wrap" ref={accountMenuRef}>
               <button
                 type="button"
@@ -891,17 +927,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 {/* Total Revenue */}
                 <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '22px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Gross Revenue</span>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Platform Commission</span>
                     <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <DollarSign size={20} />
                     </div>
                   </div>
                   <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#1e293b', marginTop: '12px' }}>
-                    KES {(stats?.total_revenue || 0).toLocaleString()}
+                    KES {(stats?.total_commission ?? stats?.commission_revenue ?? stats?.total_revenue ?? 0).toLocaleString()}
                   </div>
-                  <p style={{ margin: '6px 0 0', fontSize: '0.78rem', color: '#059669', fontWeight: 600 }}>
-                    From confirmed & completed bookings
-                  </p>
                 </div>
 
                 {/* Total Users */}
@@ -994,7 +1027,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               {acc.business_name}
                             </div>
                             <div style={{ fontSize: '0.78rem', color: '#78350f', marginTop: '2px' }}>
-                              {acc.account_type} • {acc.category_or_type} • {acc.location}
+                              Provider • {acc.category_or_type} • {acc.location}
                             </div>
                           </div>
                           <div style={{ display: 'flex', gap: '6px' }}>
@@ -1205,14 +1238,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   setEditingUser(u);
                                   setNewRoleSelection(u.role || 'CUSTOMER');
                                 }}
-                                title="Edit Role"
+                                disabled={u.role === 'ADMIN'}
+                                title={u.role === 'ADMIN' ? 'Administrator roles cannot be changed here' : 'Edit Role'}
                                 style={{
                                   padding: '6px 10px',
                                   borderRadius: '6px',
                                   border: '1px solid #cbd5e1',
                                   background: '#fff',
                                   color: '#334155',
-                                  cursor: 'pointer',
+                                  cursor: u.role === 'ADMIN' ? 'not-allowed' : 'pointer',
+                                  opacity: u.role === 'ADMIN' ? 0.45 : 1,
                                   display: 'inline-flex',
                                   alignItems: 'center',
                                   gap: '4px',
@@ -1625,6 +1660,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     ) : (
                       filteredVenues.map(v => {
                         const status = v.approval_status || (v.is_verified ? 'APPROVED' : 'PENDING');
+                        const provider = v.owner_user_id == null ? undefined : usersById.get(v.owner_user_id);
+                        const providerIsActive = provider?.is_active === true;
+                        const providerAccountApproved = v.provider_account_approved === true;
+                        const isPlatformActive = status === 'APPROVED'
+                          && v.is_verified
+                          && v.is_available !== false
+                          && providerIsActive
+                          && providerAccountApproved;
                         return (
                           <tr key={v.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                             <td style={{ padding: '14px 16px' }}>
@@ -1715,22 +1758,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   Reason: {v.rejection_reason}
                                 </div>
                               )}
+                              {!providerAccountApproved && (
+                                <div style={{ fontSize: '0.72rem', color: '#b45309', marginTop: '3px', maxWidth: '200px' }}>
+                                  Business account pending approval
+                                </div>
+                              )}
                             </td>
                             <td style={{ padding: '14px 16px' }}>
                               <button
                                 onClick={() => handleToggleVenueAvailability(v.id)}
+                                disabled={!providerIsActive || !providerAccountApproved || status !== 'APPROVED' || !v.is_verified}
                                 style={{
                                   padding: '4px 10px',
                                   borderRadius: '999px',
                                   border: 'none',
                                   fontSize: '0.75rem',
                                   fontWeight: 700,
-                                  cursor: 'pointer',
-                                  background: v.is_available !== false ? '#ecfdf5' : '#fee2e2',
-                                  color: v.is_available !== false ? '#059669' : '#dc2626',
+                                  cursor: providerIsActive && providerAccountApproved && status === 'APPROVED' && v.is_verified ? 'pointer' : 'default',
+                                  background: isPlatformActive ? '#ecfdf5' : '#fee2e2',
+                                  color: isPlatformActive ? '#059669' : '#dc2626',
                                 }}
                               >
-                                {v.is_available !== false ? 'Active' : 'Inactive'}
+                                {isPlatformActive ? 'Active' : 'Inactive'}
                               </button>
                             </td>
                             <td style={{ padding: '14px 16px', textAlign: 'right' }}>
@@ -1763,15 +1812,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                         toast.error(res.error || 'Failed to approve listing.');
                                       }
                                     }}
+                                    disabled={!providerAccountApproved}
+                                    title={!providerAccountApproved ? 'Approve the linked business account first.' : undefined}
                                     style={{
                                       padding: '6px 10px',
                                       borderRadius: '6px',
                                       border: 'none',
-                                      background: '#059669',
+                                      background: providerAccountApproved ? '#059669' : '#94a3b8',
                                       color: '#fff',
                                       fontSize: '0.78rem',
                                       fontWeight: 700,
-                                      cursor: 'pointer',
+                                      cursor: providerAccountApproved ? 'pointer' : 'not-allowed',
                                     }}
                                   >
                                     Approve
@@ -1830,30 +1881,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
                 <div>
-                  <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>Vendor & Venue Owner Verification Queue</h2>
+                  <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>Provider Verification Queue</h2>
                   <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Review provider credentials, licenses, portfolios, and grant verified status badges.</p>
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <select
-                    value={verificationTypeFilter}
-                    onChange={(e) => setVerificationTypeFilter(e.target.value as any)}
-                    style={{
-                      padding: '8px 12px',
-                      borderRadius: '8px',
-                      border: '1px solid #cbd5e1',
-                      fontSize: '0.85rem',
-                      outline: 'none',
-                      background: '#fff',
-                      fontWeight: 600,
-                      color: '#334155',
-                    }}
-                  >
-                    <option value="ALL">All Provider Types</option>
-                    <option value="VENDOR">Vendors & Planners</option>
-                    <option value="VENUE_OWNER">Venue Owners</option>
-                  </select>
-
                   <select
                     value={verificationStatusFilter}
                     onChange={(e) => setVerificationStatusFilter(e.target.value as any)}
@@ -1911,7 +1943,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 {account.business_name}
                               </h4>
                               <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                                {account.account_type} • {account.category_or_type}
+                                Provider • {account.category_or_type}
                               </span>
                             </div>
                           </div>
@@ -2579,6 +2611,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>Approved or completed</div>
                 </div>
 
+                <div style={{ padding: '18px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '14px' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase' }}>Platform Commission</div>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#15803d', marginTop: '6px' }}>
+                    KES {(analyticsData?.summary.commission_revenue || 0).toLocaleString()}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>Commission on successful real collections</div>
+                </div>
+
                 <div style={{ padding: '18px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px' }}>
                   <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Search-to-Booking Rate</div>
                   <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#ea580c', marginTop: '6px' }}>
@@ -2851,7 +2891,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
                   <div>
                     <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: '#0d8a73' }}>
-                      {selectedAccount.account_type} Verification Details
+                      Provider Verification Details
                     </span>
                     <h3 style={{ margin: '2px 0 0', fontSize: '1.25rem', fontWeight: 800, color: '#1e293b' }}>
                       {selectedAccount.business_name}
@@ -3058,6 +3098,49 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                   </div>
 
+                  {selectedBooking.payment_breakdown && (
+                    <div style={{ background: '#f0f9ff', padding: '12px 14px', borderRadius: '8px', border: '1px solid #bae6fd' }}>
+                      <strong style={{ color: '#0f172a', display: 'block', marginBottom: '8px' }}>Payment and payout</strong>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.82rem' }}>
+                        <span>Customer paid</span>
+                        <strong>KES {Number(selectedBooking.payment_breakdown.customer_paid).toLocaleString()}</strong>
+                        <span>Platform commission</span>
+                        <strong>KES {Number(selectedBooking.payment_breakdown.commission_amount).toLocaleString()}</strong>
+                        <span>Provider net payout</span>
+                        <strong>KES {Number(selectedBooking.payment_breakdown.provider_payout_amount).toLocaleString()}</strong>
+                        <span>Payout status</span>
+                        <strong>{selectedBooking.payment_breakdown.payout_status}</strong>
+                      </div>
+                      {selectedBooking.payment_breakdown.payout_reference && (
+                        <div style={{ marginTop: '8px', fontSize: '0.78rem', color: '#475569' }}>
+                          Payout reference: {selectedBooking.payment_breakdown.payout_reference}
+                        </div>
+                      )}
+                      {selectedBooking.payment_breakdown.payout_error && (
+                        <div style={{ marginTop: '8px', fontSize: '0.78rem', color: '#991b1b' }}>
+                          {selectedBooking.payment_breakdown.payout_error}
+                        </div>
+                      )}
+                      {selectedBooking.payment_breakdown.manual_reconciliation_required && (
+                        <div style={{ marginTop: '8px', fontSize: '0.78rem', fontWeight: 700, color: '#9a3412' }}>
+                          Manual reconciliation required; no automatic refund or reversal is performed.
+                        </div>
+                      )}
+                      {selectedBooking.payment_breakdown.payout_status === 'FAILED'
+                        && selectedBooking.payment_breakdown.payout_retryable
+                        && !selectedBooking.payment_breakdown.manual_reconciliation_required && (
+                          <button
+                            type="button"
+                            onClick={() => handleRetryProviderPayout(selectedBooking.payment_breakdown!.payment_id)}
+                            disabled={retryingPayoutId === selectedBooking.payment_breakdown.payment_id}
+                            style={{ marginTop: '10px', padding: '8px 12px', border: 'none', borderRadius: '7px', background: '#2563eb', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+                          >
+                            {retryingPayoutId === selectedBooking.payment_breakdown.payment_id ? 'Retrying…' : 'Retry provider payout'}
+                          </button>
+                        )}
+                    </div>
+                  )}
+
                   {selectedBooking.notes && (
                     <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                       <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>Client Notes</span>
@@ -3144,7 +3227,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   >
                     <option value="CUSTOMER">Customer (Book spaces & services)</option>
                     <option value="PROVIDER">Business Provider (List venues & services)</option>
-                    <option value="ADMIN">Administrator (Full platform moderation)</option>
                   </select>
                 </div>
 
@@ -3358,7 +3440,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           toast.error(res.error || 'Failed to approve listing.');
                         }
                       }}
-                      style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#059669', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+                      disabled={inspectVenueModal.provider_account_approved !== true}
+                      title={inspectVenueModal.provider_account_approved !== true ? 'Approve the linked business account first.' : undefined}
+                      style={{
+                        padding: '8px 16px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: inspectVenueModal.provider_account_approved === true ? '#059669' : '#94a3b8',
+                        color: '#fff',
+                        fontWeight: 700,
+                        cursor: inspectVenueModal.provider_account_approved === true ? 'pointer' : 'not-allowed',
+                      }}
                     >
                       Approve Listing
                     </button>

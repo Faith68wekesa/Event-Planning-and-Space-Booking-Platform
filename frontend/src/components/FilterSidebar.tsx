@@ -1,6 +1,6 @@
 import React from 'react';
 import type { FilterState } from '../types';
-import { SlidersHorizontal, ShieldCheck, RotateCcw } from 'lucide-react';
+import { SlidersHorizontal, RotateCcw } from 'lucide-react';
 
 interface FilterSidebarProps {
   filters: FilterState;
@@ -30,6 +30,8 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
     <div style={{ 
       padding: '24px', 
       height: 'fit-content',
+      width: '100%',
+      minWidth: 0,
       background: '#ffffff',
       borderRadius: '16px',
       border: '1px solid #e2e8f0',
@@ -50,27 +52,6 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
       </div>
 
       <div style={{ display: 'grid', gap: '16px' }}>
-        <div style={{
-          background: 'rgba(5, 150, 105, 0.12)',
-          border: '1px solid rgba(5, 150, 105, 0.25)',
-          borderRadius: '10px',
-          padding: '10px 14px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between'
-        }}>
-          <label htmlFor="verifiedOnly" style={{ fontSize: '0.85rem', fontWeight: 700, color: '#059669', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <ShieldCheck size={16} /> Verified Only
-          </label>
-          <input
-            id="verifiedOnly"
-            type="checkbox"
-            checked={filters.verified_only}
-            onChange={(e) => setFilters({ ...filters, verified_only: e.target.checked })}
-            style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#0d8a73' }}
-          />
-        </div>
-
         {activeTab === 'venues' ? (
           <>
             <div>
@@ -80,6 +61,7 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
               <select
                 value={filters.category}
                 onChange={(e) => setFilters({ ...filters, category: e.target.value })}
+                style={{ width: '100%', maxWidth: '100%' }}
               >
                 <option value="ALL">All Categories</option>
                 <option value="WEDDING">Wedding Gardens & Halls</option>
@@ -115,6 +97,7 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
             <select
               value={filters.category}
               onChange={(e) => setFilters({ ...filters, category: e.target.value })}
+              style={{ width: '100%', maxWidth: '100%' }}
             >
               <option value="ALL">All Service Categories</option>
               <option value="PHOTOGRAPHY">Photography & Videography</option>

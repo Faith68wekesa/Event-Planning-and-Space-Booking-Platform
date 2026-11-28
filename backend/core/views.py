@@ -7,9 +7,10 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from .permissions import IsAuthenticatedCustomer
 from django.contrib.auth import authenticate
 from django.db import transaction
-from django.db.models import Q, Sum
+from django.db.models import Count, Prefetch, Q, Sum
 from .models import (
     User, VendorProfile, VenueOwnerProfile, Venue, PortfolioImage, Booking, Review, EmailOTP, Message, Event, EventService,
+    ProviderAvailabilitySetting,
     Notification, CustomerReminderPreference, VerificationDocument, UserInteraction,
     Payment,
 )
@@ -23,15 +24,21 @@ from .services.reminder_service import evaluate_and_generate_reminders
 from .services import mpesa as mpesa_service
 from .location_utils import nyeri_county_location_filter
 from django.core.mail import send_mail
+from django.core.validators import validate_email
+from django.core.exceptions import ValidationError as DjangoValidationError
+import logging
 import random
 import datetime
 import os
+import uuid
+from decimal import Decimal, ROUND_HALF_UP
 from django.utils import timezone
 from django.conf import settings
 from django.http import Http404
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from django.core.files.storage import FileSystemStorage
 from rest_framework.parsers import MultiPartParser, FormParser
+from .services import payouts as payout_service
 from .ml.recommender import (
     get_venue_recommendations as compute_venue_recommendations,
     get_vendor_recommendations as compute_vendor_recommendations,
@@ -71,16 +78,180 @@ def is_admin_user(request):
     )
 
 
-def _get_public_catalog_queryset(queryset=None):
+def _is_approved_business_profile(profile):
+    return bool(
+        profile
+        and profile.is_verified
+        and profile.verification_status == 'APPROVED'
+    )
+
+
+def _reset_preapproved_listings(profile, profile_field):
+    other_field = 'owner' if profile_field == 'vendor' else 'vendor'
+    listings = Venue.objects.filter(
+        **{profile_field: profile, 'approval_status': 'APPROVED'}
+    ).select_related('owner', 'vendor')
+    for listing in listings:
+        if _is_approved_business_profile(getattr(listing, other_field)):
+            continue
+        listing.approval_status = 'PENDING'
+        listing.is_verified = False
+        listing.save(update_fields=['approval_status', 'is_verified'])
+
+
+def _get_public_catalog_queryset(queryset=None, include_unavailable=False):
     queryset = queryset if queryset is not None else Venue.objects.all()
 
-    return queryset.filter(
+    public_queryset = queryset.filter(
         approval_status='APPROVED',
-        is_available=True,
         is_verified=True
+    ).filter(
+        Q(
+            owner__is_verified=True,
+            owner__verification_status='APPROVED',
+            owner__user__is_active=True,
+        ) |
+        Q(
+            vendor__is_verified=True,
+            vendor__verification_status='APPROVED',
+            vendor__user__is_active=True,
+        )
     ).filter(
         nyeri_county_location_filter()
     )
+    if not include_unavailable:
+        public_queryset = public_queryset.filter(is_available=True)
+    return public_queryset
+
+
+def _get_date_availability_data(
+    *,
+    event_date,
+    provider_user,
+    bookings,
+    target_name,
+    capacity=None,
+    listing_is_available=True,
+):
+    setting = (
+        ProviderAvailabilitySetting.objects.filter(user=provider_user).first()
+        if provider_user else None
+    )
+    if capacity is None:
+        capacity = setting.max_guests if setting else 0
+
+    date_key = event_date.isoformat()
+    unavailable_dates = []
+    day_statuses = {}
+    if setting:
+        unavailable_dates = setting.unavailable_dates or []
+        day_statuses = setting.day_statuses or {}
+    is_date_blocked = (
+        day_statuses.get(date_key) == 'UNAVAILABLE'
+        or date_key in unavailable_dates
+    )
+    booked_guests = bookings.filter(
+        event_date=event_date,
+        status__in=['APPROVED', 'COMPLETED'],
+    ).aggregate(total=Sum('guest_count'))['total'] or 0
+    total_capacity = max(0, int(capacity or 0))
+    remaining_capacity = max(0, total_capacity - booked_guests)
+
+    if not listing_is_available:
+        availability_status = 'UNAVAILABLE'
+        message = f"'{target_name}' is currently unavailable for bookings."
+    elif is_date_blocked:
+        availability_status = 'UNAVAILABLE'
+        message = f"'{target_name}' is unavailable on {date_key}; the provider marked this date unavailable."
+    elif total_capacity == 0:
+        availability_status = 'CAPACITY_NEEDED'
+        message = f'The provider has not set a guest capacity for {target_name}.'
+    elif remaining_capacity == 0:
+        availability_status = 'FULL'
+        message = f"'{target_name}' is fully booked on {date_key} ({total_capacity} guests)."
+    else:
+        availability_status = 'AVAILABLE'
+        message = (
+            f"'{target_name}' is available: {remaining_capacity} of "
+            f'{total_capacity} guest spaces remaining.'
+        )
+
+    return {
+        'date': date_key,
+        'available': availability_status == 'AVAILABLE',
+        'status': availability_status,
+        'total_capacity': total_capacity,
+        'booked_guests': booked_guests,
+        'remaining_capacity': remaining_capacity,
+        'message': message,
+    }
+
+
+def _parse_availability_date(request):
+    date_value = request.query_params.get('date')
+    try:
+        parsed_date = datetime.datetime.strptime(date_value, '%Y-%m-%d').date()
+    except (TypeError, ValueError):
+        raise ValidationError({'date': 'A date in YYYY-MM-DD format is required.'})
+    return parsed_date
+
+
+def _notify_admins(*, title, message, target_tab, booking=None, exclude_user_id=None):
+    admins = User.objects.filter(
+        Q(role='ADMIN') | Q(is_staff=True) | Q(is_superuser=True),
+        is_active=True,
+    ).distinct()
+    if exclude_user_id:
+        admins = admins.exclude(pk=exclude_user_id)
+    for admin in admins:
+        Notification.objects.create(
+            user=admin,
+            booking=booking,
+            title=title,
+            message=message,
+            target_tab=target_tab,
+            notification_type='SYSTEM',
+        )
+
+
+def _get_booking_provider_users(booking):
+    provider_users = {}
+    if booking.venue:
+        if booking.venue.owner and booking.venue.owner.user:
+            provider_users[booking.venue.owner.user_id] = booking.venue.owner.user
+        if booking.venue.vendor and booking.venue.vendor.user:
+            provider_users[booking.venue.vendor.user_id] = booking.venue.vendor.user
+    if booking.vendor and booking.vendor.user:
+        provider_users[booking.vendor.user_id] = booking.vendor.user
+    return list(provider_users.values())
+
+
+def _get_booking_listing_name(booking):
+    if booking.venue:
+        return booking.venue.title
+    if booking.vendor:
+        return booking.vendor.business_name
+    return booking.event_title
+
+
+def _get_listing_provider_users(listing):
+    provider_users = {}
+    if listing.owner and listing.owner.user:
+        provider_users[listing.owner.user_id] = listing.owner.user
+    if listing.vendor and listing.vendor.user:
+        provider_users[listing.vendor.user_id] = listing.vendor.user
+    return list(provider_users.values())
+
+
+def _notify_listing_providers(listing, *, title, message):
+    for provider in _get_listing_provider_users(listing):
+        Notification.objects.create(
+            user=provider,
+            title=title,
+            message=message,
+            target_tab='listings',
+            notification_type='SYSTEM',
+        )
 
 
 class ProviderAvailabilitySettingView(APIView):
@@ -107,7 +278,76 @@ class ProviderAvailabilitySettingView(APIView):
         )
 
         if serializer.is_valid():
-            serializer.save(user=request.user)
+            previously_blocked_dates = {
+                date_value
+                for date_value in (setting.unavailable_dates or [])
+                if isinstance(date_value, str)
+            }
+            previously_blocked_dates.update(
+                date_value
+                for date_value, day_status in (setting.day_statuses or {}).items()
+                if day_status == 'UNAVAILABLE'
+            )
+
+            with transaction.atomic():
+                serializer.save(user=request.user)
+                setting.refresh_from_db()
+                newly_blocked_dates = {
+                    date_value
+                    for date_value in (setting.unavailable_dates or [])
+                    if isinstance(date_value, str)
+                }
+                newly_blocked_dates.update(
+                    date_value
+                    for date_value, day_status in (setting.day_statuses or {}).items()
+                    if day_status == 'UNAVAILABLE'
+                )
+                newly_blocked_dates.difference_update(previously_blocked_dates)
+                blocked_dates = []
+                for date_value in newly_blocked_dates:
+                    try:
+                        blocked_dates.append(datetime.date.fromisoformat(date_value))
+                    except ValueError:
+                        continue
+
+                if blocked_dates:
+                    _notify_admins(
+                        title='Provider availability updated',
+                        message=(
+                            f'{request.user.get_full_name() or request.user.username} '
+                            f'marked {len(blocked_dates)} date(s) unavailable.'
+                        ),
+                        target_tab='venues',
+                        exclude_user_id=request.user.id if is_admin_user(request) else None,
+                    )
+
+                if blocked_dates:
+                    affected_bookings = Booking.objects.filter(
+                        event_date__in=blocked_dates,
+                        status__in=['PENDING', 'APPROVED'],
+                    ).filter(
+                        Q(venue__owner__user=request.user)
+                        | Q(venue__vendor__user=request.user)
+                        | Q(vendor__user=request.user)
+                    ).select_related('customer', 'venue', 'vendor')
+                    for booking in affected_bookings:
+                        listing_name = booking.event_title
+                        if booking.venue:
+                            listing_name = booking.venue.title
+                        elif booking.vendor:
+                            listing_name = booking.vendor.business_name
+                        Notification.objects.create(
+                            user=booking.customer,
+                            booking=booking,
+                            title='Listing date unavailable',
+                            message=(
+                                f'{listing_name} is now marked unavailable on '
+                                f'{booking.event_date.isoformat()}. Please contact '
+                                'the provider to discuss your booking.'
+                            ),
+                            target_tab='bookings',
+                            notification_type='LISTING_AVAILABILITY',
+                        )
             return Response(serializer.data)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -184,7 +424,22 @@ class VendorProfileViewSet(viewsets.ModelViewSet):
         return vendor
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        vendor = serializer.save(user=self.request.user)
+        _notify_admins(
+            title='Business account submitted',
+            message=f'{vendor.business_name} submitted a vendor account for review.',
+            target_tab='verifications',
+        )
+
+    def perform_update(self, serializer):
+        vendor = serializer.instance
+        will_be_approved = (
+            serializer.validated_data.get('verification_status', vendor.verification_status) == 'APPROVED'
+            and serializer.validated_data.get('is_verified', vendor.is_verified)
+        )
+        if will_be_approved and not _is_approved_business_profile(vendor):
+            _reset_preapproved_listings(vendor, 'vendor')
+        serializer.save()
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -240,15 +495,40 @@ class VendorProfileViewSet(viewsets.ModelViewSet):
 
         return queryset
 
+    @action(detail=True, methods=['get'], url_path='availability', permission_classes=[AllowAny])
+    def availability(self, request, pk=None):
+        event_date = _parse_availability_date(request)
+        vendor = self.get_object()
+        is_provider_active = (
+            vendor.is_verified
+            and vendor.verification_status == 'APPROVED'
+            and vendor.user.is_active
+        )
+        return Response(_get_date_availability_data(
+            event_date=event_date,
+            provider_user=vendor.user,
+            bookings=Booking.objects.filter(vendor=vendor),
+            target_name=vendor.business_name,
+            listing_is_available=is_provider_active,
+        ))
+
     @action(detail=True, methods=['post'])
     def toggle_verify(self, request, pk=None):
         if not is_admin_user(request):
             raise PermissionDenied("Access Denied: Only platform administrators can verify vendor credentials.")
         vendor = self.get_object()
+        if not vendor.is_verified:
+            _reset_preapproved_listings(vendor, 'vendor')
         vendor.is_verified = not vendor.is_verified
         vendor.verification_status = 'APPROVED' if vendor.is_verified else 'PENDING'
         vendor.save()
-        Venue.objects.filter(vendor=vendor).update(is_verified=vendor.is_verified)
+        Notification.objects.create(
+            user=vendor.user,
+            title='Business account status updated',
+            message=f'Your business account was {vendor.verification_status.lower()}.',
+            target_tab='profile',
+            notification_type='SYSTEM',
+        )
         return Response(VendorProfileSerializer(vendor).data)
 
     @action(detail=True, methods=['post', 'patch'])
@@ -258,10 +538,20 @@ class VendorProfileViewSet(viewsets.ModelViewSet):
         vendor = self.get_object()
         new_status = request.data.get('verification_status')
         if new_status in ['APPROVED', 'REJECTED', 'PENDING']:
+            if new_status == 'APPROVED' and not _is_approved_business_profile(vendor):
+                _reset_preapproved_listings(vendor, 'vendor')
+            old_status = vendor.verification_status
             vendor.verification_status = new_status
             vendor.is_verified = (new_status == 'APPROVED')
             vendor.save()
-            Venue.objects.filter(vendor=vendor).update(is_verified=vendor.is_verified)
+            if old_status != new_status:
+                Notification.objects.create(
+                    user=vendor.user,
+                    title='Business account status updated',
+                    message=f'Your business account was {new_status.lower()}.',
+                    target_tab='profile',
+                    notification_type='SYSTEM',
+                )
             return Response(VendorProfileSerializer(vendor).data)
         return Response({'error': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -286,7 +576,22 @@ class VenueOwnerProfileViewSet(viewsets.ModelViewSet):
         return owner
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        owner = serializer.save(user=self.request.user)
+        _notify_admins(
+            title='Business account submitted',
+            message=f'{owner.business_name} submitted a venue-owner account for review.',
+            target_tab='verifications',
+        )
+
+    def perform_update(self, serializer):
+        owner = serializer.instance
+        will_be_approved = (
+            serializer.validated_data.get('verification_status', owner.verification_status) == 'APPROVED'
+            and serializer.validated_data.get('is_verified', owner.is_verified)
+        )
+        if will_be_approved and not _is_approved_business_profile(owner):
+            _reset_preapproved_listings(owner, 'owner')
+        serializer.save()
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -346,10 +651,18 @@ class VenueOwnerProfileViewSet(viewsets.ModelViewSet):
         if not is_admin_user(request):
             raise PermissionDenied("Access Denied: Only platform administrators can verify venue owners.")
         owner = self.get_object()
+        if not owner.is_verified:
+            _reset_preapproved_listings(owner, 'owner')
         owner.is_verified = not owner.is_verified
         owner.verification_status = 'APPROVED' if owner.is_verified else 'PENDING'
         owner.save()
-        Venue.objects.filter(owner=owner).update(is_verified=owner.is_verified)
+        Notification.objects.create(
+            user=owner.user,
+            title='Business account status updated',
+            message=f'Your business account was {owner.verification_status.lower()}.',
+            target_tab='profile',
+            notification_type='SYSTEM',
+        )
         return Response(VenueOwnerProfileSerializer(owner).data)
 
     @action(detail=True, methods=['post', 'patch'])
@@ -359,10 +672,20 @@ class VenueOwnerProfileViewSet(viewsets.ModelViewSet):
         owner = self.get_object()
         new_status = request.data.get('verification_status')
         if new_status in ['APPROVED', 'REJECTED', 'PENDING']:
+            if new_status == 'APPROVED' and not _is_approved_business_profile(owner):
+                _reset_preapproved_listings(owner, 'owner')
+            old_status = owner.verification_status
             owner.verification_status = new_status
             owner.is_verified = (new_status == 'APPROVED')
             owner.save()
-            Venue.objects.filter(owner=owner).update(is_verified=owner.is_verified)
+            if old_status != new_status:
+                Notification.objects.create(
+                    user=owner.user,
+                    title='Business account status updated',
+                    message=f'Your business account was {new_status.lower()}.',
+                    target_tab='profile',
+                    notification_type='SYSTEM',
+                )
             return Response(VenueOwnerProfileSerializer(owner).data)
         return Response({'error': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -465,6 +788,31 @@ class VenueViewSet(viewsets.ModelViewSet):
 
         return queryset
 
+    @action(detail=True, methods=['get'], url_path='availability', permission_classes=[AllowAny])
+    def availability(self, request, pk=None):
+        event_date = _parse_availability_date(request)
+        venue = _get_public_catalog_queryset(
+            queryset=Venue.objects.select_related('owner__user', 'vendor__user'),
+            include_unavailable=True,
+        ).filter(pk=pk).first()
+        if venue is None:
+            raise Http404
+
+        provider_user = None
+        if venue.owner and venue.owner.user:
+            provider_user = venue.owner.user
+        elif venue.vendor and venue.vendor.user:
+            provider_user = venue.vendor.user
+
+        return Response(_get_date_availability_data(
+            event_date=event_date,
+            provider_user=provider_user,
+            bookings=Booking.objects.filter(venue=venue),
+            target_name=venue.title,
+            capacity=venue.capacity,
+            listing_is_available=venue.is_available,
+        ))
+
     def perform_create(self, serializer):
         user = self.request.user
         vendor_profile = getattr(user, 'vendor_profile', None)
@@ -474,13 +822,28 @@ class VenueViewSet(viewsets.ModelViewSet):
             raise PermissionDenied(
                 "You need a provider or venue owner profile to create a listing."
             )
+        if not any(
+            profile
+            and profile.is_verified
+            and profile.verification_status == 'APPROVED'
+            for profile in (vendor_profile, owner_profile)
+        ):
+            raise PermissionDenied(
+                "Your business account must be approved before you can create listings."
+            )
 
-        serializer.save(
-            vendor=vendor_profile,
-            owner=owner_profile,
-            approval_status='PENDING',
-            is_verified=False
-        )
+        with transaction.atomic():
+            listing = serializer.save(
+                vendor=vendor_profile,
+                owner=owner_profile,
+                approval_status='PENDING',
+                is_verified=False
+            )
+            _notify_admins(
+                title='Listing submitted for approval',
+                message=f'{listing.title} was submitted for administrator review.',
+                target_tab='venues',
+            )
 
     def perform_update(self, serializer):
         instance = serializer.instance
@@ -489,7 +852,12 @@ class VenueViewSet(viewsets.ModelViewSet):
             critical_fields = ['title', 'category', 'price_per_day', 'capacity', 'image_url']
             has_critical_changes = any(f in validated and validated[f] != getattr(instance, f) for f in critical_fields)
             if has_critical_changes and instance.approval_status == 'APPROVED':
-                serializer.save(approval_status='PENDING', is_verified=False)
+                listing = serializer.save(approval_status='PENDING', is_verified=False)
+                _notify_admins(
+                    title='Listing resubmitted for approval',
+                    message=f'{listing.title} was edited and needs administrator review again.',
+                    target_tab='venues',
+                )
                 return
             else:
                 serializer.save(approval_status=instance.approval_status, is_verified=instance.is_verified)
@@ -503,6 +871,11 @@ class VenueViewSet(viewsets.ModelViewSet):
         venue = self.get_object()
         Venue.objects.filter(pk=venue.pk).update(is_verified=not venue.is_verified)
         venue.refresh_from_db()
+        _notify_listing_providers(
+            venue,
+            title='Listing verification updated',
+            message=f'Verification for {venue.title} was {"approved" if venue.is_verified else "removed"}.',
+        )
         return Response({'status': 'updated', 'approval_status': venue.approval_status, 'is_verified': venue.is_verified})
 
     @action(detail=True, methods=['post'])
@@ -510,10 +883,20 @@ class VenueViewSet(viewsets.ModelViewSet):
         if not is_admin_user(request):
             raise PermissionDenied("Access Denied: Only platform administrators can approve listings.")
         venue = self.get_object()
+        if not venue.has_approved_business_account:
+            return Response(
+                {'error': 'Approve the linked business account before approving this listing.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         venue.approval_status = 'APPROVED'
         venue.is_verified = True
         venue.rejection_reason = None
         venue.save(update_fields=['approval_status', 'is_verified', 'rejection_reason'])
+        _notify_listing_providers(
+            venue,
+            title='Listing approved',
+            message=f'Your listing "{venue.title}" has been approved and is now available.',
+        )
         return Response(VenueSerializer(venue).data)
 
     @action(detail=True, methods=['post'])
@@ -526,6 +909,11 @@ class VenueViewSet(viewsets.ModelViewSet):
         venue.is_verified = False
         venue.rejection_reason = reason
         venue.save(update_fields=['approval_status', 'is_verified', 'rejection_reason'])
+        _notify_listing_providers(
+            venue,
+            title='Listing requires changes',
+            message=f'Your listing "{venue.title}" was not approved: {reason}',
+        )
         return Response(VenueSerializer(venue).data)
 
     @action(detail=True, methods=['post', 'patch'])
@@ -551,6 +939,34 @@ class VenueViewSet(viewsets.ModelViewSet):
 
         venue.is_available = not venue.is_available
         venue.save(update_fields=['is_available'])
+        if not venue.is_available:
+            affected_bookings = Booking.objects.filter(
+                venue=venue,
+                event_date__gte=datetime.date.today(),
+                status__in=['PENDING', 'APPROVED'],
+            ).select_related('customer')
+            for booking in affected_bookings:
+                Notification.objects.create(
+                    user=booking.customer,
+                    booking=booking,
+                    title='Listing unavailable',
+                    message=(
+                        f'{venue.title} is currently unavailable. Please contact '
+                        'the provider about your booking.'
+                    ),
+                    target_tab='bookings',
+                    notification_type='LISTING_AVAILABILITY',
+                )
+        _notify_admins(
+            title='Listing availability updated',
+            message=(
+                f'{venue.title} was marked '
+                f'{"available" if venue.is_available else "unavailable"} by '
+                f'{"an administrator" if is_admin_user(request) else "a provider"}.'
+            ),
+            target_tab='venues',
+            exclude_user_id=request.user.id if is_admin_user(request) else None,
+        )
 
         return Response({
             'status': 'updated',
@@ -646,7 +1062,25 @@ class BookingViewSet(viewsets.ModelViewSet):
     serializer_class = BookingSerializer
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = super().get_queryset().prefetch_related(
+            Prefetch(
+                'payments',
+                queryset=Payment.objects.filter(
+                    status='SUCCESS',
+                    is_simulated=False,
+                    commission_amount__isnull=False,
+                ).order_by('-paid_at', '-created_at'),
+                to_attr='commissioned_payments',
+            ),
+            Prefetch(
+                'payments',
+                queryset=Payment.objects.filter(
+                    status='SUCCESS',
+                    is_simulated=True,
+                ).order_by('-created_at'),
+                to_attr='simulated_payments',
+            ),
+        )
         params = getattr(self.request, 'query_params', getattr(self.request, 'GET', {}))
         customer_id = params.get('customer') or params.get('customer_id')
         vendor_id = params.get('vendor') or params.get('vendor_id')
@@ -676,10 +1110,51 @@ class BookingViewSet(viewsets.ModelViewSet):
                 Q(vendor__user_id=user_id)
             )
         today = datetime.date.today()
-        Booking.objects.filter(
-            status='APPROVED',
-            event_date__lt=today
-        ).update(status='COMPLETED')
+        with transaction.atomic():
+            overdue_booking_ids = list(
+                Booking.objects.select_for_update()
+                .filter(status='APPROVED', event_date__lt=today)
+                .values_list('id', flat=True)
+            )
+            overdue_bookings = list(
+                Booking.objects.filter(id__in=overdue_booking_ids).select_related(
+                    'customer',
+                    'venue__owner__user',
+                    'venue__vendor__user',
+                    'vendor__user',
+                )
+            )
+            if overdue_bookings:
+                overdue_ids = [booking.id for booking in overdue_bookings]
+                Booking.objects.filter(
+                    id__in=overdue_ids,
+                    status='APPROVED',
+                ).update(status='COMPLETED')
+                for booking in overdue_bookings:
+                    listing_name = _get_booking_listing_name(booking)
+                    Notification.objects.create(
+                        user=booking.customer,
+                        booking=booking,
+                        title='Booking marked completed',
+                        message=f'Your event at {listing_name} has been marked completed.',
+                        target_tab='bookings',
+                        notification_type='BOOKING_UPDATE',
+                    )
+                    for provider in _get_booking_provider_users(booking):
+                        Notification.objects.create(
+                            user=provider,
+                            booking=booking,
+                            title='Booking marked completed',
+                            message=f'The booking for {listing_name} has been marked completed.',
+                            target_tab='bookings',
+                            notification_type='BOOKING_UPDATE',
+                        )
+                    _notify_admins(
+                        title='Booking marked completed',
+                        message=f'The booking for {listing_name} was automatically completed.',
+                        target_tab='bookings',
+                        booking=booking,
+                    )
 
         if status_param:
             queryset = queryset.filter(status=status_param)
@@ -696,6 +1171,23 @@ class BookingViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             self.perform_create(serializer)
             booking_obj = serializer.instance
+            listing_name = _get_booking_listing_name(booking_obj)
+            for provider in _get_booking_provider_users(booking_obj):
+                Notification.objects.create(
+                    user=provider,
+                    booking=booking_obj,
+                    title='New booking request',
+                    message=f'{booking_obj.customer.get_full_name() or booking_obj.customer.username} requested {listing_name}.',
+                    target_tab='bookings',
+                    notification_type='BOOKING_UPDATE',
+                )
+            _notify_admins(
+                title='New booking received',
+                message=f'A booking request for {listing_name} was submitted by {booking_obj.customer.username}.',
+                target_tab='bookings',
+                booking=booking_obj,
+                exclude_user_id=request.user.id if is_admin_user(request) else None,
+            )
             try:
                 session_id = request.headers.get('X-Session-Id') or request.COOKIES.get('locyfy_session_id') or ''
                 UserInteraction.objects.create(
@@ -869,6 +1361,8 @@ class BookingViewSet(viewsets.ModelViewSet):
                 old_status = booking.status
                 booking.status = new_status
                 booking.save()
+                if new_status == 'CANCELLED':
+                    payout_service.flag_booking_payments_for_reconciliation(booking)
                 try:
                     session_id = request.headers.get('X-Session-Id') or request.COOKIES.get('locyfy_session_id') or ''
                     UserInteraction.objects.create(
@@ -883,6 +1377,44 @@ class BookingViewSet(viewsets.ModelViewSet):
                     )
                 except Exception:
                     pass
+                if acting_user_id != booking.customer_id:
+                    listing_name = _get_booking_listing_name(booking)
+                    Notification.objects.create(
+                        user=booking.customer,
+                        booking=booking,
+                        title='Booking status updated',
+                        message=(
+                            f'Your booking for {listing_name} is now '
+                            f'{booking.get_status_display().lower()}.'
+                        ),
+                        target_tab='bookings',
+                        notification_type='BOOKING_UPDATE',
+                    )
+                if acting_user_id == booking.customer_id or is_admin:
+                    listing_name = _get_booking_listing_name(booking)
+                    for provider in _get_booking_provider_users(booking):
+                        if provider.pk != acting_user_id:
+                            Notification.objects.create(
+                                user=provider,
+                                booking=booking,
+                                title='Booking activity updated',
+                                message=(
+                                    f'The booking for {listing_name} was '
+                                    f'{booking.get_status_display().lower()}.'
+                                ),
+                                target_tab='bookings',
+                                notification_type='BOOKING_UPDATE',
+                            )
+                _notify_admins(
+                    title='Booking status changed',
+                    message=(
+                        f'The booking for {_get_booking_listing_name(booking)} was '
+                        f'{booking.get_status_display().lower()}.'
+                    ),
+                    target_tab='bookings',
+                    booking=booking,
+                    exclude_user_id=acting_user_id if is_admin else None,
+                )
                 return Response(BookingSerializer(booking).data)
         except Booking.DoesNotExist:
             return Response({'error': 'Booking not found.'}, status=status.HTTP_404_NOT_FOUND)
@@ -1016,6 +1548,23 @@ class ReviewViewSet(viewsets.ModelViewSet):
             vendor=vendor,
             rating=rating_val,
             comment=comment
+        )
+        listing_name = _get_booking_listing_name(booking)
+        for provider in _get_booking_provider_users(booking):
+            Notification.objects.create(
+                user=provider,
+                booking=booking,
+                title='New customer review',
+                message=f'{user.get_full_name() or user.username} left a {rating_val}-star review for {listing_name}.',
+                target_tab='reviews',
+                notification_type='SYSTEM',
+            )
+        _notify_admins(
+            title='New customer review',
+            message=f'A {rating_val}-star review was submitted for {listing_name}.',
+            target_tab='reviews',
+            booking=booking,
+            exclude_user_id=user.id if is_admin_user(request) else None,
         )
 
         serializer = self.get_serializer(review)
@@ -1153,14 +1702,28 @@ class MessageViewSet(viewsets.ModelViewSet):
         except User.DoesNotExist:
             return Response({'error': 'Sender or Recipient user not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        msg = Message.objects.create(
-            sender=sender,
-            recipient=recipient,
-            booking=booking,
-            venue=venue,
-            vendor=vendor,
-            content=content
-        )
+        with transaction.atomic():
+            msg = Message.objects.create(
+                sender=sender,
+                recipient=recipient,
+                booking=booking,
+                venue=venue,
+                vendor=vendor,
+                content=content
+            )
+            if (
+                recipient.role in {'CUSTOMER', 'PROVIDER', 'VENDOR', 'VENUE_OWNER'}
+                and recipient.id != sender.id
+            ):
+                Notification.objects.create(
+                    user=recipient,
+                    booking=booking,
+                    source_message=msg,
+                    title='New message',
+                    message=f'New message from {sender.get_full_name() or sender.username}.',
+                    target_tab='messages',
+                    notification_type='MESSAGE',
+                )
 
         serializer = self.get_serializer(msg)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -1319,6 +1882,31 @@ class EventServiceViewSet(viewsets.ModelViewSet):
                 raise PermissionDenied("You do not have permission to modify this service.")
 
 
+def _platform_commission_total(payments):
+    real_payments = payments.filter(is_simulated=False)
+    real_commission = real_payments.filter(
+        commission_amount__isnull=False,
+    ).aggregate(total=Sum('commission_amount'))['total'] or Decimal('0')
+
+    legacy_real_commission = sum(
+        (
+            payout_service.calculate_payment_split(amount)[0]
+            for amount in real_payments.filter(
+                commission_amount__isnull=True,
+            ).values_list('amount', flat=True)
+        ),
+        Decimal('0'),
+    )
+    simulated_commission = sum(
+        (
+            payout_service.calculate_payment_split(amount)[0]
+            for amount in payments.filter(is_simulated=True).values_list('amount', flat=True)
+        ),
+        Decimal('0'),
+    )
+    return real_commission + legacy_real_commission + simulated_commission
+
+
 @api_view(['GET'])
 def platform_stats(request):
     total_venues = Venue.objects.count()
@@ -1337,8 +1925,10 @@ def platform_stats(request):
     completed_bookings = Booking.objects.filter(status='COMPLETED').count()
     cancelled_bookings = Booking.objects.filter(status='CANCELLED').count()
 
-    rev = Booking.objects.filter(status__in=['APPROVED', 'COMPLETED']).aggregate(s=Sum('total_price'))['s']
-    total_revenue = float(rev) if rev is not None else 0.0
+    commission_total = _platform_commission_total(
+        Payment.objects.filter(status='SUCCESS')
+    )
+    total_revenue = float(commission_total)
 
     total_reviews = Review.objects.count()
     from django.db.models import Avg
@@ -1361,6 +1951,8 @@ def platform_stats(request):
         'completed_bookings': completed_bookings,
         'cancelled_bookings': cancelled_bookings,
         'total_revenue': total_revenue,
+        'total_commission': total_revenue,
+        'commission_revenue': total_revenue,
         'total_reviews': total_reviews,
         'avg_rating': avg_rating,
     })
@@ -1391,22 +1983,55 @@ def refresh_all_ratings(request):
         return Response({'error': f'Failed to recalculate ratings: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+def _provider_payment_summary(bookings):
+    payments = Payment.objects.filter(
+        booking__in=bookings,
+        status='SUCCESS',
+        is_simulated=False,
+        commission_amount__isnull=False,
+    )
+    totals = payments.aggregate(
+        customer_paid=Sum('amount'),
+        commission_deducted=Sum('commission_amount'),
+        provider_net=Sum('provider_payout_amount'),
+        provider_received=Sum(
+            'provider_payout_amount',
+            filter=Q(payout_status='PAID'),
+        ),
+        pending_payouts=Count('id', filter=Q(payout_status='PENDING')),
+        failed_payouts=Count('id', filter=Q(payout_status='FAILED')),
+    )
+    return {
+        'total_customer_paid': float(totals['customer_paid'] or 0),
+        'total_commission_deducted': float(totals['commission_deducted'] or 0),
+        'total_provider_net': float(totals['provider_net'] or 0),
+        'total_provider_received': float(totals['provider_received'] or 0),
+        'pending_payouts': totals['pending_payouts'] or 0,
+        'failed_payouts': totals['failed_payouts'] or 0,
+    }
+
+
 class VendorDashboardView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, vendor_id):
         try:
             vendor = VendorProfile.objects.get(id=vendor_id)
         except VendorProfile.DoesNotExist:
             return Response({'error': 'Vendor not found'}, status=status.HTTP_404_NOT_FOUND)
+        if not is_admin_user(request) and request.user.id != vendor.user_id:
+            raise PermissionDenied('You are not authorized to view this vendor dashboard.')
             
         vendor_venues = Venue.objects.filter(vendor=vendor)
         bookings = Booking.objects.filter(Q(venue__in=vendor_venues) | Q(vendor=vendor))
         
-        total_revenue = bookings.filter(status='COMPLETED').aggregate(total=Sum('total_price'))['total'] or 0
+        payment_summary = _provider_payment_summary(bookings)
         pending_bookings = bookings.filter(status='PENDING').count()
         upcoming_bookings = bookings.filter(status='APPROVED').count()
         
         return Response({
-            'total_revenue': total_revenue,
+            **payment_summary,
+            'total_revenue': payment_summary['total_provider_received'],
             'pending_bookings': pending_bookings,
             'upcoming_bookings': upcoming_bookings,
             'total_venues': vendor_venues.count(),
@@ -1415,34 +2040,63 @@ class VendorDashboardView(APIView):
 
 
 class VendorBookingsView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, vendor_id):
         try:
             vendor = VendorProfile.objects.get(id=vendor_id)
         except VendorProfile.DoesNotExist:
             return Response({'error': 'Vendor not found'}, status=status.HTTP_404_NOT_FOUND)
+        if not is_admin_user(request) and request.user.id != vendor.user_id:
+            raise PermissionDenied('You are not authorized to view these vendor bookings.')
             
         vendor_venues = Venue.objects.filter(vendor=vendor)
-        bookings = Booking.objects.filter(Q(venue__in=vendor_venues) | Q(vendor=vendor)).order_by('-created_at')
+        bookings = Booking.objects.filter(
+            Q(venue__in=vendor_venues) | Q(vendor=vendor)
+        ).order_by('-created_at').prefetch_related(
+            Prefetch(
+                'payments',
+                queryset=Payment.objects.filter(
+                    status='SUCCESS',
+                    is_simulated=False,
+                    commission_amount__isnull=False,
+                ).order_by('-paid_at', '-created_at'),
+                to_attr='commissioned_payments',
+            ),
+            Prefetch(
+                'payments',
+                queryset=Payment.objects.filter(
+                    status='SUCCESS',
+                    is_simulated=True,
+                ).order_by('-created_at'),
+                to_attr='simulated_payments',
+            ),
+        )
         return Response(BookingSerializer(bookings, many=True).data)
 
 
 class VenueOwnerDashboardView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, owner_id):
         try:
             venue_owner = VenueOwnerProfile.objects.get(id=owner_id)
         except VenueOwnerProfile.DoesNotExist:
             return Response({'error': 'Venue owner not found'}, status=status.HTTP_404_NOT_FOUND)
+        if not is_admin_user(request) and request.user.id != venue_owner.user_id:
+            raise PermissionDenied('You are not authorized to view this venue owner dashboard.')
             
         owner_venues = Venue.objects.filter(owner=venue_owner)
         bookings = Booking.objects.filter(venue__in=owner_venues)
         
-        total_revenue = bookings.filter(status='COMPLETED').aggregate(total=Sum('total_price'))['total'] or 0
+        payment_summary = _provider_payment_summary(bookings)
         pending_bookings = bookings.filter(status='PENDING').count()
         upcoming_bookings = bookings.filter(status='APPROVED').count()
         verified_venues = owner_venues.filter(is_verified=True).count()
         
         return Response({
-            'total_revenue': total_revenue,
+            **payment_summary,
+            'total_revenue': payment_summary['total_provider_received'],
             'pending_bookings': pending_bookings,
             'upcoming_bookings': upcoming_bookings,
             'total_venues': owner_venues.count(),
@@ -1452,43 +2106,87 @@ class VenueOwnerDashboardView(APIView):
 
 
 class VenueOwnerBookingsView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, owner_id):
         try:
             venue_owner = VenueOwnerProfile.objects.get(id=owner_id)
         except VenueOwnerProfile.DoesNotExist:
             return Response({'error': 'Venue owner not found'}, status=status.HTTP_404_NOT_FOUND)
+        if not is_admin_user(request) and request.user.id != venue_owner.user_id:
+            raise PermissionDenied('You are not authorized to view these venue owner bookings.')
             
         owner_venues = Venue.objects.filter(owner=venue_owner)
-        bookings = Booking.objects.filter(venue__in=owner_venues).order_by('-created_at')
+        bookings = Booking.objects.filter(venue__in=owner_venues).order_by('-created_at').prefetch_related(
+            Prefetch(
+                'payments',
+                queryset=Payment.objects.filter(
+                    status='SUCCESS',
+                    is_simulated=False,
+                    commission_amount__isnull=False,
+                ).order_by('-paid_at', '-created_at'),
+                to_attr='commissioned_payments',
+            ),
+            Prefetch(
+                'payments',
+                queryset=Payment.objects.filter(
+                    status='SUCCESS',
+                    is_simulated=True,
+                ).order_by('-created_at'),
+                to_attr='simulated_payments',
+            ),
+        )
         return Response(BookingSerializer(bookings, many=True).data)
 
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def send_otp(request):
-    email = request.data.get('email', '').strip().lower()
+    email = str(request.data.get('email') or '').strip().lower()
     if not email:
         return Response({'error': 'Email is required'}, status=status.HTTP_400_BAD_REQUEST)
-    
+
+    try:
+        validate_email(email)
+    except DjangoValidationError:
+        return Response({'error': 'Enter a valid email address.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not settings.EMAIL_HOST or not settings.DEFAULT_FROM_EMAIL:
+        logging.getLogger(__name__).error('OTP email delivery is not configured.')
+        return Response(
+            {'error': 'Email delivery is not configured. Please contact the administrator.'},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
     otp_code = str(random.randint(100000, 999999))
-    
-    otp_obj, created = EmailOTP.objects.get_or_create(email=email)
+
+    otp_obj, _ = EmailOTP.objects.get_or_create(email=email)
     otp_obj.otp_code = otp_code
     otp_obj.save()
-    
+
     try:
-        send_mail(
+        sent_count = send_mail(
             subject='Your Verification Code',
             message=f'Your verification code is: {otp_code}\n\nThis code will expire in 10 minutes.',
-            from_email='noreply@eventplanning.co.ke',
+            from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[email],
             fail_silently=False,
         )
-    except Exception as e:
-        print(f"Error sending email: {e}")
-        
-    print(f"\n\n{'='*60}\n\n  🚨 OTP CODE FOR {email}: {otp_code} 🚨\n\n{'='*60}\n\n")
-    
+        if sent_count != 1:
+            otp_obj.delete()
+            logging.getLogger(__name__).error('OTP email backend did not confirm delivery.')
+            return Response(
+                {'error': 'The verification email could not be sent. Please try again later.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+    except Exception:
+        otp_obj.delete()
+        logging.getLogger(__name__).exception('Failed to send verification email.')
+        return Response(
+            {'error': 'The verification email could not be sent. Please try again later.'},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
     return Response({'message': 'OTP sent successfully'})
 
 
@@ -1596,21 +2294,44 @@ def upload_profile_picture(request, user_id):
 @transaction.atomic
 def register_user(request):
     data = request.data
-    email = data.get('email', '').strip().lower()
+    email = str(data.get('email') or '').strip().lower()
     username = data.get('username', '').strip() or email
+    otp_code = str(data.get('otp') or '').strip()
 
     if not email:
         return Response({'error': 'Email address is required'}, status=status.HTTP_400_BAD_REQUEST)
+    if not otp_code:
+        return Response({'error': 'A valid email verification code is required before registration.'}, status=status.HTTP_400_BAD_REQUEST)
     if User.objects.filter(email__iexact=email).exists():
         return Response({'error': 'An account with this email address already exists. Please log in.'}, status=status.HTTP_400_BAD_REQUEST)
     if User.objects.filter(username__iexact=username).exists():
         return Response({'error': 'This username is already taken'}, status=status.HTTP_400_BAD_REQUEST)
         
-    requested_role = (data.get('role') or '').strip().upper()
+    requested_role = str(data.get('role') or 'CUSTOMER').strip().upper()
     if requested_role == 'ADMIN':
         return Response({
             'error': 'Administrator registration is disabled. Administrators can only log in with pre-configured credentials.'
         }, status=status.HTTP_403_FORBIDDEN)
+    if requested_role not in {'CUSTOMER', 'PROVIDER'}:
+        return Response(
+            {'error': 'Choose either a customer or business provider account.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        otp_obj = EmailOTP.objects.select_for_update().get(email=email)
+    except EmailOTP.DoesNotExist:
+        return Response({'error': 'No verification code found. Request a new code.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if (timezone.now() - otp_obj.created_at).total_seconds() > 600:
+        otp_obj.delete()
+        return Response({'error': 'Verification code expired. Request a new code.'}, status=status.HTTP_400_BAD_REQUEST)
+    if otp_obj.otp_code != otp_code:
+        return Response({'error': 'Invalid verification code.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    password = data.get('password')
+    if not password:
+        return Response({'error': 'Password is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
         full_name = data.get('full_name', '').strip()
@@ -1624,18 +2345,31 @@ def register_user(request):
         user = User.objects.create_user(
             username=username,
             email=email,
-            password=data.get('password'),
+            password=password,
             first_name=first_name,
             last_name=last_name,
-            is_customer=True,
-            is_vendor=False,
-            is_venue_owner=False,
+            is_customer=requested_role == 'CUSTOMER',
+            is_vendor=requested_role == 'PROVIDER',
+            is_venue_owner=requested_role == 'PROVIDER',
             is_staff=False,
             is_superuser=False,
-            role='CUSTOMER',
+            role=requested_role,
             phone_number=data.get('phone_number', '')
         )
-        
+
+        if requested_role == 'PROVIDER':
+            _ensure_provider_profiles(user)
+
+        _notify_admins(
+            title='New account registered',
+            message=(
+                f'{user.get_full_name() or user.username} registered a '
+                f'{requested_role.lower()} account.'
+            ),
+            target_tab='verifications' if requested_role == 'PROVIDER' else 'users',
+        )
+
+        otp_obj.delete()
         serializer = UserSerializer(user)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
         
@@ -1658,7 +2392,7 @@ def login_user(request):
     user = authenticate(username=user_obj.username, password=password)
     
     if user is not None:
-        is_provider = user.role == 'PROVIDER' or (user.is_vendor and user.is_venue_owner)
+        is_provider = user.is_provider
         response_data = {
             'user': UserSerializer(user).data,
             'roles': {
@@ -1681,6 +2415,37 @@ def login_user(request):
         return Response(response_data, status=status.HTTP_200_OK)
     else:
         return Response({'error': 'Invalid credentials. Please verify your password.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+def _ensure_provider_profiles(user, include_vendor=True, include_venue_owner=True):
+    business_title = (
+        f"{user.first_name}'s Business"
+        if user.first_name else f"{user.username}'s Business"
+    )
+
+    if include_vendor:
+        VendorProfile.objects.get_or_create(
+            user=user,
+            defaults={
+                'business_name': business_title,
+                'vendor_type': 'Event Services',
+                'description': '',
+                'location': 'Nairobi',
+                'contact_email': user.email,
+                'contact_phone': user.phone_number or ''
+            }
+        )
+
+    if include_venue_owner:
+        VenueOwnerProfile.objects.get_or_create(
+            user=user,
+            defaults={
+                'business_name': business_title,
+                'contact_email': user.email,
+                'contact_phone': user.phone_number or '',
+                'business_type': 'Event Spaces'
+            }
+        )
 
 
 @api_view(['POST'])
@@ -1709,91 +2474,35 @@ def request_role(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    if role == 'CUSTOMER':
-        user.role = 'CUSTOMER'
-        user.is_customer = True
-        user.save()
+    provider_roles = {'PROVIDER', 'BUSINESS', 'VENDOR', 'VENUE_OWNER'}
+    current_is_provider = user.role in {'PROVIDER', 'VENDOR', 'VENUE_OWNER'}
+    requested_is_provider = role in provider_roles
 
-    elif role in ['PROVIDER', 'BUSINESS']:
-        user.role = 'PROVIDER'
-        user.is_customer = True
-        user.is_vendor = True
-        user.is_venue_owner = True
-        user.save()
-
-        business_title = (
-            f"{user.first_name}'s Business"
-            if user.first_name else f"{user.username}'s Business"
-        )
-
-        VendorProfile.objects.get_or_create(
-            user=user,
-            defaults={
-                'business_name': business_title,
-                'vendor_type': 'Event Services',
-                'location': 'Nairobi',
-                'contact_email': user.email,
-                'contact_phone': user.phone_number or ''
-            }
-        )
-
-        VenueOwnerProfile.objects.get_or_create(
-            user=user,
-            defaults={
-                'business_name': business_title,
-                'contact_email': user.email,
-                'contact_phone': user.phone_number or '',
-                'business_type': 'Event Spaces'
-            }
-        )
-
-    elif role == 'VENDOR':
-        user.role = 'VENDOR'
-        user.is_vendor = True
-        user.save()
-
-        VendorProfile.objects.get_or_create(
-            user=user,
-            defaults={
-                'business_name': (
-                    f"{user.first_name}'s Business"
-                    if user.first_name else "My Business"
-                ),
-                'vendor_type': 'Other',
-                'location': '',
-                'contact_email': user.email,
-                'contact_phone': user.phone_number or ''
-            }
-        )
-
-    elif role == 'VENUE_OWNER':
-        user.role = 'VENUE_OWNER'
-        user.is_venue_owner = True
-        user.save()
-
-        VenueOwnerProfile.objects.get_or_create(
-            user=user,
-            defaults={
-                'business_name': (
-                    f"{user.first_name}'s Venues"
-                    if user.first_name else "My Venues"
-                ),
-                'contact_email': user.email,
-                'contact_phone': user.phone_number or '',
-                'business_type': 'Event Venue'
-            }
-        )
-
-    else:
+    if role != 'CUSTOMER' and not requested_is_provider:
         return Response(
             {'error': 'Invalid role.'},
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    is_provider = (
-        user.role == 'PROVIDER'
-        or (user.is_vendor and user.is_venue_owner)
-    )
+    if (
+        user.role not in {'CUSTOMER', 'PROVIDER', 'VENDOR', 'VENUE_OWNER'}
+        or (role == 'CUSTOMER') != (user.role == 'CUSTOMER')
+        or (requested_is_provider and not current_is_provider)
+    ):
+        return Response(
+            {'error': 'Account type cannot be changed after registration.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    if requested_is_provider and current_is_provider:
+        if role in {'PROVIDER', 'BUSINESS'}:
+            _ensure_provider_profiles(user)
+        elif role == 'VENDOR':
+            _ensure_provider_profiles(user, include_venue_owner=False)
+        elif role == 'VENUE_OWNER':
+            _ensure_provider_profiles(user, include_vendor=False)
+
+    is_provider = user.is_provider
 
     response_data = {
         'user': UserSerializer(user).data,
@@ -1839,7 +2548,9 @@ class NotificationViewSet(viewsets.ModelViewSet):
                 return Notification.objects.none()
 
         evaluate_and_generate_reminders(user=user)
-        return Notification.objects.filter(user=user).order_by('-created_at')
+        return Notification.objects.filter(user=user).select_related(
+            'event', 'task', 'booking', 'source_message__sender'
+        ).order_by('-created_at')
 
     @action(detail=True, methods=['post', 'patch'])
     def mark_read(self, request, pk=None):
@@ -1975,7 +2686,7 @@ class VerificationDocumentViewSet(viewsets.ModelViewSet):
         vendor = getattr(req_user, 'vendor_profile', None)
         venue_owner = getattr(req_user, 'venue_owner_profile', None)
 
-        serializer.save(
+        document = serializer.save(
             user=req_user,
             vendor=vendor,
             venue_owner=venue_owner,
@@ -1987,6 +2698,14 @@ class VerificationDocumentViewSet(viewsets.ModelViewSet):
             admin_notes=None,
             reviewed_by=None,
             reviewed_at=None
+        )
+        _notify_admins(
+            title='Verification document submitted',
+            message=(
+                f'{req_user.get_full_name() or req_user.username} uploaded a '
+                f'{document.get_document_type_display().lower()} document for review.'
+            ),
+            target_tab='verifications',
         )
 
     def destroy(self, request, *args, **kwargs):
@@ -2045,30 +2764,41 @@ class VerificationDocumentViewSet(viewsets.ModelViewSet):
         user = doc.user
         if doc.venue_owner:
             owner = doc.venue_owner
+            if not _is_approved_business_profile(owner):
+                _reset_preapproved_listings(owner, 'owner')
             owner.is_verified = True
             owner.verification_status = 'APPROVED'
             owner.save(update_fields=['is_verified', 'verification_status'])
-            Venue.objects.filter(owner=owner).update(is_verified=True)
         elif hasattr(user, 'venue_owner_profile'):
             owner = user.venue_owner_profile
+            if not _is_approved_business_profile(owner):
+                _reset_preapproved_listings(owner, 'owner')
             owner.is_verified = True
             owner.verification_status = 'APPROVED'
             owner.save(update_fields=['is_verified', 'verification_status'])
-            Venue.objects.filter(owner=owner).update(is_verified=True)
 
         if doc.vendor:
             vendor = doc.vendor
+            if not _is_approved_business_profile(vendor):
+                _reset_preapproved_listings(vendor, 'vendor')
             vendor.is_verified = True
             vendor.verification_status = 'APPROVED'
             vendor.save(update_fields=['is_verified', 'verification_status'])
-            Venue.objects.filter(vendor=vendor).update(is_verified=True)
         elif hasattr(user, 'vendor_profile'):
             vendor = user.vendor_profile
+            if not _is_approved_business_profile(vendor):
+                _reset_preapproved_listings(vendor, 'vendor')
             vendor.is_verified = True
             vendor.verification_status = 'APPROVED'
             vendor.save(update_fields=['is_verified', 'verification_status'])
-            Venue.objects.filter(vendor=vendor).update(is_verified=True)
 
+        Notification.objects.create(
+            user=user,
+            title='Verification document approved',
+            message='Your verification document was approved by an administrator.',
+            target_tab='profile',
+            notification_type='SYSTEM',
+        )
         return Response(VerificationDocumentSerializer(doc).data)
 
     @action(detail=True, methods=['post'])
@@ -2119,6 +2849,13 @@ class VerificationDocumentViewSet(viewsets.ModelViewSet):
                 vendor.save(update_fields=['is_verified', 'verification_status'])
                 Venue.objects.filter(vendor=vendor).update(is_verified=False)
 
+        Notification.objects.create(
+            user=user,
+            title='Verification document requires changes',
+            message=f'Your verification document was rejected: {reason}',
+            target_tab='profile',
+            notification_type='SYSTEM',
+        )
         return Response(VerificationDocumentSerializer(doc).data)
 
 
@@ -2361,6 +3098,25 @@ def admin_analytics(request):
 
     interactions = UserInteraction.objects.filter(timestamp__gte=start_dt, timestamp__lte=end_dt)
     bookings = Booking.objects.filter(created_at__gte=start_dt, created_at__lte=end_dt)
+    commission_payments = Payment.objects.filter(status='SUCCESS').filter(
+        (
+            Q(is_simulated=False)
+            & (
+                Q(paid_at__gte=start_dt, paid_at__lte=end_dt)
+                | Q(
+                    paid_at__isnull=True,
+                    created_at__gte=start_dt,
+                    created_at__lte=end_dt,
+                )
+            )
+        )
+        | Q(
+            is_simulated=True,
+            created_at__gte=start_dt,
+            created_at__lte=end_dt,
+        )
+    )
+    commission_revenue = _platform_commission_total(commission_payments)
 
     total_searches = interactions.filter(event_type='SEARCH').count()
     total_listing_views = interactions.filter(event_type='LISTING_VIEW').count()
@@ -2476,6 +3232,7 @@ def admin_analytics(request):
             'booking_requests': booking_requests,
             'confirmed_bookings': confirmed_bookings,
             'completed_bookings': completed_bookings,
+            'commission_revenue': float(commission_revenue),
             'cancelled_bookings': cancelled_bookings,
             'cancellation_rate': cancellation_rate,
             'search_to_booking_rate': search_to_booking_rate,
@@ -2514,6 +3271,26 @@ def export_admin_analytics_csv(request):
     writer.writerow(['Booking Requests', bookings.count()])
     writer.writerow(['Confirmed Bookings', bookings.filter(status__in=['APPROVED', 'COMPLETED']).count()])
     writer.writerow(['Completed Bookings', bookings.filter(status='COMPLETED').count()])
+    commission_payments = Payment.objects.filter(status='SUCCESS').filter(
+        (
+            Q(is_simulated=False)
+            & (
+                Q(paid_at__gte=start_dt, paid_at__lte=end_dt)
+                | Q(
+                    paid_at__isnull=True,
+                    created_at__gte=start_dt,
+                    created_at__lte=end_dt,
+                )
+            )
+        )
+        | Q(
+            is_simulated=True,
+            created_at__gte=start_dt,
+            created_at__lte=end_dt,
+        )
+    )
+    commission_revenue = _platform_commission_total(commission_payments)
+    writer.writerow(['Platform Commission Revenue (KES)', commission_revenue])
     writer.writerow(['Cancelled Bookings', bookings.filter(status='CANCELLED').count()])
     writer.writerow([])
 
@@ -2564,6 +3341,7 @@ def vendor_analytics(request, vendor_id):
         created_at__gte=start_dt,
         created_at__lte=end_dt
     )
+    payment_summary = _provider_payment_summary(bookings)
 
     service_views = interactions.filter(event_type='LISTING_VIEW').count()
     service_clicks = interactions.filter(event_type='LISTING_CLICK').count()
@@ -2620,6 +3398,7 @@ def vendor_analytics(request, vendor_id):
             'completed_bookings': completed_bookings,
             'cancelled_bookings': cancelled_bookings,
             'pending_bookings': pending_bookings,
+            **payment_summary,
             'cancellation_rate': cancellation_rate,
             'conversion_rate': conversion_rate,
         },
@@ -2661,6 +3440,11 @@ def export_vendor_analytics_csv(request, vendor_id):
     writer.writerow(['Booking Requests Received', bookings.count()])
     writer.writerow(['Confirmed Bookings', bookings.filter(status__in=['APPROVED', 'COMPLETED']).count()])
     writer.writerow(['Completed Bookings', bookings.filter(status='COMPLETED').count()])
+    payment_summary = _provider_payment_summary(bookings)
+    writer.writerow(['Customer Payments Received (KES)', payment_summary['total_customer_paid']])
+    writer.writerow(['Commission Deducted (KES)', payment_summary['total_commission_deducted']])
+    writer.writerow(['Provider Net Payout (KES)', payment_summary['total_provider_net']])
+    writer.writerow(['Provider Payouts Received (KES)', payment_summary['total_provider_received']])
     writer.writerow(['Cancelled Bookings', bookings.filter(status='CANCELLED').count()])
     writer.writerow([])
 
@@ -2713,6 +3497,7 @@ def venue_owner_analytics(request, owner_id):
         created_at__gte=start_dt,
         created_at__lte=end_dt
     )
+    payment_summary = _provider_payment_summary(bookings)
 
     venue_views = interactions.filter(event_type='LISTING_VIEW').count()
     venue_clicks = interactions.filter(event_type='LISTING_CLICK').count()
@@ -2783,6 +3568,7 @@ def venue_owner_analytics(request, owner_id):
             'completed_bookings': completed_bookings,
             'cancelled_bookings': cancelled_bookings,
             'pending_bookings': pending_bookings,
+            **payment_summary,
             'cancellation_rate': cancellation_rate,
             'conversion_rate': conversion_rate,
         },
@@ -2826,6 +3612,11 @@ def export_venue_owner_analytics_csv(request, owner_id):
     writer.writerow(['Booking Requests Received', bookings.count()])
     writer.writerow(['Confirmed Bookings', bookings.filter(status__in=['APPROVED', 'COMPLETED']).count()])
     writer.writerow(['Completed Bookings', bookings.filter(status='COMPLETED').count()])
+    payment_summary = _provider_payment_summary(bookings)
+    writer.writerow(['Customer Payments Received (KES)', payment_summary['total_customer_paid']])
+    writer.writerow(['Commission Deducted (KES)', payment_summary['total_commission_deducted']])
+    writer.writerow(['Provider Net Payout (KES)', payment_summary['total_provider_net']])
+    writer.writerow(['Provider Payouts Received (KES)', payment_summary['total_provider_received']])
     writer.writerow(['Cancelled Bookings', bookings.filter(status='CANCELLED').count()])
     writer.writerow([])
 
@@ -2967,6 +3758,62 @@ def vendor_recommendations(request):
 # ==============================================================================
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def mpesa_simulate_payment(request):
+    if not settings.DEBUG or not settings.MPESA_SIMULATION_ENABLED:
+        return Response(
+            {'success': False, 'message': 'Payment simulation is disabled.'},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    booking_id = request.data.get('bookingId')
+    try:
+        booking = Booking.objects.select_for_update().get(
+            pk=booking_id,
+            customer=request.user,
+            status='APPROVED',
+        )
+    except (Booking.DoesNotExist, TypeError, ValueError):
+        return Response(
+            {'success': False, 'message': 'Confirmed booking not found.'},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    if Payment.objects.filter(booking=booking, status='SUCCESS').exists():
+        return Response(
+            {'success': False, 'message': 'This booking already has a successful payment.'},
+            status=status.HTTP_409_CONFLICT,
+        )
+
+    simulation_id = uuid.uuid4().hex[:12].upper()
+    payment = Payment.objects.create(
+        booking=booking,
+        checkout_request_id=f'SIMULATED-{booking.id}-{simulation_id}',
+        merchant_request_id='SIMULATED',
+        customer_phone=booking.customer.phone_number or 'SIMULATED',
+        amount=booking.total_price,
+        account_reference=f'TEST-EVT-{booking.id}',
+        status='SUCCESS',
+        is_simulated=True,
+        result_code=0,
+        result_desc='Simulated test payment; no M-Pesa transaction occurred.',
+        mpesa_receipt_number=f'TEST-{simulation_id}',
+        transaction_date=timezone.now().strftime('%Y%m%d%H%M%S'),
+    )
+
+    return Response(
+        {
+            'success': True,
+            'simulated': True,
+            'message': 'Test payment recorded; no M-Pesa transaction occurred.',
+            'payment': PaymentSerializer(payment).data,
+        },
+        status=status.HTTP_201_CREATED,
+    )
+
+
+@api_view(['POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
 def mpesa_stk_push(request):
@@ -2978,7 +3825,7 @@ def mpesa_stk_push(request):
     phone = request.data.get('phone')
     amount = request.data.get('amount')
 
-    if not booking_id or not phone or not amount:
+    if not booking_id or not phone or amount is None:
         return Response(
             {'success': False, 'message': 'bookingId, phone, and amount are required'},
             status=status.HTTP_400_BAD_REQUEST,
@@ -2992,12 +3839,44 @@ def mpesa_stk_push(request):
             status=status.HTTP_404_NOT_FOUND,
         )
 
+    try:
+        expected_amount = Decimal(str(booking.total_price)).quantize(
+            Decimal('1'),
+            rounding=ROUND_HALF_UP,
+        )
+        requested_amount = Decimal(str(amount)).quantize(
+            Decimal('1'),
+            rounding=ROUND_HALF_UP,
+        )
+    except Exception:
+        return Response(
+            {'success': False, 'message': 'A valid payment amount is required.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if expected_amount < 1 or requested_amount != expected_amount:
+        return Response(
+            {'success': False, 'message': 'Payment amount must match the booking total.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if Payment.objects.filter(
+        booking=booking,
+        status='SUCCESS',
+        is_simulated=False,
+        paid_at__isnull=False,
+    ).exists():
+        return Response(
+            {'success': False, 'message': 'This booking already has a successful payment.'},
+            status=status.HTTP_409_CONFLICT,
+        )
+
     account_reference = request.data.get('accountReference') or f'EVT-{booking.id}'
 
     try:
         stk_response = mpesa_service.initiate_stk_push(
             phone=phone,
-            amount=int(float(amount)),
+            amount=int(expected_amount),
             account_reference=account_reference,
             description='Booking Payment',
         )
@@ -3024,7 +3903,7 @@ def mpesa_stk_push(request):
         checkout_request_id=stk_response['CheckoutRequestID'],
         merchant_request_id=stk_response.get('MerchantRequestID', ''),
         customer_phone=phone,
-        amount=amount,
+        amount=expected_amount,
         account_reference=account_reference,
         status='PENDING',
     )
@@ -3049,38 +3928,180 @@ def mpesa_callback(request):
     try:
         stk = request.data.get('Body', {}).get('stkCallback', {})
         checkout_id = stk.get('CheckoutRequestID')
-        result_code = stk.get('ResultCode')
-        result_desc = stk.get('ResultDesc', '')
-
         if not checkout_id:
+            logging.getLogger(__name__).warning('Received an STK callback without a checkout ID.')
             return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
 
-        metadata = {}
-        for item in stk.get('CallbackMetadata', {}).get('Item', []) or []:
-            metadata[item.get('Name')] = item.get('Value')
-
-        payment = Payment.objects.filter(checkout_request_id=checkout_id).first()
-        if not payment:
+        payment_info = Payment.objects.filter(
+            checkout_request_id=checkout_id
+        ).values('id', 'booking_id').first()
+        if not payment_info:
+            logging.getLogger(__name__).warning(
+                'Received an STK callback for an unknown checkout ID.'
+            )
             return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
 
-        payment.result_code = result_code
-        payment.result_desc = result_desc
+        try:
+            result_code = int(stk.get('ResultCode'))
+        except (TypeError, ValueError):
+            logging.getLogger(__name__).warning(
+                'Received an STK callback with an invalid result code.'
+            )
+            return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
 
-        if result_code == 0:
-            payment.status = 'SUCCESS'
-            payment.mpesa_receipt_number = metadata.get('MpesaReceiptNumber', '')
-            payment.transaction_date = str(metadata.get('TransactionDate', ''))
-        elif result_code == 1032:
-            payment.status = 'CANCELLED'
-        else:
-            payment.status = 'FAILED'
+        metadata = {
+            item.get('Name'): item.get('Value')
+            for item in stk.get('CallbackMetadata', {}).get('Item', []) or []
+            if isinstance(item, dict) and item.get('Name')
+        }
 
-        payment.save()
+        with transaction.atomic():
+            booking = Booking.objects.select_for_update().get(pk=payment_info['booking_id'])
+            payment = Payment.objects.select_for_update().get(pk=payment_info['id'])
+            if payment.is_simulated or payment.status != 'PENDING':
+                return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
+
+            payment.result_code = result_code
+            payment.result_desc = str(stk.get('ResultDesc') or '')
+            schedule_payout = False
+
+            if result_code == 0:
+                try:
+                    if metadata.get('Amount') is not None:
+                        payment.amount = Decimal(str(metadata['Amount'])).quantize(
+                            Decimal('1'),
+                            rounding=ROUND_HALF_UP,
+                        )
+                except Exception:
+                    logging.getLogger(__name__).exception(
+                        'STK callback contained an invalid amount for payment ID %s.',
+                        payment.id,
+                    )
+
+                payment.status = 'SUCCESS'
+                payment.paid_at = timezone.now()
+                payment.mpesa_receipt_number = str(metadata.get('MpesaReceiptNumber') or '')
+                payment.transaction_date = str(metadata.get('TransactionDate') or '')
+
+                prior_real_collection = Payment.objects.filter(
+                    booking=booking,
+                    status='SUCCESS',
+                    is_simulated=False,
+                    paid_at__isnull=False,
+                ).exclude(pk=payment.pk).exists()
+                if prior_real_collection:
+                    payment.payout_status = 'FAILED'
+                    payment.payout_error = (
+                        'A second successful collection was received for this booking; '
+                        'manual reconciliation is required.'
+                    )
+                    payment.manual_reconciliation_required = True
+                else:
+                    try:
+                        commission, provider_payout = payout_service.calculate_payment_split(
+                            payment.amount
+                        )
+                        payment.commission_amount = commission
+                        payment.provider_payout_amount = provider_payout
+                        if booking.status == 'CANCELLED':
+                            payment.payout_status = 'FAILED'
+                            payment.payout_error = (
+                                'Booking cancellation requires manual payment reconciliation; '
+                                'no automatic payout or refund was issued.'
+                            )
+                            payment.manual_reconciliation_required = True
+                        else:
+                            try:
+                                payment.payout_phone = payout_service.resolve_provider_phone(booking)
+                            except ValueError:
+                                payment.payout_phone = ''
+                            payment.payout_status = 'PENDING'
+                            schedule_payout = True
+                    except ValueError as exc:
+                        payment.payout_status = 'FAILED'
+                        payment.payout_error = str(exc)
+                        payment.manual_reconciliation_required = True
+                        logging.getLogger(__name__).exception(
+                            'Commission split could not be calculated for payment ID %s.',
+                            payment.id,
+                        )
+            elif result_code == 1032:
+                payment.status = 'CANCELLED'
+            else:
+                payment.status = 'FAILED'
+
+            payment.save()
+            if schedule_payout:
+                transaction.on_commit(
+                    lambda payment_id=payment.id: payout_service.initiate_provider_payout(payment_id)
+                )
 
     except Exception:
-        pass
+        logging.getLogger(__name__).exception('Failed to process STK callback.')
 
     return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def mpesa_b2c_result(request):
+    result = request.data.get('Result') or {}
+    if not isinstance(result, dict):
+        logging.getLogger(__name__).warning('Received a malformed B2C result callback.')
+        return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
+    try:
+        payout_service.handle_b2c_callback(result)
+    except Exception:
+        logging.getLogger(__name__).exception('Failed to process B2C result callback.')
+    return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def mpesa_b2c_timeout(request):
+    result = request.data.get('Result') or {}
+    if not isinstance(result, dict):
+        logging.getLogger(__name__).warning('Received a malformed B2C timeout callback.')
+        return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
+    try:
+        payout_service.handle_b2c_callback(result, timeout=True)
+    except Exception:
+        logging.getLogger(__name__).exception('Failed to process B2C timeout callback.')
+    return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def mpesa_retry_payout(request, payment_id):
+    if not is_admin_user(request):
+        raise PermissionDenied('Administrator privileges are required to retry a payout.')
+
+    try:
+        payment = payout_service.initiate_provider_payout(payment_id, retry=True)
+    except Payment.DoesNotExist:
+        return Response(
+            {'success': False, 'message': 'Payment not found.'},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    except payout_service.PayoutRetryNotAllowed as exc:
+        return Response(
+            {'success': False, 'message': str(exc)},
+            status=status.HTTP_409_CONFLICT,
+        )
+
+    payment.refresh_from_db()
+    response_data = {
+        'success': True,
+        'payment': PaymentSerializer(payment).data,
+        'booking': BookingSerializer(payment.booking).data,
+    }
+    if payment.payout_status == 'FAILED':
+        response_data['success'] = False
+        response_data['message'] = payment.payout_error or 'Provider payout failed.'
+        return Response(response_data, status=status.HTTP_502_BAD_GATEWAY)
+    return Response(response_data)
 
 
 @api_view(['GET'])

@@ -39,8 +39,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // Pre-filled contact info (readonly or editable? We'll make it editable just in case, but initialized from currentUser)
-  const [contactName, setContactName] = useState(currentUser.username || '');
+  const [contactName, setContactName] = useState(
+    [currentUser.first_name, currentUser.last_name].filter(Boolean).join(' ')
+  );
   const [contactEmail, setContactEmail] = useState(currentUser.email || '');
   const [contactPhone, setContactPhone] = useState(currentUser.phone_number || '');
 
@@ -98,6 +99,23 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     }
 
     try {
+      const dateAvailability = venue
+        ? await ApiService.getVenueDateAvailability(venue.id, eventDate)
+        : vendor
+          ? await ApiService.getVendorDateAvailability(vendor.id, eventDate)
+          : null;
+
+      if (dateAvailability && !dateAvailability.available) {
+        throw new Error(dateAvailability.message);
+      }
+
+      const requestedGuests = Number(guestCount) || 0;
+      if (dateAvailability && requestedGuests > dateAvailability.remaining_capacity) {
+        throw new Error(
+          `Only ${dateAvailability.remaining_capacity} guest spaces remain for this date.`
+        );
+      }
+
       const combinedNotes = `Start Time: ${startTime}\nEnd Time: ${endTime}\n\n${notes}`;
 
       const created = await ApiService.createBooking({
@@ -361,7 +379,15 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '32px' }}>
               <div>
                 <label style={labelStyle}>Full Name</label>
-                <input type="text" required value={contactName} onChange={(e) => setContactName(e.target.value)} style={inputStyle} />
+                <input
+                  type="text"
+                  required
+                  autoComplete="name"
+                  placeholder="Enter your full name"
+                  value={contactName}
+                  onChange={(e) => setContactName(e.target.value)}
+                  style={inputStyle}
+                />
               </div>
               <div>
                 <label style={labelStyle}>Email</label>

@@ -69,7 +69,7 @@ export const VenueModal: React.FC<VenueModalProps> = ({ venue, currentUser, onCl
     checked: boolean;
     available: boolean;
     message: string;
-    statusType: 'AVAILABLE' | 'UNAVAILABLE' | 'BOOKED';
+    statusType: 'AVAILABLE' | 'UNAVAILABLE' | 'BOOKED' | 'CAPACITY_NEEDED' | 'UNKNOWN';
   } | null>(null);
 
   const handleCheckDateAvailability = async () => {
@@ -77,79 +77,24 @@ export const VenueModal: React.FC<VenueModalProps> = ({ venue, currentUser, onCl
       toast.error('Please select a date to check availability.');
       return;
     }
-    if (!hasGuestCapacity) {
-      setAvailabilityResult({
-        checked: true,
-        available: false,
-        statusType: 'UNAVAILABLE',
-        message: 'The provider has not set a maximum guest capacity for this listing yet.'
-      });
-      return;
-    }
-
     setCheckingAvailability(true);
 
     try {
-      // 1. Check vendor-configured custom schedule
-      let isExplicitlyBlocked = false;
-      try {
-        const savedStatuses = localStorage.getItem('locyfy_vendor_day_statuses');
-        if (savedStatuses) {
-          const parsed: Record<string, string> = JSON.parse(savedStatuses);
-          if (parsed[checkDate] === 'UNAVAILABLE') {
-            isExplicitlyBlocked = true;
-          }
-        }
-      } catch (e) {
-        console.error(e);
-      }
-
-      // 2. Check bookings for this venue and calculate remaining guest capacity
-      const totalCapacityLimit = Number(venue.capacity);
-
-      const bookings = await ApiService.getBookings({ owner: venue.owner });
-      const confirmedBookingsOnDate = bookings.filter(b =>
-        (b.venue === venue.id || (b.venue_details && b.venue_details.id === venue.id)) &&
-        (b.status === 'APPROVED' || b.status === 'COMPLETED') &&
-        b.event_date.startsWith(checkDate)
-      );
-
-      // Sum all guests already booked on this day
-      const bookedGuestsOnDate = confirmedBookingsOnDate.reduce((sum, b) => sum + (Number(b.guest_count) || 0), 0);
-      const remainingGuestCapacity = Math.max(0, totalCapacityLimit - bookedGuestsOnDate);
-      const isDateFull = remainingGuestCapacity <= 0;
-
-      if (isExplicitlyBlocked) {
-        setAvailabilityResult({
-          checked: true,
-          available: false,
-          statusType: 'UNAVAILABLE',
-          message: 'This venue is marked as unavailable on this date.'
-        });
-      } else if (isDateFull) {
-        setAvailabilityResult({
-          checked: true,
-          available: false,
-          statusType: 'BOOKED',
-          message: `This date has reached full capacity (${totalCapacityLimit} guests accommodated across booked events).`
-        });
-      } else {
-        setAvailabilityResult({
-          checked: true,
-          available: true,
-          statusType: 'AVAILABLE',
-          message: bookedGuestsOnDate > 0
-            ? `Available! (${remainingGuestCapacity} guest capacity remaining out of ${totalCapacityLimit})`
-            : `Great news! Fully available (Up to ${totalCapacityLimit} guests).`
-        });
-      }
-    } catch {
-      // Fallback check
+      const result = await ApiService.getVenueDateAvailability(venue.id, checkDate);
       setAvailabilityResult({
         checked: true,
-        available: true,
-        statusType: 'AVAILABLE',
-        message: 'This date appears open for booking!'
+        available: result.available,
+        statusType: result.status === 'FULL' ? 'BOOKED' : result.status,
+        message: result.message,
+      });
+    } catch (error) {
+      console.error('Failed to check venue availability:', error);
+      toast.error(error instanceof Error ? error.message : 'Could not check availability.');
+      setAvailabilityResult({
+        checked: true,
+        available: false,
+        statusType: 'UNKNOWN',
+        message: 'Availability could not be checked. Please try again.'
       });
     } finally {
       setCheckingAvailability(false);
@@ -424,14 +369,21 @@ export const VenueModal: React.FC<VenueModalProps> = ({ venue, currentUser, onCl
                 marginTop: '16px',
                 padding: '14px 16px',
                 borderRadius: '10px',
-                border: `1px solid ${availabilityResult.available ? '#a7f3d0' : '#fecaca'
-                  }`,
-                background: availabilityResult.available ? '#ecfdf5' : '#fef2f2',
+                border: `1px solid ${
+                  availabilityResult.statusType === 'UNKNOWN' || availabilityResult.statusType === 'CAPACITY_NEEDED'
+                    ? '#fcd34d'
+                    : availabilityResult.available ? '#a7f3d0' : '#fecaca'
+                }`,
+                background: availabilityResult.statusType === 'UNKNOWN' || availabilityResult.statusType === 'CAPACITY_NEEDED'
+                  ? '#fffbeb'
+                  : availabilityResult.available ? '#ecfdf5' : '#fef2f2',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '12px'
               }}>
-                {availabilityResult.available ? (
+                {availabilityResult.statusType === 'UNKNOWN' || availabilityResult.statusType === 'CAPACITY_NEEDED' ? (
+                  <AlertCircle size={20} color="#b45309" />
+                ) : availabilityResult.available ? (
                   <CheckCircle2 size={20} color="#059669" />
                 ) : (
                   <AlertCircle size={20} color="#dc2626" />
@@ -440,13 +392,23 @@ export const VenueModal: React.FC<VenueModalProps> = ({ venue, currentUser, onCl
                   <div style={{
                     fontSize: '0.9rem',
                     fontWeight: 700,
-                    color: availabilityResult.available ? '#065f46' : '#991b1b'
+                    color: availabilityResult.statusType === 'UNKNOWN' || availabilityResult.statusType === 'CAPACITY_NEEDED'
+                      ? '#92400e'
+                      : availabilityResult.available ? '#065f46' : '#991b1b'
                   }}>
-                    {availabilityResult.available ? 'Available on this date!' : 'Unavailable on this date'}
+                    {availabilityResult.statusType === 'UNKNOWN'
+                      ? 'Availability could not be checked'
+                      : availabilityResult.statusType === 'CAPACITY_NEEDED'
+                        ? 'Capacity not set'
+                        : availabilityResult.statusType === 'BOOKED'
+                          ? 'Fully booked on this date'
+                          : availabilityResult.available ? 'Available on this date!' : 'Unavailable on this date'}
                   </div>
                   <div style={{
                     fontSize: '0.82rem',
-                    color: availabilityResult.available ? '#047857' : '#b91c1c',
+                    color: availabilityResult.statusType === 'UNKNOWN' || availabilityResult.statusType === 'CAPACITY_NEEDED'
+                      ? '#a16207'
+                      : availabilityResult.available ? '#047857' : '#b91c1c',
                     marginTop: '2px'
                   }}>
                     {availabilityResult.message}
@@ -679,7 +641,7 @@ export const VenueModal: React.FC<VenueModalProps> = ({ venue, currentUser, onCl
                   src={portfolioImages[portfolioGalleryIndex].safeUrl}
                   alt={portfolioImages[portfolioGalleryIndex].caption || `${venue.title} portfolio image ${portfolioGalleryIndex + 1}`}
                   onError={(event) => { event.currentTarget.style.display = 'none'; }}
-                  style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '10px' }}
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '10px' }}
                 />
                 {portfolioImages.length > 1 && (
                   <button

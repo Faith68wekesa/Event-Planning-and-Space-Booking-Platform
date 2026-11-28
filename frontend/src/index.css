@@ -283,6 +283,42 @@ textarea:focus {
   box-sizing: border-box;
 }
 
+.logout-confirm-overlay {
+  z-index: 1200;
+}
+
+.logout-confirm-dialog {
+  max-width: 440px;
+  padding: 30px;
+}
+
+.logout-confirm-icon {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 18px;
+  border-radius: 16px;
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.logout-confirm-dialog h2 {
+  margin-bottom: 8px;
+  font-size: 1.4rem;
+}
+
+.logout-confirm-dialog p {
+  line-height: 1.6;
+}
+
+.logout-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 26px;
+}
+
 .listing-detail-modal {
   display: flex;
   flex-direction: column;
@@ -560,6 +596,19 @@ textarea:focus {
     min-width: 0;
   }
 
+  .logout-confirm-dialog {
+    border-radius: 24px !important;
+    padding: 24px;
+  }
+
+  .logout-confirm-actions {
+    flex-direction: column-reverse;
+  }
+
+  .logout-confirm-actions button {
+    width: 100%;
+  }
+
   .customer-message-layout {
     grid-template-columns: minmax(0, 1fr) !important;
     height: calc(100dvh - 220px) !important;
@@ -605,6 +654,17 @@ textarea:focus {
 
   .locyfy-modal-body {
     padding: 16px 16px 20px !important;
+  }
+}
+
+@media (max-width: 800px) {
+  .listing-browser-layout {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 18px !important;
+  }
+
+  .listing-browser-layout>* {
+    min-width: 0;
   }
 }
 

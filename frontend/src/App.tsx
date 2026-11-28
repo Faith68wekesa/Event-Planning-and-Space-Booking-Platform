@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { UserRole, Venue, Vendor, VenueOwner, Booking, PlatformStats, FilterState } from './types';
 import { ApiService, setApiCurrentUserId, setApiAuthToken } from './services/api.ts';
 import { LandingPage } from './components/LandingPage.tsx';
@@ -12,8 +12,10 @@ import { CustomerDashboard } from './components/CustomerDashboard.tsx';
 import { AdminDashboard } from './components/AdminDashboard.tsx';
 import { ProviderDashboard } from './components/ProviderDashboard.tsx';
 import { AuthModal } from './components/AuthModal.tsx';
+import { BackButton } from './components/BackButton.tsx';
 import type { User as UserType } from './types';
 import { Toaster, toast } from 'react-hot-toast';
+import { LogOut } from 'lucide-react';
 
 const VENUE_CATEGORY_CODES = new Set([
   'WEDDING',
@@ -31,6 +33,30 @@ const SERVICE_CATEGORY_CODES = new Set([
   'ENTERTAINMENT',
   'PLANNING',
   'SOUND',
+]);
+
+const getDashboardTabForUser = (user: UserType | null): string => {
+  if (!user) return 'landing';
+  if (user.role === 'ADMIN' || user.is_staff || user.is_superuser) {
+    return 'admin-dashboard';
+  }
+  if (user.is_provider || ['PROVIDER', 'VENDOR', 'VENUE_OWNER'].includes(user.role)) {
+    return 'provider-dashboard';
+  }
+  if (user.role === 'CUSTOMER' || user.is_customer) {
+    return 'my-bookings';
+  }
+  return 'landing';
+};
+
+// Tabs that require a signed-in user (used to guard the browser Back button)
+const PROTECTED_TABS = new Set([
+  'my-bookings',
+  'my-events',
+  'provider-dashboard',
+  'vendor-dashboard',
+  'venue-owner-dashboard',
+  'admin-dashboard',
 ]);
 
 export const App: React.FC = () => {
@@ -75,7 +101,7 @@ export const App: React.FC = () => {
         if (parsed?.user?.role === 'ADMIN' || parsed?.user?.is_staff || parsed?.user?.is_superuser) {
           return 'ADMIN';
         }
-        if (parsed?.user?.role === 'PROVIDER' || parsed?.vendor_profile || parsed?.venue_owner_profile) {
+        if (parsed?.user?.is_provider || ['PROVIDER', 'VENDOR', 'VENUE_OWNER'].includes(parsed?.user?.role)) {
           return 'PROVIDER';
         }
       }
@@ -88,9 +114,7 @@ export const App: React.FC = () => {
       const saved = localStorage.getItem('locyfy_session_auth');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed?.user?.role === 'ADMIN' || parsed?.user?.is_staff || parsed?.user?.is_superuser) {
-          return 'admin-dashboard';
-        }
+        return getDashboardTabForUser(parsed?.user || null);
       }
     } catch (e) { }
     return 'landing';
@@ -126,6 +150,7 @@ export const App: React.FC = () => {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isAdminAuthModal, setIsAdminAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
 
   const handleInterceptBook = (target: Venue) => {
     setBookingTargetVenue(target);
@@ -230,11 +255,110 @@ export const App: React.FC = () => {
     }
   }, [currentUser, currentVendor, currentVenueOwner, activeTab]);
 
+  const handleLogout = () => {
+    setShowLogoutConfirmation(true);
+  };
+
+  const confirmLogout = () => {
+    setShowLogoutConfirmation(false);
+    setCurrentUser(null);
+    setCurrentVendor(null);
+    setCurrentVenueOwner(null);
+    setActiveRole('CUSTOMER');
+    setActiveTab('landing');
+    setCustomerChatPartnerId(null);
+  };
+
+  useEffect(() => {
+    if (!showLogoutConfirmation) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowLogoutConfirmation(false);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showLogoutConfirmation]);
+
   const isAdmin = Boolean(currentUser && (
     currentUser.role === 'ADMIN' ||
     currentUser.is_staff ||
     currentUser.is_superuser
   ));
+
+  // ---------------------------------------------------------------------------
+  // Back navigation (browser history)
+  // Every page change is recorded in the browser history so that the browser /
+  // phone Back button (and the in-app Back button) return to the previous page.
+  // ---------------------------------------------------------------------------
+  const authRef = useRef({ currentUser, isAdmin });
+  authRef.current = { currentUser, isAdmin };
+  const isFirstHistoryRender = useRef(true);
+
+  // Record each tab change as a history entry
+  useEffect(() => {
+    const state = window.history.state;
+
+    if (isFirstHistoryRender.current) {
+      isFirstHistoryRender.current = false;
+      window.history.replaceState({ tab: activeTab, role: activeRole, idx: state?.idx ?? 0 }, '');
+      return;
+    }
+
+    if (state?.tab !== activeTab) {
+      window.history.pushState(
+        { tab: activeTab, role: activeRole, idx: (state?.idx ?? 0) + 1 },
+        ''
+      );
+    }
+  }, [activeTab]);
+
+  // Restore the previous page when the browser Back / Forward button is used
+  useEffect(() => {
+    const onPopState = (event: PopStateEvent) => {
+      // Back always closes any open popup first
+      setSelectedVenue(null);
+      setBookingTargetVenue(null);
+
+      const state = event.state;
+      if (!state?.tab) return;
+
+      const { currentUser: user, isAdmin: admin } = authRef.current;
+      let tab: string = state.tab;
+      let role: UserRole = state.role || 'CUSTOMER';
+
+      const blocked =
+        (PROTECTED_TABS.has(tab) && !user) ||
+        (tab === 'admin-dashboard' && !admin);
+
+      if (blocked) {
+        // Don't send logged-out / non-admin users back into a protected page
+        tab = 'landing';
+        role = 'CUSTOMER';
+        window.history.replaceState({ tab, role, idx: state.idx ?? 0 }, '');
+      }
+
+      setActiveTab(tab);
+      setActiveRole(role);
+    };
+
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  const handleGoBack = () => {
+    if ((window.history.state?.idx ?? 0) > 0) {
+      window.history.back();
+    } else {
+      setActiveTab('landing');
+    }
+  };
+
+  const handleCloseVenueModal = () => {
+    setSelectedVenue(null);
+    // Remove the history entry that was added when the popup opened
+    if (window.history.state?.modal) window.history.back();
+  };
 
   const handleOpenAdmin = () => {
     if (!currentUser) {
@@ -289,42 +413,16 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleRequestRole = async (
-    role: 'CUSTOMER' | 'VENDOR' | 'VENUE_OWNER' | 'PROVIDER' | 'ADMIN',
-    nextTab: string = 'my-bookings'
-  ) => {
-    if (!currentUser) return;
-    if (role === 'ADMIN') {
-      toast.error('Access Denied: Administrator roles cannot be requested.');
-      return;
-    }
-    const roleName = role === 'PROVIDER' ? 'Business Provider' : role === 'VENDOR' ? 'Vendor' : role === 'VENUE_OWNER' ? 'Venue Owner' : 'Customer';
-    const toastId = toast.loading(`Activating ${roleName} mode...`);
-    try {
-      const data = await ApiService.requestRole(currentUser.id, role);
-      if (data && data.user) {
-        toast.success(role === 'PROVIDER' ? 'Welcome to your Vendor Dashboard!' : `${roleName} mode activated!`, { id: toastId });
-        setCurrentUser(data.user);
-        if (data.vendor_profile) setCurrentVendor(data.vendor_profile);
-        if (data.venue_owner_profile) setCurrentVenueOwner(data.venue_owner_profile);
-
-        if (role === 'CUSTOMER') {
-          setActiveRole('CUSTOMER');
-          setActiveTab(nextTab);
-        } else {
-          setActiveRole('PROVIDER');
-          setActiveTab('provider-dashboard');
-        }
-      } else {
-        toast.error("Failed to activate role.", { id: toastId });
-      }
-    } catch (err) {
-      toast.error("An error occurred.", { id: toastId });
-    }
-  };
-
   const handleSelectVenueWithTracking = (venue: Venue, source: string = 'grid') => {
     setSelectedVenue(venue);
+
+    // Add a history entry so Back closes the popup instead of leaving the page
+    const state = window.history.state;
+    window.history.pushState(
+      { tab: activeTab, role: activeRole, idx: (state?.idx ?? 0) + 1, modal: true },
+      ''
+    );
+
     ApiService.trackInteraction({
       event_type: 'LISTING_CLICK',
       listing_type: venue.listing_type || 'VENUE',
@@ -353,14 +451,9 @@ export const App: React.FC = () => {
               onAdminHomeClick={() => setAdminHomeRequest((request) => request + 1)}
               onLoginClick={() => { setIsAdminAuthModal(false); setAuthMode('login'); setShowAuthModal(true); }}
               onRegisterClick={() => { setIsAdminAuthModal(false); setAuthMode('register'); setShowAuthModal(true); }}
-              onRequestRole={handleRequestRole}
               searchQuery={filters.search}
               onSearchChange={(q) => setFilters((f) => ({ ...f, search: q }))}
-              onLogoutClick={() => {
-                setCurrentUser(null);
-                setActiveRole('CUSTOMER');
-                setActiveTab('landing');
-              }}
+              onLogoutClick={handleLogout}
             />
           )}
 
@@ -378,13 +471,14 @@ export const App: React.FC = () => {
               onExploreServices={() => navigateToTab('services')}
               onSelectVenue={(venue) => handleSelectVenueWithTracking(venue, 'landing_page')}
               onBookVenue={handleInterceptBook}
-              onOpenAdmin={handleOpenAdmin}
               currentUser={currentUser}
             />
           ) : (
             <>
               {(activeTab === 'venues' || activeTab === 'services' || activeTab === 'vendors') && (
                 <>
+                  <BackButton onClick={handleGoBack} />
+
                   <HeroSearch
                     filters={filters}
                     setFilters={setFilters}
@@ -399,7 +493,7 @@ export const App: React.FC = () => {
                       margin: '0 auto',
                       padding: '32px 24px',
                       display: 'grid',
-                      gridTemplateColumns: '260px 1fr',
+                      gridTemplateColumns: '260px minmax(0, 1fr)',
                       gap: '28px',
                       alignItems: 'start',
                     }}
@@ -452,21 +546,11 @@ export const App: React.FC = () => {
                   initialTab={customerChatPartnerId ? 'messages' : (activeTab === 'my-events' ? 'events' : 'dashboard')}
                   initialChatPartnerId={customerChatPartnerId}
                   onCancelBooking={handleCancelBooking}
-                  onNavigate={(tab) => {
-                    if (tab !== 'messages') setCustomerChatPartnerId(null);
-                    navigateToTab(tab);
-                  }}
                   handleSelectVenueWithTracking={handleSelectVenueWithTracking}
                   onBookVenue={handleInterceptBook}
                   venues={venues}
                   services={services}
-                  onLogout={() => {
-                    setCurrentUser(null);
-                    setActiveRole('CUSTOMER');
-                    setActiveTab('landing');
-                    setCustomerChatPartnerId(null);
-                  }}
-                  onRequestRole={handleRequestRole}
+                  onLogout={handleLogout}
                 />
               )}
 
@@ -475,14 +559,7 @@ export const App: React.FC = () => {
                   currentUser={currentUser}
                   currentVendor={currentVendor}
                   currentVenueOwner={currentVenueOwner}
-                  onLogout={() => {
-                    setCurrentUser(null);
-                    setCurrentVendor(null);
-                    setCurrentVenueOwner(null);
-                    setActiveRole('CUSTOMER');
-                    setActiveTab('landing');
-                  }}
-                  onExplore={() => handleRequestRole('CUSTOMER')}
+                  onLogout={handleLogout}
                 />
               )}
 
@@ -506,11 +583,7 @@ export const App: React.FC = () => {
                     setAuthMode('login');
                     setShowAuthModal(true);
                   }}
-                  onLogout={() => {
-                    setCurrentUser(null);
-                    setActiveRole('CUSTOMER');
-                    setActiveTab('landing');
-                  }}
+                  onLogout={handleLogout}
                 />
               )}
             </>
@@ -521,14 +594,13 @@ export const App: React.FC = () => {
           <VenueModal
             venue={selectedVenue}
             currentUser={currentUser}
-            onClose={() => setSelectedVenue(null)}
+            onClose={handleCloseVenueModal}
             onBook={(v) => setBookingTargetVenue(v)}
             onMessage={(target) => {
               setSelectedVenue(null);
               if (target?.recipientId) {
                 setCustomerChatPartnerId(target.recipientId);
               }
-              setActiveRole('CUSTOMER');
               setActiveTab('my-bookings');
             }}
           />
@@ -543,6 +615,44 @@ export const App: React.FC = () => {
             }}
             onSuccess={handleBookSuccess}
           />
+        )}
+
+        {showLogoutConfirmation && (
+          <div
+            className="modal-overlay logout-confirm-overlay"
+            onClick={() => setShowLogoutConfirmation(false)}
+          >
+            <div
+              className="modal-content logout-confirm-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="logout-confirm-title"
+              aria-describedby="logout-confirm-description"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="logout-confirm-icon" aria-hidden="true">
+                <LogOut size={23} />
+              </div>
+              <h2 id="logout-confirm-title">Sign out of Locyfy?</h2>
+              <p id="logout-confirm-description">
+                You can sign back in anytime. Are you sure you want to end your session now?
+              </p>
+              <div className="logout-confirm-actions">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  autoFocus
+                  onClick={() => setShowLogoutConfirmation(false)}
+                >
+                  Stay signed in
+                </button>
+                <button type="button" className="btn-primary" onClick={confirmLogout}>
+                  <LogOut size={16} />
+                  Sign out
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {![
@@ -595,7 +705,7 @@ export const App: React.FC = () => {
                       <li style={{ cursor: 'pointer', color: '#e6f7f3' }}>Contact Us</li>
                       <li style={{ cursor: 'pointer', color: '#e6f7f3' }}>FAQs</li>
                       <li style={{ cursor: 'pointer', color: '#e6f7f3' }}>Help</li>
-                      {(!currentUser || isAdmin) && (
+                      {isAdmin && (
                         <li style={{ cursor: 'pointer', color: '#e6f7f3' }} onClick={handleOpenAdmin}>Admin Portal</li>
                       )}
                     </ul>
@@ -636,15 +746,12 @@ export const App: React.FC = () => {
             if (data.roles?.is_admin || data.user?.role === 'ADMIN') {
               setActiveRole('ADMIN');
               setActiveTab('admin-dashboard');
-            } else if (data.roles?.is_provider || data.user?.role === 'PROVIDER' || (data.roles?.is_vendor && data.roles?.is_venue_owner)) {
-              setActiveRole('PROVIDER');
-              setActiveTab('provider-dashboard');
-            } else if (data.roles?.is_vendor || data.roles?.is_venue_owner) {
+            } else if (['PROVIDER', 'VENDOR', 'VENUE_OWNER'].includes(data.user?.role)) {
               setActiveRole('PROVIDER');
               setActiveTab('provider-dashboard');
             } else {
               setActiveRole('CUSTOMER');
-              setActiveTab('landing');
+              setActiveTab('my-bookings');
             }
           }}
         />
@@ -654,4 +761,3 @@ export const App: React.FC = () => {
 };
 
 export default App;
-

@@ -44,11 +44,9 @@ interface CustomerDashboardProps {
   bookings: Booking[];
   currentUser: any;
   onCancelBooking: (id: number) => void;
-  onNavigate?: (tab: string) => void;
   handleSelectVenueWithTracking: (venue: Venue, source?: string) => void;
   onBookVenue: (venue: Venue) => void;
   onLogout?: () => void;
-  onRequestRole?: (role: 'CUSTOMER' | 'VENDOR' | 'VENUE_OWNER' | 'PROVIDER') => void;
   venues?: Venue[];
   services?: Venue[];
   initialTab?: 'dashboard' | 'events' | 'services' | 'venues' | 'bookings' | 'reviews' | 'messages' | 'favorites' | 'profile' | 'settings';
@@ -59,11 +57,9 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
   bookings = [],
   currentUser,
   onCancelBooking: _onCancelBooking,
-  onNavigate,
   handleSelectVenueWithTracking,
   onBookVenue,
   onLogout,
-  onRequestRole,
   venues = [],
   services = [],
   initialTab = 'dashboard',
@@ -248,6 +244,11 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationTarget, setNotificationTarget] = useState<{
+    notificationId: number;
+    eventId: number;
+    taskId?: number;
+  } | null>(null);
   const [reminderPrefs, setReminderPrefs] = useState<ReminderPreference>({
     in_app_enabled: true,
     email_enabled: false,
@@ -304,6 +305,61 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
     }
   }, [currentUser?.id]);
 
+  const handleNotificationClick = async (notification: NotificationItem) => {
+    if (!notification.event && !notification.booking && !notification.source_message) return;
+
+    if (!notification.is_read) {
+      const markedRead = currentUser?.id
+        ? await ApiService.markNotificationRead(notification.id, currentUser.id)
+        : false;
+      if (markedRead) {
+        setNotifications(prev => prev.map(item => (
+          item.id === notification.id ? { ...item, is_read: true } : item
+        )));
+      } else {
+        toast.error('Could not mark this notification as read.');
+      }
+    }
+
+    setShowNotifications(false);
+    if (notification.event) {
+      setNotificationTarget({
+        notificationId: notification.id,
+        eventId: notification.event,
+        taskId: notification.task ?? undefined,
+      });
+      setActiveTab('events');
+      toast(notification.task ? 'Opening checklist task...' : 'Opening event...', { icon: '📋' });
+      return;
+    }
+
+    if (notification.message_sender_id) {
+      const relatedBooking = localBookings.find(item => item.id === notification.booking) ?? null;
+      setActiveThreadBooking(relatedBooking);
+      setSelectedPartnerId(notification.message_sender_id);
+      setActiveTab('messages');
+      toast('Opening conversation...', { icon: '💬' });
+      return;
+    }
+
+    if (notification.booking) {
+      const bookingDetails = upcomingDisplayList.find(item => item.id === notification.booking);
+      setActiveTab('bookings');
+      if (bookingDetails) {
+        setSelectedBookingDetails(bookingDetails);
+        toast('Opening booking details...', { icon: '📋' });
+      } else {
+        toast.error('This booking is no longer available in your dashboard.');
+      }
+    }
+  };
+
+  const clearNotificationTarget = useCallback((notificationId: number) => {
+    setNotificationTarget(current => (
+      current?.notificationId === notificationId ? null : current
+    ));
+  }, []);
+
   // Sync reminder preferences
   const syncReminderPreferences = useCallback(async () => {
     if (!currentUser?.id) return;
@@ -320,6 +376,8 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
   useEffect(() => {
     syncNotifications();
     syncReminderPreferences();
+    const interval = setInterval(syncNotifications, 15000);
+    return () => clearInterval(interval);
   }, [syncNotifications, syncReminderPreferences]);
 
   // Live Customer Bookings State (Auto-sync with backend changes)
@@ -657,6 +715,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
       notes: b.notes || `${b.guest_count} Attendees expected`,
       rawBooking: b,
       isPaid,
+      isSimulated: payment?.isSimulated ?? false,
       paymentReceipt: payment?.mpesaReceiptNumber
     };
   });
@@ -1026,15 +1085,24 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                           notifications.map((n) => (
                             <div
                               key={n.id}
-                              onClick={async () => {
-                                if (!n.is_read) {
-                                  await ApiService.markNotificationRead(n.id);
-                                  setNotifications(prev => prev.map(item => item.id === n.id ? { ...item, is_read: true } : item));
-                                }
-                                if (n.event) {
-                                  setShowNotifications(false);
-                                  setActiveTab('events');
-                                  toast(`Opening event checklist...`, { icon: '📋' });
+                              role={n.event || n.booking || n.source_message ? 'button' : undefined}
+                              tabIndex={n.event || n.booking || n.source_message ? 0 : -1}
+                              aria-label={
+                                n.message_sender_id
+                                  ? `Open conversation: ${n.message}`
+                                  : n.booking
+                                    ? `Open booking: ${n.message}`
+                                    : n.event
+                                      ? `Open activity: ${n.message}`
+                                      : undefined
+                              }
+                              onClick={() => {
+                                if (n.event || n.booking || n.source_message) void handleNotificationClick(n);
+                              }}
+                              onKeyDown={(event) => {
+                                if ((n.event || n.booking || n.source_message) && (event.key === 'Enter' || event.key === ' ')) {
+                                  event.preventDefault();
+                                  void handleNotificationClick(n);
                                 }
                               }}
                               style={{
@@ -1042,13 +1110,15 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                                 background: n.is_read ? '#f8fafc' : '#f0fdf4',
                                 border: n.is_read ? '1px solid #e2e8f0' : '1px solid #bbf7d0',
                                 borderRadius: '10px',
-                                cursor: n.event ? 'pointer' : 'default',
+                                cursor: n.event || n.booking || n.source_message ? 'pointer' : 'default',
                                 transition: 'all 0.15s ease',
                               }}
                             >
                               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
                                 <div style={{ marginTop: '2px' }}>
-                                  {n.message.includes('overdue') ? (
+                                  {n.notification_type === 'MESSAGE' ? (
+                                    <MessageSquare size={16} color="#0d8a73" />
+                                  ) : n.message.includes('overdue') ? (
                                     <AlertTriangle size={16} color="#ef4444" />
                                   ) : n.message.includes('today') || n.message.includes('tomorrow') ? (
                                     <Clock size={16} color="#f59e0b" />
@@ -1064,9 +1134,9 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                                     <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
                                       {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                     </span>
-                                    {n.event && (
+                                    {(n.event || n.booking || n.source_message) && (
                                       <span style={{ fontSize: '0.72rem', color: '#0d8a73', fontWeight: 600 }}>
-                                        View Task →
+                                        {n.message_sender_id ? 'View Message →' : n.booking ? 'View Booking →' : 'View Activity →'}
                                       </span>
                                     )}
                                   </div>
@@ -1202,32 +1272,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                     <Calendar size={18} color="#0d8a73" /> Customer Dashboard
                   </button>
 
-                  <button
-                    onClick={() => {
-                      setShowAccountMenu(false);
-                      if (onRequestRole) {
-                        onRequestRole('PROVIDER');
-                      } else if (onNavigate) {
-                        onNavigate('provider-dashboard');
-                      }
-                    }}
-                    style={{
-                      width: '100%',
-                      textAlign: 'left',
-                      padding: '12px 18px',
-                      background: 'none',
-                      border: 'none',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      cursor: 'pointer',
-                      fontSize: '0.9rem',
-                      color: '#0d8a73',
-                      fontWeight: 600,
-                    }}
-                  >
-                    <Building2 size={18} color="#0d8a73" /> Vendor Dashboard
-                  </button>
+
 
                   <div style={{ borderTop: '1px solid #f1f5f9', margin: '4px 0' }} />
 
@@ -1839,7 +1884,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                             )}
                             {item.isPaid && (
                               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700 }}>
-                                <CheckCircle2 size={12} /> Paid
+                                <CheckCircle2 size={12} /> {item.isSimulated ? 'Test payment' : 'Paid'}
                               </span>
                             )}
 
@@ -2149,6 +2194,8 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
             onCreateEvent={handleCreateEvent}
             onUpdateEvent={handleUpdateEvent}
             onDeleteEvent={handleDeleteEvent}
+            notificationTarget={notificationTarget}
+            onNotificationTargetHandled={clearNotificationTarget}
             onNavigateTab={(tab) => {
               if (tab === 'vendors') setActiveTab('services');
               else if (tab === 'venues') setActiveTab('venues');
@@ -2313,7 +2360,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
 
                         {b.isPaid && (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '6px 12px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '8px', fontSize: '0.8rem', fontWeight: 700 }}>
-                            <CheckCircle2 size={14} /> Paid ({b.paymentReceipt})
+                            <CheckCircle2 size={14} /> {b.isSimulated ? `Test payment (${b.paymentReceipt})` : `Paid (${b.paymentReceipt})`}
                           </span>
                         )}
 
@@ -3166,25 +3213,6 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
 
                 <div style={{ borderTop: '1px solid #f1f5f9' }} />
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>
-                      Locyfy Provider Mode
-                    </h4>
-                    <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748b' }}>
-                      Have a venue to host or event services to offer? Switch to provider mode.
-                    </p>
-                  </div>
-                  <button
-                    className="customer-btn-details"
-                    onClick={() => {
-                      if (onRequestRole) onRequestRole('PROVIDER');
-                      else if (onNavigate) onNavigate('provider-dashboard');
-                    }}
-                  >
-                    Open Provider Portal
-                  </button>
-                </div>
               </div>
             </div>
           </div>
@@ -3303,7 +3331,10 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                 )}
                 {selectedBookingDetails.isPaid && (
                   <div style={{ marginTop: '16px', padding: '12px', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px', color: '#059669', fontWeight: 700 }}>
-                    <CheckCircle2 size={18} /> Paid via M-Pesa (Receipt: {selectedBookingDetails.paymentReceipt})
+                    <CheckCircle2 size={18} />
+                    {selectedBookingDetails.isSimulated
+                      ? `Test payment recorded (Receipt: ${selectedBookingDetails.paymentReceipt})`
+                      : `Paid via M-Pesa (Receipt: ${selectedBookingDetails.paymentReceipt})`}
                   </div>
                 )}
               </div>

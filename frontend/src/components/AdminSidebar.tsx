@@ -4,6 +4,8 @@ import {
   Users,
   Building2,
   UserCheck,
+  CalendarCheck,
+  Star,
   BarChart3,
   LogOut,
   ShieldCheck,
@@ -17,8 +19,10 @@ import './admin-sidebar.css';
 export type AdminMenuItemId =
   | 'overview'
   | 'users'
+  | 'bookings'
   | 'venues'
   | 'verifications'
+  | 'reviews'
   | 'analytics'
   | 'settings'
   | 'profile';
@@ -56,6 +60,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   }> = [
       { id: 'overview', label: 'Overview', icon: LayoutDashboard },
       { id: 'users', label: 'Users', icon: Users, badge: badgeCounts.users },
+      { id: 'bookings', label: 'Bookings', icon: CalendarCheck },
       { id: 'venues', label: 'Provider Listings', icon: Building2, badge: badgeCounts.venues },
       {
         id: 'verifications',
@@ -63,6 +68,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         icon: UserCheck,
         badge: badgeCounts.verifications,
       },
+      { id: 'reviews', label: 'Reviews', icon: Star },
       { id: 'analytics', label: 'Analytics', icon: BarChart3 },
       { id: 'profile', label: 'My Profile', icon: UserIcon },
     ];

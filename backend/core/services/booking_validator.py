@@ -25,11 +25,7 @@ class BookingCapacityValidator:
             Q(expiry_date__isnull=True) | Q(expiry_date__gte=today)
         ).exists()
 
-        if not (
-            profile.is_verified
-            or profile.verification_status == 'APPROVED'
-            or has_valid_document
-        ):
+        if not (profile.is_verified and profile.verification_status == 'APPROVED'):
             raise ValidationError(unverified_message)
 
         if documents.exists() and not has_valid_document:
@@ -89,6 +85,18 @@ class BookingCapacityValidator:
 
         if venue:
             listing_label = 'service listing' if venue.listing_type == 'SERVICE' else 'venue'
+            if not venue.has_approved_business_account:
+                raise ValidationError(
+                    f"The business account for this {listing_label} must be approved before it can accept bookings."
+                )
+            has_active_provider = (
+                (venue.owner and venue.owner.user.is_active)
+                or (venue.vendor and venue.vendor.user.is_active)
+            )
+            if not has_active_provider:
+                raise ValidationError(
+                    f"This {listing_label} is no longer linked to an active provider and cannot accept bookings."
+                )
             if venue.approval_status != 'APPROVED' or not venue.is_verified:
                 raise ValidationError(f"This {listing_label} is currently pending administrator verification and cannot accept bookings.")
             if not venue.is_available:
